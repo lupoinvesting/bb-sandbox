@@ -35,6 +35,16 @@ def test_wide_zone_and_centre_field_colours_differ(drawn):
     assert surface.get_at(_center_of(layout.square(5, 7)))[:3] == render.PITCH_GREEN
 
 
+def test_endzones_are_highlighted(drawn):
+    surface, layout = drawn
+    for column in (0, 25):
+        # Middle row and wide-zone corner: the endzone colour covers both.
+        for row in (7, 0):
+            centre = _center_of(layout.square(column, row))
+            assert surface.get_at(centre)[:3] == render.ENDZONE_FILL
+    assert surface.get_at(_center_of(layout.square(1, 7)))[:3] == render.PITCH_GREEN
+
+
 def test_reserves_and_panel_are_filled(drawn):
     surface, layout = drawn
     for box in layout.reserves:

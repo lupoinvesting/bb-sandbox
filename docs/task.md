@@ -21,4 +21,4 @@
 
 ## Discovered During Work
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
-- [ ] Endzones (columns 0 and 25) are not highlighted; the PRD only asks for Line of Scrimmage and Wide Zones. Add if wanted.
+- [x] Highlight the Endzones (columns 0 and 25) in their own colour.

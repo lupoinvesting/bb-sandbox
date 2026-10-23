@@ -24,6 +24,20 @@ def test_wide_zones_are_four_rows_on_each_sideline():
     assert bottom.height == 4 * 32
 
 
+def test_endzones_are_outermost_columns():
+    layout = build_layout(32)
+    left, right = layout.endzones
+    assert left == layout.square(0, 0)._replace(height=layout.pitch.height)
+    last = layout.square(PITCH_COLUMNS - 1, 0)
+    assert right == last._replace(height=layout.pitch.height)
+
+
+def test_endzones_scale_with_square_size():
+    left, right = build_layout(1).endzones
+    assert left.width == right.width == 1
+    assert right.x == left.x + PITCH_COLUMNS - 1
+
+
 def test_reserves_sit_below_pitch_without_overlap():
     layout = build_layout(32)
     home, away = layout.reserves

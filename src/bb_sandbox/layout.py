@@ -11,6 +11,8 @@ PITCH_COLUMNS = 26
 PITCH_ROWS = 15
 # Reason: Blood Bowl wide zones are the 4 outermost rows on each sideline.
 WIDE_ZONE_ROWS = 4
+# Reason: each team scores in the single outermost column at its end of the pitch.
+ENDZONE_COLUMNS = 1
 DEFAULT_SQUARE_SIZE = 32
 MARGIN = 16
 RESERVE_ROWS = 3
@@ -43,6 +45,7 @@ class Layout:
         pitch (Box): The 26x15 grid area.
         line_of_scrimmage_x (int): Screen x of the halfway line.
         wide_zones (tuple[Box, Box]): Top and bottom wide zone areas.
+        endzones (tuple[Box, Box]): Left (column 0) and right (column 25) endzones.
         reserves (tuple[Box, Box]): Left (home) and right (away) reserve areas.
         panel (Box): Right-side player information panel.
     """
@@ -52,6 +55,7 @@ class Layout:
     pitch: Box
     line_of_scrimmage_x: int
     wide_zones: tuple[Box, Box]
+    endzones: tuple[Box, Box]
     reserves: tuple[Box, Box]
     panel: Box
 
@@ -107,6 +111,14 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         ),
     )
 
+    endzone_width = ENDZONE_COLUMNS * square_size
+    endzones = (
+        Box(pitch.x, pitch.y, endzone_width, pitch.height),
+        Box(
+            pitch.x + pitch.width - endzone_width, pitch.y, endzone_width, pitch.height
+        ),
+    )
+
     # Two reserve areas side by side under the pitch, one per team.
     reserve_y = pitch.y + pitch.height + MARGIN
     reserve_width = (pitch.width - MARGIN) // 2
@@ -133,6 +145,7 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         pitch=pitch,
         line_of_scrimmage_x=pitch.x + (PITCH_COLUMNS // 2) * square_size,
         wide_zones=wide_zones,
+        endzones=endzones,
         reserves=reserves,
         panel=panel,
     )

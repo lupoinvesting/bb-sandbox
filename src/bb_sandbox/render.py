@@ -7,6 +7,7 @@ from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout
 BACKGROUND = (30, 30, 34)
 PITCH_GREEN = (46, 125, 50)
 WIDE_ZONE_GREEN = (56, 142, 60)
+ENDZONE_FILL = (40, 96, 140)
 GRID_LINE = (34, 100, 38)
 SCRIMMAGE_LINE = (245, 245, 245)
 WIDE_ZONE_LINE = (200, 200, 200)
@@ -46,7 +47,7 @@ def _draw_label(
 
 def _draw_pitch(surface: pygame.Surface, layout: Layout) -> None:
     """
-    Draw the pitch grid, wide zones and line of scrimmage.
+    Draw the pitch grid, wide zones, endzones and line of scrimmage.
 
     Args:
         surface (pygame.Surface): Target surface.
@@ -56,6 +57,9 @@ def _draw_pitch(surface: pygame.Surface, layout: Layout) -> None:
     pygame.draw.rect(surface, PITCH_GREEN, _rect(pitch))
     for zone in layout.wide_zones:
         pygame.draw.rect(surface, WIDE_ZONE_GREEN, _rect(zone))
+    # Reason: drawn after the wide zones so the endzone colour wins on the corners.
+    for zone in layout.endzones:
+        pygame.draw.rect(surface, ENDZONE_FILL, _rect(zone))
 
     # Reason: pygame.draw.line includes its end point, so stop on the last pixel
     # inside the pitch rather than one past it.
