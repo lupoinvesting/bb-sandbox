@@ -13,6 +13,7 @@ FPS = 60
 FONT_SIZE = 20
 ROSTERS_DIR = Path("rosters")
 LEFT_BUTTON = 1
+RIGHT_BUTTON = 3
 
 
 def handle_event(session: Session, event: pygame.event.Event) -> bool:
@@ -34,6 +35,12 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
         match session.press(event.pos):
             case ImportRoster(side=side, path=path):
                 session.import_team(side, path)
+    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == RIGHT_BUTTON:
+        session.right_click(event.pos)
+    elif event.type == pygame.MOUSEBUTTONUP and event.button == LEFT_BUTTON:
+        session.release(event.pos)
+    elif event.type == pygame.MOUSEMOTION:
+        session.move(event.pos)
     elif event.type == pygame.WINDOWFOCUSGAINED:
         # Reason: picks up roster files added in Explorer while the app was
         # in the background.
@@ -53,8 +60,9 @@ def _draw(
         font (pygame.font.Font): Font for all text.
         session (Session): The session to draw.
     """
-    if session.screen is Screen.SANDBOX and session.board is not None:
-        draw_sandbox(surface, layout, font, session.board)
+    if session.screen is Screen.SANDBOX and session.interaction is not None:
+        view = session.interaction.view()
+        draw_sandbox(surface, layout, font, session.board, view)
     else:
         draw_menu(surface, layout, font, session.menu_view(), session.message)
 

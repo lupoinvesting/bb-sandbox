@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from bb_sandbox.board import Board
+from bb_sandbox.interaction import Interaction
 from bb_sandbox.layout import Layout, MenuList
 from bb_sandbox.pitch import Side
 from bb_sandbox.roster import RosterError, Team, list_rosters, load_team
@@ -54,7 +55,7 @@ class MenuView(NamedTuple):
 
 
 class Session:
-    """Owns the current screen, the imported teams and the sandbox board."""
+    """Owns the current screen, the imported teams, the sandbox board and its input."""
 
     def __init__(self, layout: Layout, rosters_dir: Path) -> None:
         """
@@ -70,6 +71,7 @@ class Session:
         self._teams: dict[Side, Team | None] = {Side.HOME: None, Side.AWAY: None}
         self._screen = Screen.MENU
         self._board: Board | None = None
+        self._interaction: Interaction | None = None
         self._message = ""
 
     @property
@@ -86,6 +88,11 @@ class Session:
     def board(self) -> Board | None:
         """Board | None: The sandbox board; None on the main menu."""
         return self._board
+
+    @property
+    def interaction(self) -> Interaction | None:
+        """Interaction | None: Sandbox pointer input; None on the main menu."""
+        return self._interaction
 
     def _visible_count(self) -> int:
         """
@@ -128,6 +135,9 @@ class Session:
         if self._screen is Screen.SANDBOX:
             if self._layout.menu_button.contains(pos):
                 self._screen, self._board, self._message = Screen.MENU, None, ""
+                self._interaction = None
+            else:
+                self._interaction.press(pos)
             return None
 
         if self._layout.start_button.contains(pos):
@@ -149,8 +159,39 @@ class Session:
             self._message = "Pick a home and an away roster"
             return
         self._board = Board(home, away)
+        self._interaction = Interaction(self._board, self._layout)
         self._screen = Screen.SANDBOX
         self._message = ""
+
+    def release(self, pos: tuple[int, int]) -> None:
+        """
+        Handle a left button release; only the sandbox uses it.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+        """
+        if self._interaction is not None:
+            self._interaction.release(pos)
+
+    def move(self, pos: tuple[int, int]) -> None:
+        """
+        Handle mouse motion; only the sandbox uses it.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+        """
+        if self._interaction is not None:
+            self._interaction.move(pos)
+
+    def right_click(self, pos: tuple[int, int]) -> None:
+        """
+        Handle a right click; only the sandbox uses it.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+        """
+        if self._interaction is not None:
+            self._interaction.right_click(pos)
 
     def rescan(self) -> None:
         """Re-list the roster files on disk."""

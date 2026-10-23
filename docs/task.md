@@ -11,15 +11,16 @@
 - [x] Develop the Main Menu UI to trigger roster imports and spawn player sprites into the reserve areas
 
 ## Phase 3: Core Sandbox Mechanics
-- [ ] Drag-and-drop for players and the ball, snapping only on mouse release
-- [ ] One-player-per-square collision logic
-- [ ] Right-click state cycling (Prone/Stunned rotation) and reserve-return logic
-- [ ] Hover events feeding the right-side UI (stats and skills)
+- [x] Drag-and-drop for players and the ball, snapping only on mouse release
+- [x] One-player-per-square collision logic
+- [x] Right-click state cycling (Prone/Stunned rotation) and reserve-return logic
+- [x] Hover events feeding the right-side UI (stats and skills)
 
 ## Phase 4: State Persistence
 - [ ] Save/load pitch configurations (grid coordinates, rotations, reserve statuses)
 
 ## Discovered During Work
+- [ ] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
 - [x] Highlight the Endzones (columns 0 and 25) in their own colour.
 - [x] Create `pitch.py` and move `PITCH_COLUMNS`/`PITCH_ROWS` into it (first Phase 2 step of `docs/design.md`).

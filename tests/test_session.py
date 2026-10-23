@@ -3,7 +3,7 @@
 import pytest
 
 from bb_sandbox.layout import MenuList, build_layout
-from bb_sandbox.pitch import Side
+from bb_sandbox.pitch import PlayerKey, Side, Square
 from bb_sandbox.session import ImportRoster, MenuView, Screen, Session
 
 CSV = "name,MA,ST,AG,PA,AV,skills\nGrishnak,5,3,3+,4+,10+,Block\n"
@@ -107,3 +107,28 @@ def test_rescan_picks_up_new_files(session, tmp_path):
     (tmp_path / "zombies.csv").write_text(CSV)
     session.rescan()
     assert session.menu_view().rosters[-1] == "zombies"
+
+
+def test_sandbox_forwards_pointer_input(session):
+    _import_both(session)
+    session.press(_click(LAYOUT.start_button))
+    key = PlayerKey(Side.HOME, 0)
+    session.press(_click(LAYOUT.reserve_slot(key)))
+    session.move(_click(LAYOUT.square(4, 4)))
+    assert session.interaction.view().dragged.item == key
+    session.release(_click(LAYOUT.square(4, 4)))
+    assert session.board.square_of(key) == Square(4, 4)
+
+    session.right_click(_click(LAYOUT.square(4, 4)))
+    assert len(session.interaction.view().menu) == 4
+
+    session.press(_click(LAYOUT.menu_button))
+    assert session.interaction is None
+
+
+def test_pointer_input_on_menu_is_ignored(session):
+    assert session.interaction is None
+    session.move((5, 5))
+    session.release((5, 5))
+    session.right_click((5, 5))
+    assert session.screen is Screen.MENU and session.message == ""

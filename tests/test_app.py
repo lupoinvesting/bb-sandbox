@@ -5,6 +5,7 @@ import pytest
 
 from bb_sandbox.app import handle_event, run
 from bb_sandbox.layout import MenuList, build_layout
+from bb_sandbox.pitch import PlayerKey, Side, Square, Status
 from bb_sandbox.session import Screen, Session
 
 CSV = "name,MA,ST,AG,PA,AV,skills\nGrishnak,5,3,3+,4+,10+,Block\n"
@@ -65,3 +66,30 @@ def test_handle_event_ignores_right_click_and_reports_quit(in_tmp):
     assert handle_event(session, _click(build_layout().start_button, button=3))
     assert session.message == ""
     assert not handle_event(session, pygame.event.Event(pygame.QUIT))
+
+
+def test_handle_event_drives_drag_and_context_menu(in_tmp):
+    rosters = in_tmp / "rosters"
+    rosters.mkdir()
+    (rosters / "orcs.csv").write_text(CSV)
+    layout = build_layout()
+    session = Session(layout, rosters)
+    session.rescan()
+    for which in MenuList:
+        handle_event(session, _click(layout.menu_row(which, 0)))
+    handle_event(session, _click(layout.start_button))
+
+    key = PlayerKey(Side.HOME, 0)
+    target = layout.square(4, 4)
+    handle_event(session, _click(layout.reserve_slot(key)))
+    pos = (target.x + 2, target.y + 2)
+    assert handle_event(session, pygame.event.Event(pygame.MOUSEMOTION, pos=pos))
+    assert session.interaction.view().dragged is not None
+    up = pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=pos)
+    assert handle_event(session, up)
+    assert session.board.square_of(key) == Square(4, 4)
+
+    assert handle_event(session, _click(target, button=3))
+    prone = session.interaction.view().menu[1]
+    handle_event(session, _click(prone.box))
+    assert session.board.status_of(key) is Status.PRONE

@@ -3,7 +3,7 @@
 import pytest
 
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, MenuList, build_layout
-from bb_sandbox.pitch import PlayerKey, Side
+from bb_sandbox.pitch import PlayerKey, Side, Square
 from bb_sandbox.roster import MAX_TEAM_SIZE
 
 
@@ -152,6 +152,76 @@ def test_menu_row_out_of_range_raises(index):
         layout.menu_row(
             MenuList.AWAY_ROSTERS, layout.menu_rows if index == "rows" else index
         )
+
+
+def test_square_at_inverts_square():
+    layout = build_layout(32)
+    for column, row in ((0, 0), (13, 7), (PITCH_COLUMNS - 1, PITCH_ROWS - 1)):
+        box = layout.square(column, row)
+        assert layout.square_at((box.x, box.y)) == Square(column, row)
+        corner = (box.x + box.width - 1, box.y + box.height - 1)
+        assert layout.square_at(corner) == Square(column, row)
+
+
+def test_square_at_off_pitch_is_none():
+    layout = build_layout(32)
+    pitch = layout.pitch
+    assert layout.square_at((pitch.x - 1, pitch.y)) is None
+    assert layout.square_at((pitch.x + pitch.width, pitch.y)) is None
+    assert layout.square_at((pitch.x, pitch.y + pitch.height)) is None
+
+
+def test_ball_box_is_half_a_square_centred_or_in_corner():
+    layout = build_layout(32)
+    cell = layout.square(3, 4)
+    assert layout.ball_box(Square(3, 4), carried=False) == Box(
+        cell.x + 8, cell.y + 8, 16, 16
+    )
+    assert layout.ball_box(Square(3, 4), carried=True) == Box(
+        cell.x + 16, cell.y + 16, 16, 16
+    )
+
+
+def test_context_menu_opens_right_of_square():
+    layout = build_layout(32)
+    anchor = layout.square(2, 3)
+    boxes = layout.context_menu(anchor, 4)
+    assert len(boxes) == 4
+    assert boxes[0].x == anchor.x + anchor.width and boxes[0].y == anchor.y
+    assert boxes[3].y == anchor.y + 3 * 32
+
+
+def test_context_menu_flips_left_of_panel_and_stays_in_window():
+    layout = build_layout(32)
+    anchor = layout.square(PITCH_COLUMNS - 1, PITCH_ROWS - 1)
+    boxes = layout.context_menu(anchor, 4)
+    assert boxes[0].x + boxes[0].width == anchor.x
+    last = boxes[-1]
+    assert last.y + last.height <= layout.window_size[1]
+
+
+def test_context_menu_needs_items():
+    with pytest.raises(ValueError):
+        build_layout().context_menu(Box(0, 0, 32, 32), 0)
+
+
+@pytest.mark.parametrize("side", list(Side))
+def test_reserve_slot_at_inverts_reserve_slot(side):
+    layout = build_layout(32)
+    for index in (0, 11, 12, 23):
+        slot = layout.reserve_slot(PlayerKey(side, index))
+        assert layout.reserve_slot_at((slot.x + 31, slot.y + 31)) == PlayerKey(
+            side, index
+        )
+
+
+def test_reserve_slot_at_misses_caption_and_outside():
+    layout = build_layout(32)
+    area = layout.reserve(Side.HOME)
+    assert layout.reserve_slot_at((area.x + 5, area.y + 5)) is None
+    # Past the 12th slot column, still inside the area.
+    assert layout.reserve_slot_at((area.x + 12 * 32 + 2, area.y + 40)) is None
+    assert layout.reserve_slot_at((1, 1)) is None
 
 
 def test_menu_button_inside_panel():

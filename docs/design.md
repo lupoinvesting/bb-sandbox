@@ -140,8 +140,10 @@ class Interaction:
     def __init__(self, board: Board, layout: Layout)
     def press(pos) / move(pos) / release(pos) / right_click(pos) -> None
     def view() -> InteractionView   # hovered: PlayerKey | None
-                                    # dragged: (PlayerKey | BALL, centre) | None
-                                    # menu: tuple[(label, Box), ...]
+                                    # dragged: Drag(item: PlayerKey | BALL, box: Box) | None
+                                    # menu: tuple[MenuItem(label, box), ...]
+# Implemented: `dragged` carries the token's moved Box rather than its centre, so
+# render needs no geometry of its own; the drop uses that box's centre.
 
 # session.py
 class Screen(Enum): MENU; SANDBOX
@@ -158,6 +160,7 @@ class Session:
 # render.py additions (draw_scene stays as it is)
 def draw_menu(surface, layout, font, menu: MenuView, message: str) -> None
 def draw_sandbox(surface, layout, font, board: Board, view: InteractionView, message: str) -> None
+# Implemented in Phase 3 without `message`; Phase 4 adds it for save/load feedback.
 ```
 `app.run()` keeps its signature. It builds `Session(layout, Path("rosters"), Path("setups"))` and calls `rescan()` once at startup. In the loop it maps each event to session calls:
 - **Left button down:** `match session.press(pos)` dispatches the file request by name, so the I/O is visible at the call site (rule 8).

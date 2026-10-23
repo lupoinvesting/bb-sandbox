@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import NamedTuple
 
-from bb_sandbox.pitch import PITCH_COLUMNS, PITCH_ROWS, PlayerKey, Side
+from bb_sandbox.pitch import PITCH_COLUMNS, PITCH_ROWS, PlayerKey, Side, Square
 
 # Reason: Blood Bowl wide zones are the 4 outermost rows on each sideline.
 WIDE_ZONE_ROWS = 4
@@ -23,6 +23,7 @@ RESERVE_SLOT_COLUMNS = 12
 RESERVE_SLOT_ROWS = 2
 START_BUTTON_WIDTH = 160
 BUTTON_INSET = 8
+CONTEXT_MENU_WIDTH = 120
 
 
 class Box(NamedTuple):
@@ -119,6 +120,68 @@ class Layout:
             self.square_size,
         )
 
+    def square_at(self, pos: tuple[int, int]) -> Square | None:
+        """
+        Find the pitch square under a point (inverse of square).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            Square | None: The square, or None off the pitch.
+        """
+        if not self.pitch.contains(pos):
+            return None
+        return Square(
+            (pos[0] - self.pitch.x) // self.square_size,
+            (pos[1] - self.pitch.y) // self.square_size,
+        )
+
+    def ball_box(self, square: Square, carried: bool) -> Box:
+        """
+        Return the box the ball is drawn in: half a square.
+
+        Args:
+            square (Square): The ball's square.
+            carried (bool): True if a player stands there; the ball then sits
+                in the bottom-right corner so the player stays clickable.
+
+        Returns:
+            Box: The ball's screen rectangle.
+        """
+        cell = self.square(square.column, square.row)
+        size = self.square_size // 2
+        offset = self.square_size - size if carried else (self.square_size - size) // 2
+        return Box(cell.x + offset, cell.y + offset, size, size)
+
+    def context_menu(self, anchor: Box, items: int) -> tuple[Box, ...]:
+        """
+        Stack menu item boxes next to an anchor, left of the panel and inside the window.
+
+        Args:
+            anchor (Box): The square the menu belongs to.
+            items (int): Number of items, at least 1.
+
+        Returns:
+            tuple[Box, ...]: One square-high box per item, top to bottom.
+
+        Raises:
+            ValueError: If items is not positive.
+        """
+        if items <= 0:
+            raise ValueError(f"items must be positive, got {items}")
+        # Reason: open to the right of the square unless that would cover the
+        # panel; then open to its left.
+        x = anchor.x + anchor.width
+        if x + CONTEXT_MENU_WIDTH > self.panel.x:
+            x = anchor.x - CONTEXT_MENU_WIDTH
+        height = items * self.square_size
+        y = max(0, min(anchor.y, self.window_size[1] - height))
+        return tuple(
+            Box(x, y + i * self.square_size, CONTEXT_MENU_WIDTH, self.square_size)
+            for i in range(items)
+        )
+
     def reserve(self, side: Side) -> Box:
         """
         Return one team's reserve area.
@@ -158,6 +221,27 @@ class Layout:
             self.square_size,
             self.square_size,
         )
+
+    def reserve_slot_at(self, pos: tuple[int, int]) -> PlayerKey | None:
+        """
+        Find the reserve slot under a point (inverse of reserve_slot).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            PlayerKey | None: The key whose slot is there, or None off the slots.
+                The key may name no player if the team is smaller.
+        """
+        for side in Side:
+            area = self.reserve(side)
+            if not area.contains(pos):
+                continue
+            column = (pos[0] - area.x) // self.square_size
+            row = (pos[1] - area.y) // self.square_size - 1
+            if 0 <= column < RESERVE_SLOT_COLUMNS and 0 <= row < RESERVE_SLOT_ROWS:
+                return PlayerKey(side, row * RESERVE_SLOT_COLUMNS + column)
+        return None
 
     def menu_column(self, which: MenuList) -> Box:
         """

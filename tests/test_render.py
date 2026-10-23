@@ -4,11 +4,14 @@ import pygame
 import pytest
 
 from bb_sandbox import render
-from bb_sandbox.board import Board
-from bb_sandbox.layout import MenuList, build_layout
-from bb_sandbox.pitch import PlayerKey, Side, Square
+from bb_sandbox.board import BALL_START, Board
+from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
+from bb_sandbox.layout import Box, MenuList, build_layout
+from bb_sandbox.pitch import PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
 from bb_sandbox.session import MenuView
+
+EMPTY_VIEW = InteractionView(None, None, ())
 
 
 @pytest.fixture
@@ -80,7 +83,7 @@ def test_sandbox_draws_tokens_in_reserves(font):
     layout = build_layout(32)
     board = Board(_team(3), _team(1))
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board)
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW)
 
     home_slot = layout.reserve_slot(PlayerKey(Side.HOME, 0))
     # Bottom-left corner of the token body, clear of the head bar and number.
@@ -101,7 +104,7 @@ def test_sandbox_draws_placed_token_on_its_square(font):
     board = Board(_team(1), _team(1))
     board.place(PlayerKey(Side.AWAY, 0), Square(5, 7))
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board)
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW)
     square = layout.square(5, 7)
     assert surface.get_at((square.x + 5, square.y + 27))[:3] == (
         render.TEAM_COLOURS[Side.AWAY]
@@ -142,3 +145,91 @@ def test_menu_with_no_rosters_draws(font):
     surface = pygame.Surface(layout.window_size)
     render.draw_menu(surface, layout, font, MenuView((), 0, None, None), "")
     assert surface.get_at((1, 1))[:3] == render.BACKGROUND
+
+
+def _sandbox(board, view=EMPTY_VIEW):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_sandbox(surface, layout, pygame.font.Font(None, 20), board, view)
+    return surface, layout
+
+
+@pytest.mark.parametrize(
+    "status,left_edge,bottom_edge",
+    [
+        (Status.STANDING, "team", "team"),
+        (Status.PRONE, "head", "team"),
+        (Status.STUNNED, "team", "head"),
+    ],
+)
+def test_token_rotates_with_status(font, status, left_edge, bottom_edge):
+    board = Board(_team(1), _team(1))
+    key = PlayerKey(Side.HOME, 0)
+    board.place(key, Square(5, 7))
+    board.set_status(key, status)
+    surface, layout = _sandbox(board)
+    colours = {"team": render.TEAM_COLOURS[Side.HOME], "head": render.TOKEN_HEAD}
+    square = layout.square(5, 7)
+    # Left edge, low down: the head bar lands here once rotated 90 degrees.
+    assert surface.get_at((square.x + 4, square.y + 22))[:3] == colours[left_edge]
+    # Bottom edge, right side: the head bar lands here once rotated 180 degrees.
+    assert surface.get_at((square.x + 22, square.y + 27))[:3] == colours[bottom_edge]
+
+
+def test_ball_drawn_and_hidden_at_origin_while_dragged(font):
+    board = Board(_team(1), _team(1))
+    surface, layout = _sandbox(board)
+    ball_box = layout.ball_box(BALL_START, carried=False)
+    centre = (ball_box.x + 8, ball_box.y + 8)
+    assert surface.get_at(centre)[:3] == render.BALL_FILL
+
+    moved = ball_box._replace(x=ball_box.x + 100)
+    surface, _ = _sandbox(board, InteractionView(None, Drag(BALL, moved), ()))
+    assert surface.get_at(centre)[:3] != render.BALL_FILL
+    assert surface.get_at((moved.x + 8, moved.y + 8))[:3] == render.BALL_FILL
+
+
+def test_dragged_player_drawn_at_drag_box_not_origin(font):
+    board = Board(_team(1), _team(1))
+    key = PlayerKey(Side.AWAY, 0)
+    board.place(key, Square(5, 7))
+    layout = build_layout(32)
+    target = layout.square(9, 7)
+    view = InteractionView(key, Drag(key, target), ())
+    surface, _ = _sandbox(board, view)
+    origin = layout.square(5, 7)
+    assert surface.get_at((origin.x + 5, origin.y + 27))[:3] == render.PITCH_GREEN
+    colour = render.TEAM_COLOURS[Side.AWAY]
+    assert surface.get_at((target.x + 5, target.y + 27))[:3] == colour
+
+
+def test_panel_shows_hovered_player_only(font):
+    board = Board(_team(1), _team(1))
+    key = PlayerKey(Side.HOME, 0)
+    plain, layout = _sandbox(board)
+    hovered, _ = _sandbox(board, InteractionView(key, None, ()))
+    panel = layout.panel
+    strip = [(x, panel.y + 40) for x in range(panel.x + 6, panel.x + 120)]
+    assert all(plain.get_at(p)[:3] == render.PANEL_FILL for p in strip)
+    assert any(hovered.get_at(p)[:3] != render.PANEL_FILL for p in strip)
+
+
+def test_player_lines_format_stats_and_skills():
+    player = Player(name="Grim", ma=5, st=3, ag=3, pa=None, av=10, skills=("Block",))
+    board = Board(Team(name="orcs", players=(player,)), _team(1))
+    lines = render._player_lines(board, PlayerKey(Side.HOME, 0))
+    assert lines == [
+        "#1 Grim",
+        "orcs (home)",
+        "MA 5  ST 3  AG 3+  PA -  AV 10+",
+        "Skills:",
+        "  Block",
+    ]
+    assert render._player_lines(board, PlayerKey(Side.AWAY, 0))[-1] == "  none"
+
+
+def test_context_menu_is_drawn(font):
+    board = Board(_team(1), _team(1))
+    box = Box(100, 100, 120, 32)
+    surface, _ = _sandbox(board, InteractionView(None, None, (MenuItem("Prone", box),)))
+    assert surface.get_at((box.x + 110, box.y + 28))[:3] == render.MENU_FILL
