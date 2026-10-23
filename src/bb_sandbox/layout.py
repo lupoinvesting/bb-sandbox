@@ -60,6 +60,7 @@ class MenuList(Enum):
 
     HOME_ROSTERS = 0
     AWAY_ROSTERS = 1
+    SETUPS = 2
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,8 @@ class Layout:
         reserves (tuple[Box, Box]): Left (home) and right (away) reserve areas.
         panel (Box): Right-side player information panel.
         menu_button (Box): Sandbox "Main menu" button at the bottom of the panel.
+        save_button (Box): Sandbox "Save setup" button just above menu_button.
+        sandbox_message_line (Box): Sandbox status message line above save_button.
         menu_columns (tuple[Box, ...]): Main menu list columns, in MenuList order;
             each starts with a one-row caption.
         menu_rows (int): How many file rows fit in a menu column.
@@ -92,6 +95,8 @@ class Layout:
     reserves: tuple[Box, Box]
     panel: Box
     menu_button: Box
+    save_button: Box
+    sandbox_message_line: Box
     menu_columns: tuple[Box, ...]
     menu_rows: int
     start_button: Box
@@ -357,6 +362,10 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         panel.width - 2 * BUTTON_INSET,
         square_size,
     )
+    save_button = menu_button._replace(y=menu_button.y - BUTTON_INSET - square_size)
+    sandbox_message_line = save_button._replace(
+        y=save_button.y - BUTTON_INSET - square_size
+    )
 
     window_width = panel_x + PANEL_WIDTH + MARGIN
     window_height = reserve_y + reserve_height + MARGIN
@@ -393,6 +402,8 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         reserves=reserves,
         panel=panel,
         menu_button=menu_button,
+        save_button=save_button,
+        sandbox_message_line=sandbox_message_line,
         menu_columns=menu_columns,
         # Reason: the first row of each column holds its caption.
         menu_rows=max(0, column_height // square_size - 1),

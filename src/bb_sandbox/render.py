@@ -33,6 +33,7 @@ STATUS_ANGLES = {Status.STANDING: 0, Status.PRONE: 90, Status.STUNNED: 180}
 MENU_CAPTIONS = {
     MenuList.HOME_ROSTERS: "Home roster",
     MenuList.AWAY_ROSTERS: "Away roster",
+    MenuList.SETUPS: "Saved setups",
 }
 
 
@@ -166,6 +167,47 @@ def _draw_button(
     _draw_centred(surface, font, label, box, text)
 
 
+def _draw_menu_list(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    which: MenuList,
+    names: tuple[str, ...],
+    hidden: int,
+    selected: str | None,
+    empty_text: str,
+) -> None:
+    """
+    Draw one main menu list column: caption, file names and "+N more".
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        which (MenuList): The column to draw.
+        names (tuple[str, ...]): Visible file names, top to bottom.
+        hidden (int): Files that didn't fit.
+        selected (str | None): The name to highlight, if any.
+        empty_text (str): Shown when there are no files.
+    """
+    column = layout.menu_column(which)
+    pygame.draw.rect(surface, PANEL_FILL, _rect(column))
+    pygame.draw.rect(surface, BORDER, _rect(column), 2)
+    _draw_label(surface, font, MENU_CAPTIONS[which], column)
+    if layout.menu_rows == 0:
+        return
+    if not names:
+        _draw_label(surface, font, empty_text, layout.menu_row(which, 0))
+    for index, name in enumerate(names):
+        row = layout.menu_row(which, index)
+        if name == selected:
+            pygame.draw.rect(surface, HIGHLIGHT, _rect(row))
+        _draw_label(surface, font, name, row)
+    if hidden:
+        row = layout.menu_row(which, len(names))
+        _draw_label(surface, font, f"+{hidden} more", row)
+
+
 def draw_menu(
     surface: pygame.Surface,
     layout: Layout,
@@ -174,36 +216,38 @@ def draw_menu(
     message: str,
 ) -> None:
     """
-    Draw the main menu: home and away roster lists, message line and Start.
+    Draw the main menu: roster and setup lists, message line and Start.
 
     Args:
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
-        menu (MenuView): Roster names and selected teams.
+        menu (MenuView): Roster and setup names and selected teams.
         message (str): Status message, '' for none.
     """
     surface.fill(BACKGROUND)
     selections = {MenuList.HOME_ROSTERS: menu.home, MenuList.AWAY_ROSTERS: menu.away}
     for which, selected in selections.items():
-        column = layout.menu_column(which)
-        pygame.draw.rect(surface, PANEL_FILL, _rect(column))
-        pygame.draw.rect(surface, BORDER, _rect(column), 2)
-        _draw_label(surface, font, MENU_CAPTIONS[which], column)
-        if layout.menu_rows == 0:
-            continue
-        if not menu.rosters:
-            _draw_label(
-                surface, font, "No CSV files in rosters/", layout.menu_row(which, 0)
-            )
-        for index, name in enumerate(menu.rosters):
-            row = layout.menu_row(which, index)
-            if name == selected:
-                pygame.draw.rect(surface, HIGHLIGHT, _rect(row))
-            _draw_label(surface, font, name, row)
-        if menu.hidden:
-            row = layout.menu_row(which, len(menu.rosters))
-            _draw_label(surface, font, f"+{menu.hidden} more", row)
+        _draw_menu_list(
+            surface,
+            layout,
+            font,
+            which,
+            menu.rosters,
+            menu.hidden,
+            selected,
+            "No CSV files in rosters/",
+        )
+    _draw_menu_list(
+        surface,
+        layout,
+        font,
+        MenuList.SETUPS,
+        menu.setups,
+        menu.setups_hidden,
+        None,
+        "No JSON files in setups/",
+    )
 
     _draw_label(surface, font, message, layout.menu_message_line)
     ready = menu.home is not None and menu.away is not None
@@ -300,7 +344,7 @@ def _draw_panel(
     hovered: PlayerKey | None,
 ) -> None:
     """
-    Draw the hovered player's details in the info panel, above the Main menu button.
+    Draw the hovered player's details in the info panel, above the message line.
 
     Args:
         surface (pygame.Surface): Target surface.
@@ -316,10 +360,10 @@ def _draw_panel(
         panel.x + 2,
         panel.y + layout.square_size,
         panel.width - 4,
-        layout.menu_button.y - panel.y - layout.square_size,
+        layout.sandbox_message_line.y - panel.y - layout.square_size,
     )
     # Reason: long names and skill lists are clipped to the panel instead of
-    # spilling over the pitch or the button.
+    # spilling over the pitch, the message or the buttons.
     surface.set_clip(_rect(text_area))
     line_height = font.get_linesize()
     for number, line in enumerate(_player_lines(board, hovered)):
@@ -351,6 +395,7 @@ def draw_sandbox(
     font: pygame.font.Font,
     board: Board,
     view: InteractionView,
+    message: str,
 ) -> None:
     """
     Draw the sandbox: scene, tokens, ball, dragged item, info panel and context menu.
@@ -361,6 +406,7 @@ def draw_sandbox(
         font (pygame.font.Font): Font for captions and shirt numbers.
         board (Board): Where every player and the ball are.
         view (InteractionView): Hover, drag and context menu state.
+        message (str): Status message (save/load feedback), '' for none.
     """
     draw_scene(surface, layout, font)
     dragged = view.dragged.item if view.dragged else None
@@ -386,5 +432,10 @@ def draw_sandbox(
             _draw_token(surface, font, view.dragged.box, key, board.status_of(key))
 
     _draw_panel(surface, layout, font, board, view.hovered)
+    # Reason: file names in the message can be wider than the panel.
+    surface.set_clip(_rect(layout.sandbox_message_line))
+    _draw_label(surface, font, message, layout.sandbox_message_line)
+    surface.set_clip(None)
+    _draw_button(surface, font, layout.save_button, "Save setup")
     _draw_button(surface, font, layout.menu_button, "Main menu")
     _draw_context_menu(surface, font, view.menu)

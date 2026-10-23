@@ -121,8 +121,11 @@ def test_menu_fits_in_window():
         assert last.y + last.height <= layout.menu_message_line.y
     start = layout.start_button
     assert start.y + start.height <= height and start.x + start.width <= width
-    home, away = layout.menu_columns
-    assert home.x + home.width < away.x
+    columns = layout.menu_columns
+    assert len(columns) == len(MenuList)
+    for left, right in zip(columns, columns[1:]):
+        assert left.x + left.width < right.x
+    assert columns[-1].x + columns[-1].width <= width
 
 
 def test_menu_row_at_inverts_menu_row():
@@ -229,3 +232,14 @@ def test_menu_button_inside_panel():
     button, panel = layout.menu_button, layout.panel
     assert panel.contains(button[:2])
     assert panel.contains((button.x + button.width - 1, button.y + button.height - 1))
+
+
+def test_save_button_and_message_line_stack_above_menu_button():
+    layout = build_layout(32)
+    panel = layout.panel
+    stack = (layout.sandbox_message_line, layout.save_button, layout.menu_button)
+    for upper, lower in zip(stack, stack[1:]):
+        assert upper.y + upper.height < lower.y
+    for box in stack:
+        assert panel.contains(box[:2])
+        assert panel.contains((box.x + box.width - 1, box.y + box.height - 1))

@@ -83,7 +83,7 @@ def test_sandbox_draws_tokens_in_reserves(font):
     layout = build_layout(32)
     board = Board(_team(3), _team(1))
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW)
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, "")
 
     home_slot = layout.reserve_slot(PlayerKey(Side.HOME, 0))
     # Bottom-left corner of the token body, clear of the head bar and number.
@@ -104,7 +104,7 @@ def test_sandbox_draws_placed_token_on_its_square(font):
     board = Board(_team(1), _team(1))
     board.place(PlayerKey(Side.AWAY, 0), Square(5, 7))
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW)
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, "")
     square = layout.square(5, 7)
     assert surface.get_at((square.x + 5, square.y + 27))[:3] == (
         render.TEAM_COLOURS[Side.AWAY]
@@ -150,7 +150,7 @@ def test_menu_with_no_rosters_draws(font):
 def _sandbox(board, view=EMPTY_VIEW):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, pygame.font.Font(None, 20), board, view)
+    render.draw_sandbox(surface, layout, pygame.font.Font(None, 20), board, view, "")
     return surface, layout
 
 
@@ -233,3 +233,30 @@ def test_context_menu_is_drawn(font):
     box = Box(100, 100, 120, 32)
     surface, _ = _sandbox(board, InteractionView(None, None, (MenuItem("Prone", box),)))
     assert surface.get_at((box.x + 110, box.y + 28))[:3] == render.MENU_FILL
+
+
+def test_menu_draws_setups_column(font):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    menu = MenuView(("a",), 0, None, None, ("a-vs-b",), 3)
+    render.draw_menu(surface, layout, font, menu, "")
+    row = layout.menu_row(MenuList.SETUPS, 0)
+    # Setups are never highlighted.
+    assert surface.get_at((row.x + row.width - 3, row.y + 3))[:3] == render.PANEL_FILL
+
+
+def test_sandbox_draws_save_button_and_clipped_message(font):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    board = Board(_team(1), _team(1))
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, "Saved " + "x" * 200)
+    save = layout.save_button
+    assert surface.get_at((save.x + 3, save.y + 3))[:3] == render.BUTTON_FILL
+    line = layout.sandbox_message_line
+    colours = {surface.get_at((x, line.y + 12))[:3] for x in range(line.x, line.x + 60)}
+    assert len(colours) > 1  # text drawn over the panel fill
+    # The long message doesn't spill past the panel's right border.
+    panel = layout.panel
+    assert surface.get_at((panel.x + panel.width + 2, line.y + 12))[:3] == (
+        render.BACKGROUND
+    )

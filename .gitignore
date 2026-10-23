@@ -6,3 +6,6 @@ __pycache__/
 .coverage
 build/
 dist/
+setups/
+todo.md
+prompt.md

@@ -12,6 +12,12 @@ uv run bb-sandbox     # launch the window
 uv run pytest --cov   # tests (headless via SDL dummy driver)
 ```
 
+## Saving setups
+
+In the sandbox, **Save setup** writes the board to `setups/<home>-vs-<away>-YYYYMMDD-HHMMSS.json`
+(squares, Prone/Stunned status, reserves, the ball, and both full rosters).
+The main menu's **Saved setups** list loads one straight into the sandbox; rename a file in Explorer to name it.
+
 ## Layout
 
 | Module | Responsibility |

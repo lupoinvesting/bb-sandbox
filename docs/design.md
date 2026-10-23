@@ -131,6 +131,7 @@ Layout.reserve_slot_at(pos) -> PlayerKey | None
 Layout.ball_box(square, carried: bool) -> Box       # half a square: centred, or in the bottom-right corner when carried
 Layout.context_menu(anchor: Box, items: int) -> tuple[Box, ...]  # next to the square, left of the panel, inside the window
 Layout.save_button, Layout.menu_button: Box         # bottom of the panel
+Layout.sandbox_message_line: Box                    # implemented: save/load feedback above save_button
 Layout.start_button: Box; Layout.menu_rows: int
 Layout.menu_row(which: MenuList, index) -> Box; Layout.menu_row_at(pos) -> tuple[MenuList, int] | None
                                                     # MenuList = HOME_ROSTERS | AWAY_ROSTERS | SETUPS
@@ -160,7 +161,7 @@ class Session:
 # render.py additions (draw_scene stays as it is)
 def draw_menu(surface, layout, font, menu: MenuView, message: str) -> None
 def draw_sandbox(surface, layout, font, board: Board, view: InteractionView, message: str) -> None
-# Implemented in Phase 3 without `message`; Phase 4 adds it for save/load feedback.
+# Implemented in Phase 3 without `message`; Phase 4 added it for save/load feedback.
 ```
 `app.run()` keeps its signature. It builds `Session(layout, Path("rosters"), Path("setups"))` and calls `rescan()` once at startup. In the loop it maps each event to session calls:
 - **Left button down:** `match session.press(pos)` dispatches the file request by name, so the I/O is visible at the call site (rule 8).

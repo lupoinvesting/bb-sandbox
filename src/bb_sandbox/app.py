@@ -6,12 +6,13 @@ import pygame
 
 from bb_sandbox.layout import Layout, build_layout
 from bb_sandbox.render import draw_menu, draw_sandbox
-from bb_sandbox.session import ImportRoster, Screen, Session
+from bb_sandbox.session import ImportRoster, LoadSetup, SaveSetup, Screen, Session
 
 WINDOW_TITLE = "Blood Bowl Sandbox"
 FPS = 60
 FONT_SIZE = 20
 ROSTERS_DIR = Path("rosters")
+SETUPS_DIR = Path("setups")
 LEFT_BUTTON = 1
 RIGHT_BUTTON = 3
 
@@ -35,6 +36,12 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
         match session.press(event.pos):
             case ImportRoster(side=side, path=path):
                 session.import_team(side, path)
+            case LoadSetup(path=path):
+                session.load_setup(path)
+            case SaveSetup():
+                session.save_setup()
+                # Reason: the new file shows up in the setups list right away.
+                session.rescan()
     elif event.type == pygame.MOUSEBUTTONDOWN and event.button == RIGHT_BUTTON:
         session.right_click(event.pos)
     elif event.type == pygame.MOUSEBUTTONUP and event.button == LEFT_BUTTON:
@@ -42,8 +49,8 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
     elif event.type == pygame.MOUSEMOTION:
         session.move(event.pos)
     elif event.type == pygame.WINDOWFOCUSGAINED:
-        # Reason: picks up roster files added in Explorer while the app was
-        # in the background.
+        # Reason: picks up roster and setup files added or renamed in Explorer
+        # while the app was in the background.
         session.rescan()
     return True
 
@@ -62,7 +69,7 @@ def _draw(
     """
     if session.screen is Screen.SANDBOX and session.interaction is not None:
         view = session.interaction.view()
-        draw_sandbox(surface, layout, font, session.board, view)
+        draw_sandbox(surface, layout, font, session.board, view, session.message)
     else:
         draw_menu(surface, layout, font, session.menu_view(), session.message)
 
@@ -85,7 +92,7 @@ def run(max_frames: int | None = None) -> int:
         raise ValueError(f"max_frames must be positive, got {max_frames}")
 
     layout = build_layout()
-    session = Session(layout, ROSTERS_DIR)
+    session = Session(layout, ROSTERS_DIR, SETUPS_DIR)
     session.rescan()
     pygame.init()
     try:
