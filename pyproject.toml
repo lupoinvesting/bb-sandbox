@@ -1,0 +1,27 @@
+[project]
+name = "bb-sandbox"
+version = "0.1.0"
+description = "Interactive Blood Bowl formation and strategy sandbox"
+readme = "README.md"
+authors = [
+    { name = "Lorenzo", email = "l.cimarossa@gmail.com" }
+]
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "pydantic>=2.14.1",
+    "pygame>=2.6.1",
+]
+
+[project.scripts]
+bb-sandbox = "bb_sandbox:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "black>=26.10.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+]

@@ -1,1 +1,8 @@
 prompt.md
+.venv/
+__pycache__/
+*.py[oc]
+.pytest_cache/
+.coverage
+build/
+dist/
