@@ -12,6 +12,18 @@ uv run bb-sandbox     # launch the window
 uv run pytest --cov   # tests (headless via SDL dummy driver)
 ```
 
+## Rosters
+
+Put roster CSVs in `rosters/` (see [rosters/example.csv](rosters/example.csv)). Line 1 names the race, then a header and up to 16 players:
+
+```csv
+race,Human
+name,position,MA,ST,AG,PA,AV,skills
+Edmund,Blitzer,7,3,3+,4+,9+,Block
+```
+
+The main menu lists each roster as `name (Race)` and previews the picked team's players and positions.
+
 ## Saving setups
 
 In the sandbox, **Save setup** writes the board to `setups/<home>-vs-<away>-YYYYMMDD-HHMMSS.json`

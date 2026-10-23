@@ -51,6 +51,7 @@ class _TeamData(_Frozen):
     """A full roster plus every player's position."""
 
     name: Annotated[str, Field(min_length=1)]
+    race: Annotated[str, Field(min_length=1)]
     players: Annotated[
         tuple[_PlayerEntry, ...], Field(min_length=1, max_length=MAX_TEAM_SIZE)
     ]
@@ -103,7 +104,7 @@ def _team_data(board: Board, side: Side) -> _TeamData:
                 status=board.status_of(key),
             )
         )
-    return _TeamData(name=team.name, players=tuple(entries))
+    return _TeamData(name=team.name, race=team.race, players=tuple(entries))
 
 
 def save_setup(board: Board, path: Path) -> None:
@@ -190,7 +191,11 @@ def load_setup(path: Path) -> Board:
         raise SetupFileError(f"{path.name}: {_first_error(error)}") from error
 
     teams = {
-        side: Team(name=team.name, players=tuple(e.player for e in team.players))
+        side: Team(
+            name=team.name,
+            race=team.race,
+            players=tuple(e.player for e in team.players),
+        )
         for side, team in ((Side.HOME, data.home), (Side.AWAY, data.away))
     }
     board = Board(teams[Side.HOME], teams[Side.AWAY])

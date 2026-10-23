@@ -8,7 +8,10 @@ from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.pitch import PlayerKey, Side, Square, Status
 from bb_sandbox.session import Screen, Session
 
-CSV = "name,MA,ST,AG,PA,AV,skills\nGrishnak,5,3,3+,4+,10+,Block\n"
+CSV = (
+    "race,Orc\nname,position,MA,ST,AG,PA,AV,skills\n"
+    "Grishnak,Blitzer,5,3,3+,4+,10+,Block\n"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -52,11 +55,11 @@ def test_handle_event_drives_menu_to_sandbox(in_tmp):
     (rosters / "orcs.csv").write_text(CSV)
     # A focus event rescans the folder and picks up the new file.
     assert handle_event(session, pygame.event.Event(pygame.WINDOWFOCUSGAINED))
-    assert session.menu_view().rosters == ("orcs",)
+    assert [entry.name for entry in session.menu_view().rosters] == ["orcs"]
 
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         assert handle_event(session, _click(layout.menu_row(which, 0)))
-    assert session.menu_view().away == "orcs"
+    assert session.menu_view().away.name == "orcs"
     assert handle_event(session, _click(layout.start_button))
     assert session.screen is Screen.SANDBOX
 

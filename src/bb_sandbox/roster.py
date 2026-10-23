@@ -6,12 +6,13 @@ Player, Team and RosterError.
 
 import csv
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 MAX_TEAM_SIZE = 16
-COLUMNS = ("name", "ma", "st", "ag", "pa", "av", "skills")
+COLUMNS = ("name", "position", "ma", "st", "ag", "pa", "av", "skills")
+RACE_KEY = "race"
 
 
 class RosterError(Exception):
@@ -23,6 +24,7 @@ class Player(BaseModel):
 
     Attributes:
         name (str): Player name.
+        position (str): Free-text position, e.g. Lineman or Blitzer.
         ma (int): Movement Allowance, 1-9.
         st (int): Strength, 1-8.
         ag (int): Agility target number, 1-6 (printed as 3+).
@@ -34,6 +36,7 @@ class Player(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
     name: Annotated[str, Field(min_length=1)]
+    position: Annotated[str, Field(min_length=1)]
     ma: Annotated[int, Field(ge=1, le=9)]
     st: Annotated[int, Field(ge=1, le=8)]
     ag: Annotated[int, Field(ge=1, le=6)]
@@ -85,12 +88,14 @@ class Team(BaseModel):
 
     Attributes:
         name (str): Team name (the CSV file name without extension).
+        race (str): Team race, e.g. Human or Orc.
         players (tuple[Player, ...]): Players in roster order.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
     name: Annotated[str, Field(min_length=1)]
+    race: Annotated[str, Field(min_length=1)]
     players: Annotated[
         tuple[Player, ...], Field(min_length=1, max_length=MAX_TEAM_SIZE)
     ]
@@ -111,46 +116,89 @@ def _first_error(error: ValidationError) -> str:
     return f"{field}: {first['msg']}"
 
 
-def _read_players(path: Path) -> list[Player]:
+def _open_roster(path: Path) -> TextIO:
     """
-    Parse and validate every data row of a roster CSV.
+    Open a roster CSV for reading.
 
     Args:
         path (Path): The CSV file.
 
     Returns:
-        list[Player]: One player per data row.
+        TextIO: The open file; the caller closes it.
 
     Raises:
-        RosterError: On a bad header, a malformed row or an invalid stat.
-        OSError, UnicodeDecodeError, csv.Error: On read failures.
+        OSError: If the file can't be opened.
     """
     # Reason: utf-8-sig accepts the BOM Excel writes; newline="" is required by csv.
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        header = [column.strip().lower() for column in reader.fieldnames or ()]
+    return path.open(encoding="utf-8-sig", newline="")
+
+
+def _parse_race(row: list[str] | None, path: Path) -> str:
+    """
+    Validate the `race,<name>` first line and return the race.
+
+    Args:
+        row (list[str] | None): The first CSV row, or None for an empty file.
+        path (Path): The CSV file, for error messages.
+
+    Returns:
+        str: The trimmed race name.
+
+    Raises:
+        RosterError: If the line isn't `race,<name>`.
+    """
+    # Reason: Excel pads every row to the widest one, so `race,Human,,,,,,`
+    # is accepted as long as the extra cells are blank.
+    cells = [cell.strip() for cell in row or ()]
+    if len(cells) < 2 or cells[0].lower() != RACE_KEY or not cells[1] or any(cells[2:]):
+        raise RosterError(f"{path.name}: first line must be {RACE_KEY},<name>")
+    return cells[1]
+
+
+def _read_team_rows(path: Path) -> tuple[str, list[Player]]:
+    """
+    Parse and validate the race line and every data row of a roster CSV.
+
+    Args:
+        path (Path): The CSV file.
+
+    Returns:
+        tuple[str, list[Player]]: The race and one player per data row.
+
+    Raises:
+        RosterError: On a bad race line or header, a malformed row or an
+            invalid stat.
+        OSError, UnicodeDecodeError, csv.Error: On read failures.
+    """
+    with _open_roster(path) as handle:
+        # Reason: a single reader for the race line, the header and the rows
+        # keeps line_num true to the file in error messages.
+        reader = csv.reader(handle)
+        race = _parse_race(next(reader, None), path)
+        header = [column.strip().lower() for column in next(reader, ())]
         if sorted(header) != sorted(COLUMNS):
             raise RosterError(
                 f"{path.name}: header must be exactly {','.join(COLUMNS)}"
             )
-        reader.fieldnames = header
         players: list[Player] = []
         # Reason: reading stops one row past the team size limit, bounding the loop.
         for row in reader:
+            if not row:
+                continue
             if len(players) == MAX_TEAM_SIZE:
                 raise RosterError(f"{path.name}: more than {MAX_TEAM_SIZE} players")
-            if None in row or None in row.values():
+            if len(row) != len(header):
                 raise RosterError(
                     f"{path.name} line {reader.line_num}: "
                     f"expected {len(COLUMNS)} fields"
                 )
             try:
-                players.append(Player(**row))
+                players.append(Player(**dict(zip(header, row))))
             except ValidationError as error:
                 raise RosterError(
                     f"{path.name} line {reader.line_num}: {_first_error(error)}"
                 ) from error
-    return players
+    return race, players
 
 
 def load_team(path: Path) -> Team:
@@ -164,15 +212,35 @@ def load_team(path: Path) -> Team:
         Team: The validated team.
 
     Raises:
-        RosterError: If the file can't be read or any row is invalid.
+        RosterError: If the file can't be read or any line is invalid.
     """
     try:
-        players = _read_players(path)
+        race, players = _read_team_rows(path)
     except (OSError, UnicodeDecodeError, csv.Error) as error:
         raise RosterError(f"{path.name}: {error}") from error
     if not players:
         raise RosterError(f"{path.name}: no players")
-    return Team(name=path.stem, players=tuple(players))
+    return Team(name=path.stem, race=race, players=tuple(players))
+
+
+def read_race(path: Path) -> str:
+    """
+    Read only a roster's race line, without parsing its players.
+
+    Args:
+        path (Path): The CSV file.
+
+    Returns:
+        str: The race name.
+
+    Raises:
+        RosterError: If the file can't be read or its first line is invalid.
+    """
+    try:
+        with _open_roster(path) as handle:
+            return _parse_race(next(csv.reader(handle), None), path)
+    except (OSError, UnicodeDecodeError, csv.Error) as error:
+        raise RosterError(f"{path.name}: {error}") from error
 
 
 def list_rosters(folder: Path) -> tuple[Path, ...]:

@@ -9,7 +9,7 @@ from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
 from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
-from bb_sandbox.session import MenuView
+from bb_sandbox.session import MenuView, RosterEntry
 
 EMPTY_VIEW = InteractionView(None, None, ())
 
@@ -74,9 +74,11 @@ def font():
     pygame.quit()
 
 
-def _team(size):
-    player = Player(name="P", ma=6, st=3, ag=3, pa=4, av=9, skills=())
-    return Team(name="t", players=(player,) * size)
+def _team(size, name="t"):
+    player = Player(
+        name="P", position="Lineman", ma=6, st=3, ag=3, pa=4, av=9, skills=()
+    )
+    return Team(name=name, race="Human", players=(player,) * size)
 
 
 def test_sandbox_draws_tokens_in_reserves(font):
@@ -116,7 +118,8 @@ def test_sandbox_draws_placed_token_on_its_square(font):
 def test_menu_highlights_selection_and_dims_start(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    menu = MenuView(("humans", "orcs"), 0, "orcs", None)
+    rosters = (RosterEntry("humans", "Human"), RosterEntry("orcs", None))
+    menu = MenuView(rosters, 0, _team(1, "orcs"), None)
     render.draw_menu(surface, layout, font, menu, "hello")
     selected = layout.menu_row(MenuList.HOME_ROSTERS, 1)
     assert (
@@ -135,9 +138,63 @@ def test_menu_highlights_selection_and_dims_start(font):
 def test_menu_start_enabled_with_both_teams_and_overflow_drawn(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_menu(surface, layout, font, MenuView(("a",), 5, "a", "a"), "")
+    a = _team(1, "a")
+    menu = MenuView((RosterEntry("a", "Human"),), 5, a, a)
+    render.draw_menu(surface, layout, font, menu, "")
     start = layout.start_button
     assert surface.get_at((start.x + 3, start.y + 3))[:3] == render.BUTTON_FILL
+
+
+def test_preview_lines_list_race_and_positions():
+    team = Team(
+        name="humans",
+        race="Human",
+        players=(
+            _team(1).players[0],
+            Player(
+                name="Edmund",
+                position="Blitzer",
+                ma=7,
+                st=3,
+                ag=3,
+                pa=4,
+                av=9,
+                skills=("Block",),
+            ),
+        ),
+    )
+    assert render._preview_lines(team) == [
+        "Human - 2 players",
+        "#1 P  Lineman",
+        "#2 Edmund  Blitzer",
+    ]
+
+
+def test_roster_label_shows_race_or_invalid():
+    assert render._roster_label(RosterEntry("orcs", "Orc")) == "orcs (Orc)"
+    assert render._roster_label(RosterEntry("bad", None)) == "bad (invalid)"
+
+
+def _has_text(surface, box):
+    # Reason: text is anti-aliased, so any pixel off the column fill means
+    # something was drawn there.
+    return any(
+        surface.get_at((x, y))[:3] != render.PANEL_FILL
+        for x in range(box.x + 4, box.x + box.width - 4)
+        for y in range(box.y, box.y + box.height)
+    )
+
+
+def test_menu_draws_preview_only_for_selected_side(font):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    # A full 16-player team fills every preview line without raising.
+    menu = MenuView((RosterEntry("t", "Human"),), 0, _team(16), None)
+    render.draw_menu(surface, layout, font, menu, "")
+    home_header = layout.menu_preview_line(MenuList.HOME_ROSTERS, 0)
+    away_header = layout.menu_preview_line(MenuList.AWAY_ROSTERS, 0)
+    assert _has_text(surface, home_header)
+    assert not _has_text(surface, away_header)
 
 
 def test_menu_with_no_rosters_draws(font):
@@ -215,8 +272,17 @@ def test_panel_shows_hovered_player_only(font):
 
 
 def test_player_lines_format_stats_and_skills():
-    player = Player(name="Grim", ma=5, st=3, ag=3, pa=None, av=10, skills=("Block",))
-    board = Board(Team(name="orcs", players=(player,)), _team(1))
+    player = Player(
+        name="Grim",
+        position="Lineman",
+        ma=5,
+        st=3,
+        ag=3,
+        pa=None,
+        av=10,
+        skills=("Block",),
+    )
+    board = Board(Team(name="orcs", race="Human", players=(player,)), _team(1))
     lines = render._player_lines(board, PlayerKey(Side.HOME, 0))
     assert lines == [
         "#1 Grim",
@@ -238,7 +304,7 @@ def test_context_menu_is_drawn(font):
 def test_menu_draws_setups_column(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    menu = MenuView(("a",), 0, None, None, ("a-vs-b",), 3)
+    menu = MenuView((RosterEntry("a", "Human"),), 0, None, None, ("a-vs-b",), 3)
     render.draw_menu(surface, layout, font, menu, "")
     row = layout.menu_row(MenuList.SETUPS, 0)
     # Setups are never highlighted.

@@ -6,7 +6,8 @@ from bb_sandbox.board import Board
 from bb_sandbox.interaction import BALL, InteractionView, MenuItem
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import PlayerKey, Side, Status
-from bb_sandbox.session import MenuView
+from bb_sandbox.roster import Team
+from bb_sandbox.session import MenuView, RosterEntry
 
 BACKGROUND = (30, 30, 34)
 PITCH_GREEN = (46, 125, 50)
@@ -208,6 +209,63 @@ def _draw_menu_list(
         _draw_label(surface, font, f"+{hidden} more", row)
 
 
+def _roster_label(entry: RosterEntry) -> str:
+    """
+    Label a roster row with its race.
+
+    Args:
+        entry (RosterEntry): The roster file.
+
+    Returns:
+        str: `name (Race)`, or `name (invalid)` if its race line is unreadable.
+    """
+    return f"{entry.name} ({entry.race or 'invalid'})"
+
+
+def _preview_lines(team: Team) -> list[str]:
+    """
+    Build the main menu preview text for an imported team.
+
+    Args:
+        team (Team): The team.
+
+    Returns:
+        list[str]: A `Race - N players` header, then `#n name  position` per player.
+    """
+    lines = [f"{team.race} - {len(team.players)} players"]
+    lines.extend(
+        f"#{number} {player.name}  {player.position}"
+        for number, player in enumerate(team.players, start=1)
+    )
+    return lines
+
+
+def _draw_preview(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    which: MenuList,
+    team: Team,
+) -> None:
+    """
+    Draw an imported team's preview below a roster list.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for the text.
+        which (MenuList): The roster list the team was picked from.
+        team (Team): The team to preview.
+    """
+    # Reason: long names are clipped to the column instead of spilling into
+    # the next one.
+    surface.set_clip(_rect(layout.menu_column(which)))
+    for index, line in enumerate(_preview_lines(team)):
+        box = layout.menu_preview_line(which, index)
+        surface.blit(font.render(line, True, TEXT), (box.x + 8, box.y))
+    surface.set_clip(None)
+
+
 def draw_menu(
     surface: pygame.Surface,
     layout: Layout,
@@ -226,18 +284,27 @@ def draw_menu(
         message (str): Status message, '' for none.
     """
     surface.fill(BACKGROUND)
+    labels = tuple(_roster_label(entry) for entry in menu.rosters)
     selections = {MenuList.HOME_ROSTERS: menu.home, MenuList.AWAY_ROSTERS: menu.away}
-    for which, selected in selections.items():
+    for which, team in selections.items():
+        # Reason: rows are labelled with the race, so the highlight is matched
+        # on the roster name and drawn on that row's label.
+        selected = next(
+            (_roster_label(e) for e in menu.rosters if team and e.name == team.name),
+            None,
+        )
         _draw_menu_list(
             surface,
             layout,
             font,
             which,
-            menu.rosters,
+            labels,
             menu.hidden,
             selected,
             "No CSV files in rosters/",
         )
+        if team is not None:
+            _draw_preview(surface, layout, font, which, team)
     _draw_menu_list(
         surface,
         layout,

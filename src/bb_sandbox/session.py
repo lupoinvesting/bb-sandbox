@@ -15,7 +15,7 @@ from bb_sandbox.board import Board
 from bb_sandbox.interaction import Interaction
 from bb_sandbox.layout import Layout, MenuList
 from bb_sandbox.pitch import Side
-from bb_sandbox.roster import RosterError, Team, list_rosters, load_team
+from bb_sandbox.roster import RosterError, Team, list_rosters, load_team, read_race
 from bb_sandbox.setups import SetupFileError, list_setups, new_setup_path
 from bb_sandbox.setups import load_setup as read_setup
 from bb_sandbox.setups import save_setup as write_setup
@@ -62,24 +62,55 @@ class SaveSetup:
 FileRequest = ImportRoster | LoadSetup | SaveSetup
 
 
+class RosterEntry(NamedTuple):
+    """One roster file as the main menu lists it.
+
+    Attributes:
+        name (str): The roster name (file name without extension).
+        race (str | None): The race from its first line, or None if that
+            line couldn't be read.
+    """
+
+    name: str
+    race: str | None
+
+
 class MenuView(NamedTuple):
     """What the main menu shows.
 
     Attributes:
-        rosters (tuple[str, ...]): Visible roster names, top to bottom.
+        rosters (tuple[RosterEntry, ...]): Visible rosters, top to bottom.
         hidden (int): Rosters that didn't fit (drawn as "+N more").
-        home (str | None): The imported home team's name.
-        away (str | None): The imported away team's name.
+        home (Team | None): The imported home team.
+        away (Team | None): The imported away team.
         setups (tuple[str, ...]): Visible saved setup names, top to bottom.
         setups_hidden (int): Setups that didn't fit (drawn as "+N more").
     """
 
-    rosters: tuple[str, ...]
+    rosters: tuple[RosterEntry, ...]
     hidden: int
-    home: str | None
-    away: str | None
+    home: Team | None
+    away: Team | None
     setups: tuple[str, ...] = ()
     setups_hidden: int = 0
+
+
+def _race_or_none(path: Path) -> str | None:
+    """
+    Read a roster's race for the menu list.
+
+    Args:
+        path (Path): The CSV file.
+
+    Returns:
+        str | None: The race, or None if its first line is unreadable.
+    """
+    # Reason: one bad file must not hide the others; its full error shows
+    # when the user clicks it (import_team).
+    try:
+        return read_race(path)
+    except RosterError:
+        return None
 
 
 class Session:
@@ -98,6 +129,7 @@ class Session:
         self._rosters_dir = rosters_dir
         self._setups_dir = setups_dir
         self._rosters: tuple[Path, ...] = ()
+        self._roster_entries: tuple[RosterEntry, ...] = ()
         self._setups: tuple[Path, ...] = ()
         self._teams: dict[Side, Team | None] = {Side.HOME: None, Side.AWAY: None}
         self._screen = Screen.MENU
@@ -145,17 +177,16 @@ class Session:
         Describe the main menu for drawing.
 
         Returns:
-            MenuView: Visible roster and setup names, hidden counts and
+            MenuView: Visible rosters and setup names, hidden counts and
                 selected teams.
         """
-        shown = self._rosters[: self._visible_count(self._rosters)]
+        shown = self._roster_entries[: self._visible_count(self._rosters)]
         setups = self._setups[: self._visible_count(self._setups)]
-        home, away = self._teams[Side.HOME], self._teams[Side.AWAY]
         return MenuView(
-            rosters=tuple(path.stem for path in shown),
+            rosters=shown,
             hidden=len(self._rosters) - len(shown),
-            home=home.name if home else None,
-            away=away.name if away else None,
+            home=self._teams[Side.HOME],
+            away=self._teams[Side.AWAY],
             setups=tuple(path.stem for path in setups),
             setups_hidden=len(self._setups) - len(setups),
         )
@@ -248,8 +279,11 @@ class Session:
             self._interaction.right_click(pos)
 
     def rescan(self) -> None:
-        """Re-list the roster and setup files on disk."""
+        """Re-list the roster and setup files on disk, reading each roster's race."""
         self._rosters = list_rosters(self._rosters_dir)
+        self._roster_entries = tuple(
+            RosterEntry(path.stem, _race_or_none(path)) for path in self._rosters
+        )
         self._setups = list_setups(self._setups_dir)
 
     def import_team(self, side: Side, path: Path) -> None:

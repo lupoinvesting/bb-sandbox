@@ -12,8 +12,10 @@ AWAY_A = PlayerKey(Side.AWAY, 0)
 
 
 def _team(name, size):
-    player = Player(name="P", ma=6, st=3, ag=3, pa=4, av=9, skills=())
-    return Team(name=name, players=(player,) * size)
+    player = Player(
+        name="P", position="Lineman", ma=6, st=3, ag=3, pa=4, av=9, skills=()
+    )
+    return Team(name=name, race="Human", players=(player,) * size)
 
 
 @pytest.fixture

@@ -2,7 +2,14 @@
 
 import pytest
 
-from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, MenuList, build_layout
+from bb_sandbox.layout import (
+    PITCH_COLUMNS,
+    PITCH_ROWS,
+    PREVIEW_LINES,
+    Box,
+    MenuList,
+    build_layout,
+)
 from bb_sandbox.pitch import PlayerKey, Side, Square
 from bb_sandbox.roster import MAX_TEAM_SIZE
 
@@ -115,7 +122,8 @@ def test_reserve_slot_beyond_capacity_raises(index):
 def test_menu_fits_in_window():
     layout = build_layout(32)
     width, height = layout.window_size
-    assert layout.menu_rows >= 10
+    # The team preview takes the bottom of each column, leaving 6 file rows.
+    assert layout.menu_rows == 6
     for which in MenuList:
         last = layout.menu_row(which, layout.menu_rows - 1)
         assert last.y + last.height <= layout.menu_message_line.y
@@ -126,6 +134,32 @@ def test_menu_fits_in_window():
     for left, right in zip(columns, columns[1:]):
         assert left.x + left.width < right.x
     assert columns[-1].x + columns[-1].width <= width
+
+
+def test_preview_lines_sit_below_rows_inside_column():
+    layout = build_layout(32)
+    for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
+        column = layout.menu_column(which)
+        last_row = layout.menu_row(which, layout.menu_rows - 1)
+        first = layout.menu_preview_line(which, 0)
+        last = layout.menu_preview_line(which, PREVIEW_LINES - 1)
+        assert first.y >= last_row.y + last_row.height
+        assert (first.x, first.width, first.height) == (column.x, column.width, 16)
+        assert last.y + last.height <= column.y + column.height
+        # Clicks on the preview are not menu rows.
+        assert layout.menu_row_at((first.x + 2, first.y + 2)) is None
+
+
+@pytest.mark.parametrize("index", [-1, PREVIEW_LINES])
+def test_preview_line_out_of_range_raises(index):
+    with pytest.raises(ValueError):
+        build_layout(32).menu_preview_line(MenuList.HOME_ROSTERS, index)
+
+
+def test_tiny_square_keeps_menu_rows_non_negative():
+    layout = build_layout(1)
+    assert layout.menu_rows >= 0
+    assert layout.menu_preview_line(MenuList.HOME_ROSTERS, 0).height == 1
 
 
 def test_menu_row_at_inverts_menu_row():

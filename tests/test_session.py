@@ -10,12 +10,16 @@ from bb_sandbox.session import (
     ImportRoster,
     LoadSetup,
     MenuView,
+    RosterEntry,
     SaveSetup,
     Screen,
     Session,
 )
 
-CSV = "name,MA,ST,AG,PA,AV,skills\nGrishnak,5,3,3+,4+,10+,Block\n"
+CSV = (
+    "race,Orc\nname,position,MA,ST,AG,PA,AV,skills\n"
+    "Grishnak,Blitzer,5,3,3+,4+,10+,Block\n"
+)
 LAYOUT = build_layout(32)
 
 
@@ -51,8 +55,13 @@ def test_starts_on_menu_without_io(tmp_path):
     assert session.menu_view().rosters == ()
 
 
-def test_menu_lists_rosters_sorted(session):
-    assert session.menu_view().rosters == ("broken", "humans", "orcs")
+def test_menu_lists_rosters_sorted_with_race(session):
+    # A file with an unreadable race line is still listed, with race None.
+    assert session.menu_view().rosters == (
+        RosterEntry("broken", None),
+        RosterEntry("humans", "Orc"),
+        RosterEntry("orcs", "Orc"),
+    )
 
 
 def test_clicking_a_row_requests_an_import(session, tmp_path):
@@ -62,7 +71,12 @@ def test_clicking_a_row_requests_an_import(session, tmp_path):
 
 def test_import_success_selects_team(session, tmp_path):
     session.import_team(Side.HOME, tmp_path / "orcs.csv")
-    assert session.menu_view().home == "orcs"
+    home = session.menu_view().home
+    assert (home.name, home.race, home.players[0].position) == (
+        "orcs",
+        "Orc",
+        "Blitzer",
+    )
     assert session.message == "Loaded orcs as home"
 
 
@@ -96,7 +110,7 @@ def test_start_and_main_menu_round_trip(session):
 
     session.press(_click(LAYOUT.menu_button))
     assert session.screen is Screen.MENU and session.board is None
-    assert session.menu_view().home == "orcs"
+    assert session.menu_view().home.name == "orcs"
 
 
 def test_overflow_shows_more_row_and_ignores_it(tmp_path):
@@ -115,7 +129,7 @@ def test_overflow_shows_more_row_and_ignores_it(tmp_path):
 def test_rescan_picks_up_new_files(session, tmp_path):
     (tmp_path / "zombies.csv").write_text(CSV)
     session.rescan()
-    assert session.menu_view().rosters[-1] == "zombies"
+    assert session.menu_view().rosters[-1] == RosterEntry("zombies", "Orc")
 
 
 def test_sandbox_forwards_pointer_input(session):

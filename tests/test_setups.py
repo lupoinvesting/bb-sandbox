@@ -20,11 +20,18 @@ from bb_sandbox.setups import (
 def _team(name, count=2):
     players = tuple(
         Player(
-            name=f"P{i}", ma=6, st=3, ag=3, pa=None if i else 4, av=9, skills=("Block",)
+            name=f"P{i}",
+            position="Lineman",
+            ma=6,
+            st=3,
+            ag=3,
+            pa=None if i else 4,
+            av=9,
+            skills=("Block",),
         )
         for i in range(count)
     )
-    return Team(name=name, players=players)
+    return Team(name=name, race="Orc", players=players)
 
 
 @pytest.fixture
@@ -69,6 +76,8 @@ def test_file_stores_positions_next_to_players(board, tmp_path):
     assert first["square"] == {"column": 3, "row": 7}
     assert first["status"] == "prone"
     assert data["home"]["players"][1]["square"] is None
+    assert data["home"]["race"] == "Orc"
+    assert first["player"]["position"] == "Lineman"
 
 
 def test_save_replaces_existing_file(board, tmp_path):
@@ -97,6 +106,8 @@ def test_save_failure_raises_and_leaves_no_temp(board, tmp_path):
         (lambda d: d["home"]["players"][0].update(status="asleep"), "status"),
         (lambda d: d.update(extra=1), "extra"),
         (lambda d: d["home"].update(players=[]), "players"),
+        (lambda d: d["home"].pop("race"), "home.race"),
+        (lambda d: d["away"]["players"][0]["player"].pop("position"), "position"),
     ],
 )
 def test_load_rejects_schema_violations(board, tmp_path, change, message):

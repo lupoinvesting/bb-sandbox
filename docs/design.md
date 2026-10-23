@@ -98,10 +98,11 @@ class PlayerKey(NamedTuple): side: Side; index: int
 
 # roster.py
 MAX_TEAM_SIZE = 16
-class Player(BaseModel): name; ma 1-9; st 1-8; ag 1-6; pa 1-6 | None; av 3-11; skills: tuple[str, ...]
-class Team(BaseModel): name; players: tuple[Player, ...]   # 1-16
+class Player(BaseModel): name; position; ma 1-9; st 1-8; ag 1-6; pa 1-6 | None; av 3-11; skills: tuple[str, ...]
+class Team(BaseModel): name; race; players: tuple[Player, ...]   # 1-16
 class RosterError(Exception)
 def load_team(path: Path) -> Team
+def read_race(path: Path) -> str                           # first line only, for the menu list
 def list_rosters(folder: Path) -> tuple[Path, ...]         # sorted; a missing folder gives ()
 
 # board.py
@@ -134,6 +135,7 @@ Layout.save_button, Layout.menu_button: Box         # bottom of the panel
 Layout.sandbox_message_line: Box                    # implemented: save/load feedback above save_button
 Layout.start_button: Box; Layout.menu_rows: int
 Layout.menu_row(which: MenuList, index) -> Box; Layout.menu_row_at(pos) -> tuple[MenuList, int] | None
+Layout.menu_preview_line(which, index) -> Box       # PREVIEW_LINES (17) half-square lines below the rows
                                                     # MenuList = HOME_ROSTERS | AWAY_ROSTERS | SETUPS
 
 # interaction.py
@@ -152,7 +154,7 @@ FileRequest = ImportRoster(side, path) | LoadSetup(path) | SaveSetup()
 class Session:
     def __init__(self, layout, rosters_dir: Path, setups_dir: Path)  # MENU screen; no I/O in the constructor
     screen; message; board; interaction             # read-only; board and interaction exist only in SANDBOX
-    def menu_view() -> MenuView                     # roster names, setup names, home and away Team | None
+    def menu_view() -> MenuView                     # RosterEntry(name, race | None) rows, setup names, home and away Team | None
     def press(pos) -> FileRequest | None            # no disk I/O: Start and Main menu switch screens, sandbox clicks go to Interaction
     def release(pos) / move(pos) / right_click(pos) -> None
     def rescan() / import_team(side, path) / load_setup(path) / save_setup() -> None
@@ -171,13 +173,17 @@ def draw_sandbox(surface, layout, font, board: Board, view: InteractionView, mes
 ### File formats
 Roster CSV:
 ```csv
-name,MA,ST,AG,PA,AV,skills
-Grishnak,5,3,3+,4+,10+,Block;Mighty Blow
-Ugluk,5,3,3+,-,10+,
+race,Orc
+name,position,MA,ST,AG,PA,AV,skills
+Grishnak,Blitzer,5,3,3+,4+,10+,Block;Mighty Blow
+Ugluk,Lineman,5,3,3+,-,10+,
 ```
 - Encoding and layout:
   - UTF-8; the BOM Excel writes is accepted. Comma-separated.
-  - The header is case-insensitive and its columns can come in any order, but it must have exactly these 7 columns.
+  - Line 1 is `race,<name>` (key case-insensitive, value trimmed and required). Trailing blank cells are accepted, since Excel pads short rows.
+  - Line 2 is the header. It is case-insensitive and its columns can come in any order, but it must have exactly these 8 columns.
+  - `position` is required free text (Lineman, Blitzer, ...).
+- Main menu: each roster is listed as `name (Race)` (`(invalid)` if its race line is unreadable); the picked team is previewed below the list as `Race - N players` and `#n name  position` lines.
 - Rows:
   - 1–16 data rows. Reading stops at row 17 with an error, which bounds the loop (rule 2).
   - Skills are separated by `;`, trimmed, and kept as free text.
@@ -186,8 +192,8 @@ Ugluk,5,3,3+,-,10+,
 Setup JSON:
 ```json
 {"version": 1, "ball": {"column": 13, "row": 7},
- "home": {"name": "orcs", "players": [
-   {"player": {"name": "Grishnak", "ma": 5, "st": 3, "ag": 3, "pa": 4, "av": 10, "skills": ["Block"]},
+ "home": {"name": "orcs", "race": "Orc", "players": [
+   {"player": {"name": "Grishnak", "position": "Blitzer", "ma": 5, "st": 3, "ag": 3, "pa": 4, "av": 10, "skills": ["Block"]},
     "square": {"column": 3, "row": 7}, "status": "prone"},
    {"player": {"...": "..."}, "square": null, "status": "standing"}]},
  "away": {"...": "..."}}

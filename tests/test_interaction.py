@@ -17,8 +17,10 @@ HOME0, HOME1, AWAY0 = (
 
 
 def _team(size):
-    player = Player(name="P", ma=6, st=3, ag=3, pa=None, av=9, skills=())
-    return Team(name="t", players=(player,) * size)
+    player = Player(
+        name="P", position="Lineman", ma=6, st=3, ag=3, pa=None, av=9, skills=()
+    )
+    return Team(name="t", race="Human", players=(player,) * size)
 
 
 @pytest.fixture

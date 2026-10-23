@@ -24,6 +24,9 @@ RESERVE_SLOT_ROWS = 2
 START_BUTTON_WIDTH = 160
 BUTTON_INSET = 8
 CONTEXT_MENU_WIDTH = 120
+# Reason: the team preview under each roster list has 1 header line plus one
+# line per player, up to the 16-player team limit.
+PREVIEW_LINES = 17
 
 
 class Box(NamedTuple):
@@ -81,7 +84,8 @@ class Layout:
         sandbox_message_line (Box): Sandbox status message line above save_button.
         menu_columns (tuple[Box, ...]): Main menu list columns, in MenuList order;
             each starts with a one-row caption.
-        menu_rows (int): How many file rows fit in a menu column.
+        menu_rows (int): How many file rows fit in a menu column above the
+            team preview.
         start_button (Box): Main menu "Start" button.
         menu_message_line (Box): Main menu status message line.
     """
@@ -284,6 +288,31 @@ class Layout:
             self.square_size,
         )
 
+    def menu_preview_line(self, which: MenuList, index: int) -> Box:
+        """
+        Return one half-square-high line of the team preview below a list's rows.
+
+        Args:
+            which (MenuList): The list.
+            index (int): Zero-based line, 0..PREVIEW_LINES-1.
+
+        Returns:
+            Box: The line's screen rectangle.
+
+        Raises:
+            ValueError: If index is outside 0..PREVIEW_LINES-1.
+        """
+        if not 0 <= index < PREVIEW_LINES:
+            raise ValueError(f"Preview line {index} is outside 0..{PREVIEW_LINES - 1}")
+        column = self.menu_column(which)
+        height = _preview_line_height(self.square_size)
+        return Box(
+            column.x,
+            column.y + (self.menu_rows + 1) * self.square_size + index * height,
+            column.width,
+            height,
+        )
+
     def menu_row_at(self, pos: tuple[int, int]) -> tuple[MenuList, int] | None:
         """
         Find the main menu row under a point (inverse of menu_row).
@@ -302,6 +331,19 @@ class Layout:
             if 0 <= index < self.menu_rows:
                 return which, index
         return None
+
+
+def _preview_line_height(square_size: int) -> int:
+    """
+    Height of one team preview line: half a square, at least one pixel.
+
+    Args:
+        square_size (int): Side of one grid square in pixels.
+
+    Returns:
+        int: The line height in pixels.
+    """
+    return max(1, square_size // 2)
 
 
 def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
@@ -387,6 +429,7 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     count = len(MenuList)
     column_width = (window_width - (count + 1) * MARGIN) // count
     column_height = max(0, menu_message_line.y - 2 * MARGIN)
+    preview_height = PREVIEW_LINES * _preview_line_height(square_size)
     menu_columns = tuple(
         Box(MARGIN + i * (column_width + MARGIN), MARGIN, column_width, column_height)
         for i in range(count)
@@ -405,8 +448,9 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         save_button=save_button,
         sandbox_message_line=sandbox_message_line,
         menu_columns=menu_columns,
-        # Reason: the first row of each column holds its caption.
-        menu_rows=max(0, column_height // square_size - 1),
+        # Reason: the first row of each column holds its caption and the team
+        # preview takes the bottom of the column.
+        menu_rows=max(0, (column_height - preview_height) // square_size - 1),
         start_button=start_button,
         menu_message_line=menu_message_line,
     )

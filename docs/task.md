@@ -30,3 +30,7 @@
 - [ ] CLAUDE.md names `prompt.md` as the PRD, but the PRD is `docs/prd.md`.
 - [ ] Two saves of the same teams within one second get the same timestamped name, so the second replaces the first.
 - [ ] `setups/` is not in `.gitignore`; decide whether saved setups belong in the repo.
+- [x] Race (CSV metadata line) and position (column) on rosters, shown on the main menu (race in the list, team preview below it).
+- [ ] Show position and race in the sandbox hover panel.
+- [ ] The team preview shrinks every menu list to 6 rows, including Saved setups, which has no preview; give SETUPS its own row count if saves pile up.
+- [ ] Setup files saved before race/position existed no longer load (no saves had shipped, so the format stayed at version 1).
