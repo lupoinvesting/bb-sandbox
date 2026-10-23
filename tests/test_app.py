@@ -3,7 +3,24 @@
 import pygame
 import pytest
 
-from bb_sandbox.app import run
+from bb_sandbox.app import handle_event, run
+from bb_sandbox.layout import MenuList, build_layout
+from bb_sandbox.session import Screen, Session
+
+CSV = "name,MA,ST,AG,PA,AV,skills\nGrishnak,5,3,3+,4+,10+,Block\n"
+
+
+@pytest.fixture(autouse=True)
+def in_tmp(tmp_path, monkeypatch):
+    # Reason: run() reads ./rosters, so each test gets its own empty folder.
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def _click(box, button=1):
+    return pygame.event.Event(
+        pygame.MOUSEBUTTONDOWN, button=button, pos=(box.x + 2, box.y + 2)
+    )
 
 
 def test_run_renders_requested_frames_and_quits():
@@ -23,3 +40,28 @@ def test_run_stops_on_window_close():
 def test_run_rejects_non_positive_frame_cap(frames):
     with pytest.raises(ValueError):
         run(max_frames=frames)
+
+
+def test_handle_event_drives_menu_to_sandbox(in_tmp):
+    rosters = in_tmp / "rosters"
+    rosters.mkdir()
+    layout = build_layout()
+    session = Session(layout, rosters)
+    session.rescan()
+    (rosters / "orcs.csv").write_text(CSV)
+    # A focus event rescans the folder and picks up the new file.
+    assert handle_event(session, pygame.event.Event(pygame.WINDOWFOCUSGAINED))
+    assert session.menu_view().rosters == ("orcs",)
+
+    for which in MenuList:
+        assert handle_event(session, _click(layout.menu_row(which, 0)))
+    assert session.menu_view().away == "orcs"
+    assert handle_event(session, _click(layout.start_button))
+    assert session.screen is Screen.SANDBOX
+
+
+def test_handle_event_ignores_right_click_and_reports_quit(in_tmp):
+    session = Session(build_layout(), in_tmp)
+    assert handle_event(session, _click(build_layout().start_button, button=3))
+    assert session.message == ""
+    assert not handle_event(session, pygame.event.Event(pygame.QUIT))

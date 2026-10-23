@@ -2,7 +2,9 @@
 
 import pytest
 
-from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, build_layout
+from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, MenuList, build_layout
+from bb_sandbox.pitch import PlayerKey, Side
+from bb_sandbox.roster import MAX_TEAM_SIZE
 
 
 def test_pitch_is_26_by_15_squares():
@@ -75,3 +77,85 @@ def test_square_outside_pitch_raises(column, row):
 def test_non_positive_square_size_raises(size):
     with pytest.raises(ValueError):
         build_layout(size)
+
+
+def test_box_contains_excludes_right_and_bottom_edges():
+    box = Box(10, 20, 5, 4)
+    assert box.contains((10, 20)) and box.contains((14, 23))
+    assert not box.contains((15, 20)) and not box.contains((10, 24))
+    assert not box.contains((9, 21))
+
+
+def test_reserve_by_side():
+    layout = build_layout(32)
+    assert layout.reserve(Side.HOME) == layout.reserves[0]
+    assert layout.reserve(Side.AWAY) == layout.reserves[1]
+
+
+@pytest.mark.parametrize("side", list(Side))
+def test_reserve_slots_fit_without_overlap(side):
+    layout = build_layout(32)
+    area = layout.reserve(side)
+    slots = [layout.reserve_slot(PlayerKey(side, i)) for i in range(MAX_TEAM_SIZE)]
+    assert len(set(slots)) == MAX_TEAM_SIZE
+    for slot in slots:
+        assert slot.width == slot.height == 32
+        assert area.contains((slot.x, slot.y))
+        assert area.contains((slot.x + slot.width - 1, slot.y + slot.height - 1))
+    # Slot 0 sits below the caption row.
+    assert slots[0].y == area.y + 32
+
+
+@pytest.mark.parametrize("index", [-1, 24])
+def test_reserve_slot_beyond_capacity_raises(index):
+    with pytest.raises(ValueError):
+        build_layout().reserve_slot(PlayerKey(Side.HOME, index))
+
+
+def test_menu_fits_in_window():
+    layout = build_layout(32)
+    width, height = layout.window_size
+    assert layout.menu_rows >= 10
+    for which in MenuList:
+        last = layout.menu_row(which, layout.menu_rows - 1)
+        assert last.y + last.height <= layout.menu_message_line.y
+    start = layout.start_button
+    assert start.y + start.height <= height and start.x + start.width <= width
+    home, away = layout.menu_columns
+    assert home.x + home.width < away.x
+
+
+def test_menu_row_at_inverts_menu_row():
+    layout = build_layout(32)
+    for which in MenuList:
+        for index in (0, layout.menu_rows - 1):
+            row = layout.menu_row(which, index)
+            assert layout.menu_row_at((row.x, row.y)) == (which, index)
+            assert layout.menu_row_at((row.x + row.width - 1, row.y + 31)) == (
+                which,
+                index,
+            )
+
+
+def test_menu_row_at_misses_caption_and_gaps():
+    layout = build_layout(32)
+    column = layout.menu_column(MenuList.HOME_ROSTERS)
+    assert layout.menu_row_at((column.x + 5, column.y + 5)) is None
+    assert layout.menu_row_at((column.x + column.width + 2, column.y + 40)) is None
+    assert layout.menu_row_at(layout.start_button[:2]) is None
+
+
+@pytest.mark.parametrize("index", [-1, "rows"])
+def test_menu_row_out_of_range_raises(index):
+    layout = build_layout(32)
+    with pytest.raises(ValueError):
+        layout.menu_row(
+            MenuList.AWAY_ROSTERS, layout.menu_rows if index == "rows" else index
+        )
+
+
+def test_menu_button_inside_panel():
+    layout = build_layout(32)
+    button, panel = layout.menu_button, layout.panel
+    assert panel.contains(button[:2])
+    assert panel.contains((button.x + button.width - 1, button.y + button.height - 1))

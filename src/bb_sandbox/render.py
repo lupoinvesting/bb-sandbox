@@ -1,8 +1,11 @@
-"""Draws the static sandbox scene. The only module that issues Pygame draw calls."""
+"""Draws the main menu and the sandbox. The only module that calls Pygame draw."""
 
 import pygame
 
-from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout
+from bb_sandbox.board import Board
+from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
+from bb_sandbox.pitch import PlayerKey, Side
+from bb_sandbox.session import MenuView
 
 BACKGROUND = (30, 30, 34)
 PITCH_GREEN = (46, 125, 50)
@@ -15,6 +18,16 @@ RESERVE_FILL = (55, 55, 62)
 PANEL_FILL = (45, 45, 52)
 BORDER = (110, 110, 120)
 TEXT = (230, 230, 230)
+TEXT_DIM = (130, 130, 140)
+HIGHLIGHT = (70, 110, 160)
+BUTTON_FILL = (80, 80, 92)
+BUTTON_DISABLED = (50, 50, 56)
+TEAM_COLOURS = {Side.HOME: (190, 40, 40), Side.AWAY: (40, 80, 200)}
+TOKEN_HEAD = (20, 20, 20)
+MENU_CAPTIONS = {
+    MenuList.HOME_ROSTERS: "Home roster",
+    MenuList.AWAY_ROSTERS: "Away roster",
+}
 
 
 def _rect(box: Box) -> pygame.Rect:
@@ -101,3 +114,137 @@ def draw_scene(surface: pygame.Surface, layout: Layout, font: pygame.font.Font) 
     pygame.draw.rect(surface, PANEL_FILL, _rect(layout.panel))
     pygame.draw.rect(surface, BORDER, _rect(layout.panel), 2)
     _draw_label(surface, font, "Player Info", layout.panel)
+
+
+def _draw_centred(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    text: str,
+    box: Box,
+    colour: tuple[int, int, int] = TEXT,
+) -> None:
+    """
+    Draw text centred in a box.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        font (pygame.font.Font): Font to render with.
+        text (str): Text to draw.
+        box (Box): Region to centre on.
+        colour (tuple[int, int, int]): Text colour.
+    """
+    image = font.render(text, True, colour)
+    surface.blit(image, image.get_rect(center=_rect(box).center))
+
+
+def _draw_button(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    box: Box,
+    label: str,
+    enabled: bool = True,
+) -> None:
+    """
+    Draw a labelled button, dimmed when disabled.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        font (pygame.font.Font): Font for the label.
+        box (Box): Button rectangle.
+        label (str): Button text.
+        enabled (bool): False draws the dimmed variant.
+    """
+    fill, text = (BUTTON_FILL, TEXT) if enabled else (BUTTON_DISABLED, TEXT_DIM)
+    pygame.draw.rect(surface, fill, _rect(box))
+    pygame.draw.rect(surface, BORDER, _rect(box), 1)
+    _draw_centred(surface, font, label, box, text)
+
+
+def draw_menu(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    menu: MenuView,
+    message: str,
+) -> None:
+    """
+    Draw the main menu: home and away roster lists, message line and Start.
+
+    Args:
+        surface (pygame.Surface): Target surface, sized to layout.window_size.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        menu (MenuView): Roster names and selected teams.
+        message (str): Status message, '' for none.
+    """
+    surface.fill(BACKGROUND)
+    selections = {MenuList.HOME_ROSTERS: menu.home, MenuList.AWAY_ROSTERS: menu.away}
+    for which, selected in selections.items():
+        column = layout.menu_column(which)
+        pygame.draw.rect(surface, PANEL_FILL, _rect(column))
+        pygame.draw.rect(surface, BORDER, _rect(column), 2)
+        _draw_label(surface, font, MENU_CAPTIONS[which], column)
+        if layout.menu_rows == 0:
+            continue
+        if not menu.rosters:
+            _draw_label(
+                surface, font, "No CSV files in rosters/", layout.menu_row(which, 0)
+            )
+        for index, name in enumerate(menu.rosters):
+            row = layout.menu_row(which, index)
+            if name == selected:
+                pygame.draw.rect(surface, HIGHLIGHT, _rect(row))
+            _draw_label(surface, font, name, row)
+        if menu.hidden:
+            row = layout.menu_row(which, len(menu.rosters))
+            _draw_label(surface, font, f"+{menu.hidden} more", row)
+
+    _draw_label(surface, font, message, layout.menu_message_line)
+    ready = menu.home is not None and menu.away is not None
+    _draw_button(surface, font, layout.start_button, "Start", ready)
+
+
+def _draw_token(
+    surface: pygame.Surface, font: pygame.font.Font, box: Box, key: PlayerKey
+) -> None:
+    """
+    Draw a player token: team colour, a "head" bar on its top edge and the shirt number.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        font (pygame.font.Font): Font for the shirt number.
+        box (Box): The square or reserve slot the token sits in.
+        key (PlayerKey): The player; the shirt number is index + 1.
+    """
+    inset = max(1, box.width // 10)
+    body = Box(
+        box.x + inset, box.y + inset, box.width - 2 * inset, box.height - 2 * inset
+    )
+    pygame.draw.rect(surface, TEAM_COLOURS[key.side], _rect(body))
+    # Reason: the head bar marks the token's top, so later rotations are visible.
+    head = body._replace(height=max(1, body.height // 6))
+    pygame.draw.rect(surface, TOKEN_HEAD, _rect(head))
+    _draw_centred(surface, font, str(key.index + 1), body)
+
+
+def draw_sandbox(
+    surface: pygame.Surface, layout: Layout, font: pygame.font.Font, board: Board
+) -> None:
+    """
+    Draw the sandbox: the static scene, every player token and the Main menu button.
+
+    Args:
+        surface (pygame.Surface): Target surface, sized to layout.window_size.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for captions and shirt numbers.
+        board (Board): Where every player is.
+    """
+    draw_scene(surface, layout, font)
+    for key in board.keys():
+        square = board.square_of(key)
+        if square is None:
+            box = layout.reserve_slot(key)
+        else:
+            box = layout.square(square.column, square.row)
+        _draw_token(surface, font, box, key)
+    _draw_button(surface, font, layout.menu_button, "Main menu")

@@ -5,10 +5,11 @@ later drag-and-drop snapping) can share one source of truth for positions.
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import NamedTuple
 
-PITCH_COLUMNS = 26
-PITCH_ROWS = 15
+from bb_sandbox.pitch import PITCH_COLUMNS, PITCH_ROWS, PlayerKey, Side
+
 # Reason: Blood Bowl wide zones are the 4 outermost rows on each sideline.
 WIDE_ZONE_ROWS = 4
 # Reason: each team scores in the single outermost column at its end of the pitch.
@@ -17,6 +18,11 @@ DEFAULT_SQUARE_SIZE = 32
 MARGIN = 16
 RESERVE_ROWS = 3
 PANEL_WIDTH = 240
+# Reason: 2 rows x 12 = 24 slots, enough for the 16-player team limit.
+RESERVE_SLOT_COLUMNS = 12
+RESERVE_SLOT_ROWS = 2
+START_BUTTON_WIDTH = 160
+BUTTON_INSET = 8
 
 
 class Box(NamedTuple):
@@ -34,6 +40,26 @@ class Box(NamedTuple):
     width: int
     height: int
 
+    def contains(self, pos: tuple[int, int]) -> bool:
+        """
+        Tell whether a point lies inside the box (right and bottom edges excluded).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            bool: True if the point is inside.
+        """
+        x, y = pos
+        return self.x <= x < self.x + self.width and self.y <= y < self.y + self.height
+
+
+class MenuList(Enum):
+    """The file lists on the main menu, left to right."""
+
+    HOME_ROSTERS = 0
+    AWAY_ROSTERS = 1
+
 
 @dataclass(frozen=True)
 class Layout:
@@ -48,6 +74,12 @@ class Layout:
         endzones (tuple[Box, Box]): Left (column 0) and right (column 25) endzones.
         reserves (tuple[Box, Box]): Left (home) and right (away) reserve areas.
         panel (Box): Right-side player information panel.
+        menu_button (Box): Sandbox "Main menu" button at the bottom of the panel.
+        menu_columns (tuple[Box, ...]): Main menu list columns, in MenuList order;
+            each starts with a one-row caption.
+        menu_rows (int): How many file rows fit in a menu column.
+        start_button (Box): Main menu "Start" button.
+        menu_message_line (Box): Main menu status message line.
     """
 
     square_size: int
@@ -58,6 +90,11 @@ class Layout:
     endzones: tuple[Box, Box]
     reserves: tuple[Box, Box]
     panel: Box
+    menu_button: Box
+    menu_columns: tuple[Box, ...]
+    menu_rows: int
+    start_button: Box
+    menu_message_line: Box
 
     def square(self, column: int, row: int) -> Box:
         """
@@ -82,6 +119,101 @@ class Layout:
             self.square_size,
         )
 
+    def reserve(self, side: Side) -> Box:
+        """
+        Return one team's reserve area.
+
+        Args:
+            side (Side): Which team.
+
+        Returns:
+            Box: Home on the left, away on the right.
+        """
+        return self.reserves[0 if side is Side.HOME else 1]
+
+    def reserve_slot(self, key: PlayerKey) -> Box:
+        """
+        Return the box a benched player is drawn in.
+
+        Slots fill left to right in rows below the area's caption row.
+
+        Args:
+            key (PlayerKey): The player.
+
+        Returns:
+            Box: A square_size box inside the player's reserve area.
+
+        Raises:
+            ValueError: If the index is beyond the slot capacity.
+        """
+        capacity = RESERVE_SLOT_COLUMNS * RESERVE_SLOT_ROWS
+        if not 0 <= key.index < capacity:
+            raise ValueError(f"Reserve slot {key.index} is outside 0..{capacity - 1}")
+        area = self.reserve(key.side)
+        column = key.index % RESERVE_SLOT_COLUMNS
+        row = key.index // RESERVE_SLOT_COLUMNS
+        return Box(
+            area.x + column * self.square_size,
+            area.y + (row + 1) * self.square_size,
+            self.square_size,
+            self.square_size,
+        )
+
+    def menu_column(self, which: MenuList) -> Box:
+        """
+        Return a main menu list column, caption row included.
+
+        Args:
+            which (MenuList): The list.
+
+        Returns:
+            Box: The column's screen rectangle.
+        """
+        return self.menu_columns[which.value]
+
+    def menu_row(self, which: MenuList, index: int) -> Box:
+        """
+        Return one file row of a main menu list.
+
+        Args:
+            which (MenuList): The list.
+            index (int): Zero-based row, 0..menu_rows-1.
+
+        Returns:
+            Box: The row's screen rectangle, below the caption.
+
+        Raises:
+            ValueError: If the row doesn't fit in the column.
+        """
+        if not 0 <= index < self.menu_rows:
+            raise ValueError(f"Menu row {index} is outside 0..{self.menu_rows - 1}")
+        column = self.menu_column(which)
+        return Box(
+            column.x,
+            column.y + (index + 1) * self.square_size,
+            column.width,
+            self.square_size,
+        )
+
+    def menu_row_at(self, pos: tuple[int, int]) -> tuple[MenuList, int] | None:
+        """
+        Find the main menu row under a point (inverse of menu_row).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            tuple[MenuList, int] | None: The list and row, or None off the rows.
+        """
+        for which in MenuList:
+            column = self.menu_column(which)
+            if not column.contains(pos):
+                continue
+            index = (pos[1] - column.y) // self.square_size - 1
+            if 0 <= index < self.menu_rows:
+                return which, index
+        return None
+
 
 def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     """
@@ -91,7 +223,7 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         square_size (int): Side of one grid square in pixels.
 
     Returns:
-        Layout: Positions of the pitch, markings, reserves and panel.
+        Layout: Positions of the pitch, markings, reserves, panel and main menu.
 
     Raises:
         ValueError: If square_size is not positive.
@@ -135,17 +267,51 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
 
     panel_x = pitch.x + pitch.width + MARGIN
     panel = Box(panel_x, pitch.y, PANEL_WIDTH, reserve_y + reserve_height - pitch.y)
+    menu_button = Box(
+        panel.x + BUTTON_INSET,
+        panel.y + panel.height - BUTTON_INSET - square_size,
+        panel.width - 2 * BUTTON_INSET,
+        square_size,
+    )
+
+    window_width = panel_x + PANEL_WIDTH + MARGIN
+    window_height = reserve_y + reserve_height + MARGIN
+
+    # Main menu: Start button at the bottom, a message line above it, and the
+    # list columns side by side filling the rest. Rows are one square high.
+    start_button = Box(
+        (window_width - START_BUTTON_WIDTH) // 2,
+        window_height - MARGIN - square_size,
+        START_BUTTON_WIDTH,
+        square_size,
+    )
+    menu_message_line = Box(
+        MARGIN,
+        start_button.y - MARGIN - square_size,
+        window_width - 2 * MARGIN,
+        square_size,
+    )
+    count = len(MenuList)
+    column_width = (window_width - (count + 1) * MARGIN) // count
+    column_height = max(0, menu_message_line.y - 2 * MARGIN)
+    menu_columns = tuple(
+        Box(MARGIN + i * (column_width + MARGIN), MARGIN, column_width, column_height)
+        for i in range(count)
+    )
 
     return Layout(
         square_size=square_size,
-        window_size=(
-            panel_x + PANEL_WIDTH + MARGIN,
-            reserve_y + reserve_height + MARGIN,
-        ),
+        window_size=(window_width, window_height),
         pitch=pitch,
         line_of_scrimmage_x=pitch.x + (PITCH_COLUMNS // 2) * square_size,
         wide_zones=wide_zones,
         endzones=endzones,
         reserves=reserves,
         panel=panel,
+        menu_button=menu_button,
+        menu_columns=menu_columns,
+        # Reason: the first row of each column holds its caption.
+        menu_rows=max(0, column_height // square_size - 1),
+        start_button=start_button,
+        menu_message_line=menu_message_line,
     )
