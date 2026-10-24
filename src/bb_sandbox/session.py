@@ -1,8 +1,9 @@
-"""Screen flow: the main menu, roster imports, saved setups and the sandbox.
+"""Screen flow: the main menu, roster imports, the roster builder, saved setups
+and the sandbox.
 
 Session never touches Pygame. Clicks come in as screen positions; disk I/O only
 happens in the methods app calls explicitly (rescan, import_team, load_setup,
-save_setup).
+save_setup, save_roster).
 """
 
 from dataclasses import dataclass
@@ -12,10 +13,21 @@ from pathlib import Path
 from typing import NamedTuple
 
 from bb_sandbox.board import Board
+from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.interaction import Interaction
 from bb_sandbox.layout import Layout, MenuList
 from bb_sandbox.pitch import Side
-from bb_sandbox.roster import RosterError, Team, list_rosters, load_team, read_race
+from bb_sandbox.races import Race
+from bb_sandbox.roster import (
+    MAX_TEAM_SIZE,
+    RosterError,
+    Team,
+    list_rosters,
+    load_team,
+    new_roster_path,
+    read_race,
+    save_team,
+)
 from bb_sandbox.setups import SetupFileError, list_setups, new_setup_path
 from bb_sandbox.setups import load_setup as read_setup
 from bb_sandbox.setups import save_setup as write_setup
@@ -27,6 +39,8 @@ class Screen(Enum):
     """Which screen is showing."""
 
     MENU = "menu"
+    RACES = "races"
+    BUILDER = "builder"
     SANDBOX = "sandbox"
 
 
@@ -59,7 +73,12 @@ class SaveSetup:
     """A request from press() to save the sandbox board to a new file."""
 
 
-FileRequest = ImportRoster | LoadSetup | SaveSetup
+@dataclass(frozen=True)
+class SaveRoster:
+    """A request from press() to save the builder's draft to a new roster file."""
+
+
+FileRequest = ImportRoster | LoadSetup | SaveSetup | SaveRoster
 
 
 class RosterEntry(NamedTuple):
@@ -114,9 +133,15 @@ def _race_or_none(path: Path) -> str | None:
 
 
 class Session:
-    """Owns the current screen, the imported teams, the sandbox board and its input."""
+    """Owns the screen, imported teams, roster draft, sandbox board and its input."""
 
-    def __init__(self, layout: Layout, rosters_dir: Path, setups_dir: Path) -> None:
+    def __init__(
+        self,
+        layout: Layout,
+        rosters_dir: Path,
+        setups_dir: Path,
+        races: tuple[Race, ...],
+    ) -> None:
         """
         Start on the main menu. No disk I/O: call rescan() to list the files.
 
@@ -124,15 +149,18 @@ class Session:
             layout (Layout): Screen geometry for hit tests.
             rosters_dir (Path): Folder holding the roster CSV files.
             setups_dir (Path): Folder holding the saved setup JSON files.
+            races (tuple[Race, ...]): The races the race menu offers.
         """
         self._layout = layout
         self._rosters_dir = rosters_dir
         self._setups_dir = setups_dir
+        self._races = races
         self._rosters: tuple[Path, ...] = ()
         self._roster_entries: tuple[RosterEntry, ...] = ()
         self._setups: tuple[Path, ...] = ()
         self._teams: dict[Side, Team | None] = {Side.HOME: None, Side.AWAY: None}
         self._screen = Screen.MENU
+        self._builder: RosterBuilder | None = None
         self._board: Board | None = None
         self._interaction: Interaction | None = None
         self._message = ""
@@ -148,8 +176,18 @@ class Session:
         return self._message
 
     @property
+    def races(self) -> tuple[Race, ...]:
+        """tuple[Race, ...]: The races the race menu offers."""
+        return self._races
+
+    @property
+    def builder(self) -> RosterBuilder | None:
+        """RosterBuilder | None: The roster draft; None off the builder screen."""
+        return self._builder
+
+    @property
     def board(self) -> Board | None:
-        """Board | None: The sandbox board; None on the main menu."""
+        """Board | None: The sandbox board; None off the sandbox screen."""
         return self._board
 
     @property
@@ -200,18 +238,99 @@ class Session:
 
         Returns:
             FileRequest | None: The file action to perform: a roster or setup
-                row on the menu, or the sandbox Save button.
+                row on the menu, the sandbox Save button or the builder's Save
+                roster button.
         """
         if self._screen is Screen.SANDBOX:
-            if self._layout.save_button.contains(pos):
-                return SaveSetup()
-            if self._layout.menu_button.contains(pos):
-                self._screen, self._board, self._message = Screen.MENU, None, ""
-                self._interaction = None
-            else:
-                self._interaction.press(pos)
+            return self._press_sandbox(pos)
+        if self._screen is Screen.RACES:
+            self._press_races(pos)
             return None
+        if self._screen is Screen.BUILDER:
+            return self._press_builder(pos)
+        return self._press_menu(pos)
 
+    def _press_sandbox(self, pos: tuple[int, int]) -> FileRequest | None:
+        """
+        Handle a sandbox click: Save setup, Main menu, or pointer input.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            FileRequest | None: SaveSetup for the Save button, else None.
+        """
+        if self._layout.save_button.contains(pos):
+            return SaveSetup()
+        if self._layout.menu_button.contains(pos):
+            self._screen, self._board, self._message = Screen.MENU, None, ""
+            self._interaction = None
+        else:
+            self._interaction.press(pos)
+        return None
+
+    def _press_races(self, pos: tuple[int, int]) -> None:
+        """
+        Handle a race menu click: a race opens a fresh draft, Back the main menu.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+        """
+        if self._layout.back_button.contains(pos):
+            self._screen, self._message = Screen.MENU, ""
+            return
+        index = self._layout.race_cell_at(pos)
+        # Reason: cells past the last race are empty.
+        if index is None or index >= len(self._races):
+            return
+        self._builder = RosterBuilder(self._races[index])
+        self._screen, self._message = Screen.BUILDER, ""
+
+    def _press_builder(self, pos: tuple[int, int]) -> FileRequest | None:
+        """
+        Handle a builder click: add or remove a player, Back, or Save roster.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            FileRequest | None: SaveRoster for the Save roster button, else None.
+        """
+        if self._layout.save_roster_button.contains(pos):
+            return SaveRoster()
+        if self._layout.back_button.contains(pos):
+            # Reason: going back drops the draft; only Save roster keeps it.
+            self._screen, self._builder, self._message = Screen.RACES, None, ""
+            return None
+        builder = self._builder
+        row = self._layout.positional_row_at(pos)
+        # Reason: rows past the race's last positional and lines past the last
+        # player are empty.
+        if row is not None and row < len(builder.race.positionals):
+            added = builder.add(row)
+            self._message = (
+                "" if added else f"A team has at most {MAX_TEAM_SIZE} players"
+            )
+            return None
+        line = self._layout.roster_line_at(pos)
+        if line is not None and line < len(builder.picks):
+            builder.remove(line)
+            self._message = ""
+        return None
+
+    def _press_menu(self, pos: tuple[int, int]) -> FileRequest | None:
+        """
+        Handle a main menu click: New roster, Start, or a roster or setup row.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            FileRequest | None: The import or load request for a file row.
+        """
+        if self._layout.new_roster_button.contains(pos):
+            self._screen, self._message = Screen.RACES, ""
+            return None
         if self._layout.start_button.contains(pos):
             self._start()
             return None
@@ -334,4 +453,33 @@ class Session:
         except SetupFileError as error:
             self._message = str(error)
             return
+        self._message = f"Saved {path.stem}"
+
+    def save_roster(self, when: datetime | None = None) -> None:
+        """
+        Save the draft as a new timestamped roster CSV; the outcome is the message.
+
+        On success the main menu opens; call rescan() to list the new file.
+
+        Args:
+            when (datetime | None): The save time for the file name; None means now.
+
+        Raises:
+            ValueError: If no roster is being built.
+        """
+        if self._builder is None:
+            raise ValueError("No roster draft to save")
+        if not self._builder.picks:
+            self._message = "Add at least one player"
+            return
+        race = self._builder.race.name
+        path = new_roster_path(self._rosters_dir, race, when or datetime.now())
+        try:
+            # Reason: load_team names a team after its file, so naming it after
+            # the file stem makes the saved roster read back unchanged.
+            save_team(self._builder.team(path.stem), path)
+        except RosterError as error:
+            self._message = str(error)
+            return
+        self._screen, self._builder = Screen.MENU, None
         self._message = f"Saved {path.stem}"

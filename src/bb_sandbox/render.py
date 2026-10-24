@@ -1,12 +1,17 @@
-"""Draws the main menu and the sandbox. The only module that calls Pygame draw."""
+"""Draws the main menu, the race menu, the roster builder and the sandbox.
+
+The only module that calls Pygame draw.
+"""
 
 import pygame
 
 from bb_sandbox.board import Board
+from bb_sandbox.builder import TEAM_BUDGET, RosterBuilder
 from bb_sandbox.interaction import BALL, InteractionView, MenuItem
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import PlayerKey, Side, Status
-from bb_sandbox.roster import Team
+from bb_sandbox.races import Positional, Race
+from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
 from bb_sandbox.session import MenuView, RosterEntry
 
 BACKGROUND = (30, 30, 34)
@@ -29,6 +34,23 @@ TOKEN_HEAD = (20, 20, 20)
 BALL_FILL = (150, 90, 40)
 BALL_OUTLINE = (250, 240, 220)
 MENU_FILL = (60, 60, 70)
+# Reason: orange marks a positional hired past its max, or a total over budget;
+# both are allowed, so this is a warning, not an error.
+OVER_LIMIT = (230, 150, 40)
+# Reason: x offsets of the builder table's text columns from a row's left edge,
+# sized for the widest values in races.csv at the app's font size (20).
+TABLE_COLUMNS = (
+    ("#", 8),
+    ("Max", 36),
+    ("Position", 76),
+    ("Cost", 262),
+    ("MA", 306),
+    ("ST", 336),
+    ("AG", 366),
+    ("PA", 396),
+    ("AV", 426),
+    ("Skills", 460),
+)
 # Reason: prone lies on its side, stunned is upside down (pygame turns anticlockwise).
 STATUS_ANGLES = {Status.STANDING: 0, Status.PRONE: 90, Status.STUNNED: 180}
 MENU_CAPTIONS = {
@@ -317,8 +339,181 @@ def draw_menu(
     )
 
     _draw_label(surface, font, message, layout.menu_message_line)
+    _draw_button(surface, font, layout.new_roster_button, "New roster")
     ready = menu.home is not None and menu.away is not None
     _draw_button(surface, font, layout.start_button, "Start", ready)
+
+
+def draw_races(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    races: tuple[Race, ...],
+    message: str,
+) -> None:
+    """
+    Draw the race menu: the races down the menu columns, message line and Back.
+
+    Args:
+        surface (pygame.Surface): Target surface, sized to layout.window_size.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        races (tuple[Race, ...]): The races, at most one per race cell.
+        message (str): Status message, '' for none.
+    """
+    surface.fill(BACKGROUND)
+    for column in layout.menu_columns:
+        pygame.draw.rect(surface, PANEL_FILL, _rect(column))
+        pygame.draw.rect(surface, BORDER, _rect(column), 2)
+    _draw_label(surface, font, "Pick a race", layout.menu_columns[0])
+    for index, race in enumerate(races):
+        _draw_label(surface, font, race.name, layout.race_cell(index))
+    _draw_label(surface, font, message, layout.menu_message_line)
+    _draw_button(surface, font, layout.back_button, "Back")
+
+
+def _positional_texts(hired: int, positional: Positional) -> tuple[str, ...]:
+    """
+    Build the texts of one positional row, in TABLE_COLUMNS order.
+
+    Args:
+        hired (int): How many the draft has.
+        positional (Positional): The positional.
+
+    Returns:
+        tuple[str, ...]: Hired, `0-N`, position, `85K`, MA, ST, AG, PA, AV
+            and the skills.
+    """
+    return (
+        str(hired),
+        f"0-{positional.max_count}",
+        positional.position,
+        f"{positional.cost}K",
+        str(positional.ma),
+        str(positional.st),
+        format_target(positional.ag),
+        format_target(positional.pa),
+        format_target(positional.av),
+        ", ".join(positional.skills),
+    )
+
+
+def _draw_table_row(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    box: Box,
+    texts: tuple[str, ...],
+    colours: tuple[tuple[int, int, int], ...],
+) -> None:
+    """
+    Draw one row of the positional table, each text at its column's offset.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        font (pygame.font.Font): Font for the text.
+        box (Box): The row.
+        texts (tuple[str, ...]): One text per TABLE_COLUMNS entry.
+        colours (tuple[tuple[int, int, int], ...]): One colour per text.
+    """
+    # Reason: long skill lists are cut off at the row's end instead of
+    # spilling into the roster list.
+    surface.set_clip(_rect(box))
+    for (_, offset), text, colour in zip(TABLE_COLUMNS, texts, colours):
+        surface.blit(font.render(text, True, colour), (box.x + offset, box.y + 6))
+    surface.set_clip(None)
+
+
+def _draw_positionals(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    builder: RosterBuilder,
+) -> None:
+    """
+    Draw the builder's positional table: caption, column titles and one row per
+    positional, with the hired count in OVER_LIMIT when it is over the max.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for the text.
+        builder (RosterBuilder): The draft.
+    """
+    table = layout.positional_table
+    pygame.draw.rect(surface, PANEL_FILL, _rect(table))
+    pygame.draw.rect(surface, BORDER, _rect(table), 2)
+    caption = f"{builder.race.name}: click a positional to add, a player to remove"
+    _draw_label(surface, font, caption, table)
+    titles = tuple(title for title, _ in TABLE_COLUMNS)
+    _draw_table_row(
+        surface, font, layout.positional_titles, titles, (TEXT_DIM,) * len(titles)
+    )
+    rows = zip(builder.counts(), builder.race.positionals)
+    for index, (hired, positional) in enumerate(rows):
+        count = OVER_LIMIT if hired > positional.max_count else TEXT
+        colours = (count,) + (TEXT,) * (len(TABLE_COLUMNS) - 1)
+        texts = _positional_texts(hired, positional)
+        _draw_table_row(surface, font, layout.positional_row(index), texts, colours)
+
+
+def _draw_roster_list(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    builder: RosterBuilder,
+) -> None:
+    """
+    Draw the builder's roster: size and total cost in the caption, with the
+    total in OVER_LIMIT when it is over budget, then one line per player.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for the text.
+        builder (RosterBuilder): The draft.
+    """
+    column = layout.roster_list
+    pygame.draw.rect(surface, PANEL_FILL, _rect(column))
+    pygame.draw.rect(surface, BORDER, _rect(column), 2)
+    size = f"Roster {len(builder.picks)}/{MAX_TEAM_SIZE}"
+    _draw_label(surface, font, size, column)
+    total = builder.total_cost()
+    colour = OVER_LIMIT if total > TEAM_BUDGET else TEXT
+    image = font.render(f"{total}K / {TEAM_BUDGET}K", True, colour)
+    # Reason: the total sits at the right end of the caption row.
+    surface.blit(image, (column.x + column.width - 8 - image.get_width(), column.y + 6))
+    positionals = builder.race.positionals
+    for slot, index in enumerate(builder.picks):
+        line = layout.roster_line(slot)
+        text = f"#{slot + 1} {positionals[index].position}"
+        surface.blit(font.render(text, True, TEXT), (line.x + 8, line.y))
+
+
+def draw_builder(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    builder: RosterBuilder,
+    message: str,
+) -> None:
+    """
+    Draw the roster builder: positional table, roster list, message line, Back
+    and Save roster (dimmed while the draft is empty).
+
+    Args:
+        surface (pygame.Surface): Target surface, sized to layout.window_size.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        builder (RosterBuilder): The draft.
+        message (str): Status message, '' for none.
+    """
+    surface.fill(BACKGROUND)
+    _draw_positionals(surface, layout, font, builder)
+    _draw_roster_list(surface, layout, font, builder)
+    _draw_label(surface, font, message, layout.menu_message_line)
+    _draw_button(surface, font, layout.back_button, "Back")
+    ready = bool(builder.picks)
+    _draw_button(surface, font, layout.save_roster_button, "Save roster", ready)
 
 
 def _draw_token(
@@ -364,19 +559,6 @@ def _draw_ball(surface: pygame.Surface, box: Box) -> None:
     pygame.draw.ellipse(surface, BALL_OUTLINE, _rect(box), 1)
 
 
-def _format_target(value: int | None) -> str:
-    """
-    Format a target-number stat as printed on a roster.
-
-    Args:
-        value (int | None): The target number, or None for no PA.
-
-    Returns:
-        str: `3+`, or `-` for None.
-    """
-    return "-" if value is None else f"{value}+"
-
-
 def _player_lines(board: Board, key: PlayerKey) -> list[str]:
     """
     Build the info panel text for one player.
@@ -390,8 +572,8 @@ def _player_lines(board: Board, key: PlayerKey) -> list[str]:
     """
     player = board.player(key)
     stats = (
-        f"MA {player.ma}  ST {player.st}  AG {_format_target(player.ag)}  "
-        f"PA {_format_target(player.pa)}  AV {_format_target(player.av)}"
+        f"MA {player.ma}  ST {player.st}  AG {format_target(player.ag)}  "
+        f"PA {format_target(player.pa)}  AV {format_target(player.av)}"
     )
     lines = [
         f"#{key.index + 1} {player.name}",

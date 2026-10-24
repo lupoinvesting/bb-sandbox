@@ -48,6 +48,18 @@
 
 
 
+### 3.5. Race Database & Roster Builder
+
+* **Race Database:** A CSV shipped with the app lists every Blood Bowl Third Season (2025) team. For each team it gives the positionals with their max count (0-N), cost, MA, ST, AG, PA, AV and skills. Pydantic validates it when the app starts.
+* **Race Menu:** A "New roster" button on the main menu opens the list of races.
+* **Roster Builder:** Picking a race opens the builder. Clicking a positional adds a player and clicking a player removes them.
+* Each positional shows how many are on the roster, its max, cost, stats and skills.
+* The roster shows its size (at most 16 players) and the total cost against a 1,000,000 gp budget.
+* The positional max and the budget are shown but never enforced; going over is highlighted.
+* **Saving:** "Save roster" writes a roster CSV to `rosters/`, which the main menu then lists for import.
+
+Design: [roster_builder.md](roster_builder.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -72,3 +84,9 @@
 **Phase 4: State Persistence**
 
 * Implement the save/load system for pitch configurations, capturing exact grid coordinates, rotations, and reserve statuses for all active assets.
+
+**Phase 5: Race Database & Roster Builder**
+
+* Build the race database (`races.csv`) and its Pydantic models.
+* Add the race menu and the roster builder screens.
+* Save built rosters as CSV files that the main menu imports.

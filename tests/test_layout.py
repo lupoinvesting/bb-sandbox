@@ -5,12 +5,16 @@ import pytest
 from bb_sandbox.layout import (
     PITCH_COLUMNS,
     PITCH_ROWS,
+    POSITIONAL_ROWS,
     PREVIEW_LINES,
+    RACE_ROWS,
+    ROSTER_LINES,
     Box,
     MenuList,
     build_layout,
 )
 from bb_sandbox.pitch import PlayerKey, Side, Square
+from bb_sandbox.races import MAX_POSITIONALS, MAX_RACES
 from bb_sandbox.roster import MAX_TEAM_SIZE
 
 
@@ -277,3 +281,130 @@ def test_save_button_and_message_line_stack_above_menu_button():
     for box in stack:
         assert panel.contains(box[:2])
         assert panel.contains((box.x + box.width - 1, box.y + box.height - 1))
+
+
+RACE_CELLS = RACE_ROWS * len(MenuList)
+
+
+def test_new_screens_hold_every_race_positional_and_player():
+    assert len(build_layout(32).menu_columns) * RACE_ROWS >= MAX_RACES
+    assert POSITIONAL_ROWS >= MAX_POSITIONALS
+    assert ROSTER_LINES >= MAX_TEAM_SIZE
+
+
+def _inside(outer, box):
+    return outer.contains(box[:2]) and outer.contains(
+        (box.x + box.width - 1, box.y + box.height - 1)
+    )
+
+
+def test_new_screens_fit_their_frames_above_the_message_line():
+    layout = build_layout(32)
+    framed = (
+        [
+            (layout.menu_columns[i // RACE_ROWS], layout.race_cell(i))
+            for i in range(RACE_CELLS)
+        ]
+        + [(layout.positional_table, layout.positional_titles)]
+        + [
+            (layout.positional_table, layout.positional_row(i))
+            for i in range(POSITIONAL_ROWS)
+        ]
+        + [(layout.roster_list, layout.roster_line(i)) for i in range(ROSTER_LINES)]
+    )
+    for frame, box in framed:
+        assert _inside(frame, box)
+        assert box.y + box.height <= layout.menu_message_line.y
+    # A 13th positional row would still fit; that is the most.
+    last = layout.positional_row(POSITIONAL_ROWS - 1)
+    table = layout.positional_table
+    assert last.y + 2 * last.height <= table.y + table.height < last.y + 3 * last.height
+
+
+def test_builder_frames_reuse_the_menu_columns():
+    layout = build_layout(32)
+    left, middle, right = layout.menu_columns
+    table = layout.positional_table
+    assert (table.x, table.y, table.height) == (left.x, left.y, left.height)
+    assert table.x + table.width == middle.x + middle.width
+    assert layout.roster_list == right
+    # Caption row, then the column titles, then the rows.
+    assert layout.positional_titles == Box(table.x, table.y + 32, table.width, 32)
+    assert layout.positional_row(0).y == table.y + 64
+    assert layout.roster_line(0) == Box(right.x, right.y + 32, right.width, 16)
+
+
+def test_race_cells_fill_columns_top_to_bottom_below_the_caption():
+    layout = build_layout(32)
+    first, second, _ = layout.menu_columns
+    assert layout.race_cell(0) == Box(first.x, first.y + 32, first.width, 32)
+    assert layout.race_cell(RACE_ROWS - 1).y == first.y + RACE_ROWS * 32
+    assert layout.race_cell(RACE_ROWS) == layout.race_cell(0)._replace(x=second.x)
+
+
+@pytest.mark.parametrize(
+    "boxes, at, count",
+    [
+        ("race_cell", "race_cell_at", RACE_CELLS),
+        ("positional_row", "positional_row_at", POSITIONAL_ROWS),
+        ("roster_line", "roster_line_at", ROSTER_LINES),
+    ],
+)
+def test_at_methods_invert_their_boxes(boxes, at, count):
+    layout = build_layout(32)
+    for index in range(count):
+        box = getattr(layout, boxes)(index)
+        corner = (box.x + box.width - 1, box.y + box.height - 1)
+        assert getattr(layout, at)(box[:2]) == index
+        assert getattr(layout, at)(corner) == index
+
+
+def test_at_methods_miss_captions_titles_gaps_and_outside():
+    layout = build_layout(32)
+    first, second, third = layout.menu_columns
+    for column in layout.menu_columns:
+        assert layout.race_cell_at((column.x + 5, column.y + 5)) is None
+    gap = (first.x + first.width + 2, layout.race_cell(0).y + 2)
+    assert layout.race_cell_at(gap) is None
+    below = layout.race_cell(RACE_ROWS - 1)
+    assert layout.race_cell_at((below.x + 2, below.y + below.height)) is None
+
+    titles = layout.positional_titles
+    assert layout.positional_row_at((titles.x + 2, titles.y + 2)) is None
+    assert layout.positional_row_at((titles.x + 2, titles.y - 2)) is None
+    last = layout.positional_row(POSITIONAL_ROWS - 1)
+    assert layout.positional_row_at((last.x + 2, last.y + last.height)) is None
+    assert layout.positional_row_at((third.x + 2, last.y + 2)) is None
+
+    assert layout.roster_line_at((third.x + 2, third.y + 2)) is None
+    end = layout.roster_line(ROSTER_LINES - 1)
+    assert layout.roster_line_at((end.x + 2, end.y + end.height)) is None
+    assert layout.roster_line_at((second.x + 2, end.y)) is None
+    for at in (layout.race_cell_at, layout.positional_row_at, layout.roster_line_at):
+        assert at(layout.start_button[:2]) is None
+
+
+def test_new_roster_button_sits_left_of_start_and_back_and_save_reuse_them():
+    layout = build_layout(32)
+    new, start = layout.new_roster_button, layout.start_button
+    assert new.y == start.y
+    assert (new.width, new.height) == (start.width, start.height)
+    assert 0 <= new.x and new.x + new.width < start.x
+    assert layout.back_button == new
+    assert layout.save_roster_button == start
+
+
+@pytest.mark.parametrize(
+    "method, index",
+    [
+        ("race_cell", -1),
+        ("race_cell", RACE_CELLS),
+        ("positional_row", -1),
+        ("positional_row", POSITIONAL_ROWS),
+        ("roster_line", -1),
+        ("roster_line", ROSTER_LINES),
+    ],
+)
+def test_new_boxes_out_of_range_raise(method, index):
+    with pytest.raises(ValueError):
+        getattr(build_layout(32), method)(index)

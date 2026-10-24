@@ -1,14 +1,21 @@
 """Tests for bb_sandbox.roster, with CSV files written to tmp_path."""
 
+from datetime import datetime
+
 import pytest
 
 from bb_sandbox.roster import (
     MAX_TEAM_SIZE,
     Player,
+    Profile,
     RosterError,
+    Team,
+    format_target,
     list_rosters,
     load_team,
+    new_roster_path,
     read_race,
+    save_team,
 )
 
 RACE = "race,Orc\n"
@@ -153,3 +160,78 @@ def test_list_rosters_sorted_csv_only(tmp_path):
         (tmp_path / name).write_text("")
     (tmp_path / "dir.csv").mkdir()
     assert [p.name for p in list_rosters(tmp_path)] == ["a.csv", "b.csv"]
+
+
+def test_profile_parses_printed_stats_and_player_adds_a_name():
+    profile = Profile(
+        position=" Ogre ", ma="5", st="5", ag="4+", pa="-", av="10+", skills="A; B"
+    )
+    assert (profile.position, profile.ag, profile.pa, profile.av, profile.skills) == (
+        "Ogre",
+        4,
+        None,
+        10,
+        ("A", "B"),
+    )
+    player = Player(name="Grim", **profile.model_dump())
+    assert isinstance(player, Profile) and player.skills == ("A", "B")
+    # A profile has no name, and a player needs one.
+    with pytest.raises(ValueError, match="name"):
+        Profile(name="Grim", **profile.model_dump())
+    with pytest.raises(ValueError, match="name"):
+        Player(**profile.model_dump())
+
+
+def _player(name, pa=4, skills=("Block", "Mighty Blow")):
+    return Player(
+        name=name, position="Blitzer", ma=5, st=3, ag=3, pa=pa, av=10, skills=skills
+    )
+
+
+TEAM = Team(
+    name="orcs",
+    race="Orc",
+    players=(_player("Grishnak"), _player("Grim, the Bold", pa=None, skills=())),
+)
+
+
+def test_save_team_round_trips_and_creates_the_folder(tmp_path):
+    path = tmp_path / "new" / "orcs.csv"
+    save_team(TEAM, path)
+    # A comma in a name is quoted; no PA and no skills survive the trip.
+    assert load_team(path) == TEAM
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines[:2] == ["race,Orc", "name,position,MA,ST,AG,PA,AV,skills"]
+    assert lines[2] == "Grishnak,Blitzer,5,3,3+,4+,10+,Block;Mighty Blow"
+    assert not list(path.parent.glob("*.tmp"))
+
+
+def test_save_team_replaces_an_existing_file(tmp_path):
+    path = _write(tmp_path, "old")
+    save_team(TEAM, path)
+    assert load_team(path) == TEAM
+
+
+def test_save_team_failure_raises_and_leaves_no_temp(tmp_path):
+    # Reason: a directory at the target path makes os.replace fail.
+    path = tmp_path / "orcs.csv"
+    path.mkdir()
+    with pytest.raises(RosterError, match="orcs.csv"):
+        save_team(TEAM, path)
+    assert not (tmp_path / "orcs.csv.tmp").exists()
+
+
+def test_new_roster_path_uses_race_and_time(tmp_path):
+    path = new_roster_path(tmp_path, "Human", datetime(2026, 10, 23, 9, 5, 7))
+    assert path == tmp_path / "Human-20261023-090507.csv"
+
+
+def test_new_roster_path_sanitises_the_race(tmp_path):
+    path = new_roster_path(tmp_path, "../Chaos Chosen", datetime(2026, 1, 1))
+    assert path.parent == tmp_path
+    assert path.name == "_Chaos_Chosen-20260101-000000.csv"
+
+
+@pytest.mark.parametrize("value, text", [(3, "3+"), (11, "11+"), (None, "-")])
+def test_format_target(value, text):
+    assert format_target(value) == text

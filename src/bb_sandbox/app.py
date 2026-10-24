@@ -5,8 +5,16 @@ from pathlib import Path
 import pygame
 
 from bb_sandbox.layout import Layout, build_layout
-from bb_sandbox.render import draw_menu, draw_sandbox
-from bb_sandbox.session import ImportRoster, LoadSetup, SaveSetup, Screen, Session
+from bb_sandbox.races import RACES_FILE, load_races
+from bb_sandbox.render import draw_builder, draw_menu, draw_races, draw_sandbox
+from bb_sandbox.session import (
+    ImportRoster,
+    LoadSetup,
+    SaveRoster,
+    SaveSetup,
+    Screen,
+    Session,
+)
 
 WINDOW_TITLE = "Blood Bowl Sandbox"
 FPS = 60
@@ -42,6 +50,11 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
                 session.save_setup()
                 # Reason: the new file shows up in the setups list right away.
                 session.rescan()
+            case SaveRoster():
+                session.save_roster()
+                # Reason: the new roster shows up in the menu's roster lists
+                # right away.
+                session.rescan()
     elif event.type == pygame.MOUSEBUTTONDOWN and event.button == RIGHT_BUTTON:
         session.right_click(event.pos)
     elif event.type == pygame.MOUSEBUTTONUP and event.button == LEFT_BUTTON:
@@ -70,6 +83,10 @@ def _draw(
     if session.screen is Screen.SANDBOX and session.interaction is not None:
         view = session.interaction.view()
         draw_sandbox(surface, layout, font, session.board, view, session.message)
+    elif session.screen is Screen.RACES:
+        draw_races(surface, layout, font, session.races, session.message)
+    elif session.screen is Screen.BUILDER and session.builder is not None:
+        draw_builder(surface, layout, font, session.builder, session.message)
     else:
         draw_menu(surface, layout, font, session.menu_view(), session.message)
 
@@ -87,12 +104,16 @@ def run(max_frames: int | None = None) -> int:
 
     Raises:
         ValueError: If max_frames is given and is not positive.
+        RaceError: If the race database shipped with the app is invalid.
     """
     if max_frames is not None and max_frames <= 0:
         raise ValueError(f"max_frames must be positive, got {max_frames}")
 
     layout = build_layout()
-    session = Session(layout, ROSTERS_DIR, SETUPS_DIR)
+    # Reason: a broken races.csv is a packaging bug, not a user error, so its
+    # RaceError (file, line and field) stops the app before the window opens.
+    races = load_races(RACES_FILE)
+    session = Session(layout, ROSTERS_DIR, SETUPS_DIR, races)
     session.rescan()
     pygame.init()
     try:

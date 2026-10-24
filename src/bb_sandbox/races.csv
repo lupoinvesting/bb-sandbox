@@ -1,0 +1,160 @@
+race,position,max_count,cost,MA,ST,AG,PA,AV,skills
+Amazon,Eagle Warrior,16,50K,6,3,3+,4+,8+,Dodge
+Amazon,Python Warrior,2,80K,6,3,3+,3+,8+,Dodge;On the Ball;Pass;Safe Pass
+Amazon,Piranha Warrior,2,90K,7,3,3+,4+,8+,Dodge;Hit and Run;Jump Up
+Amazon,Jaguar Warrior,2,110K,6,4,3+,4+,9+,Defensive;Dodge
+Black Orc,Goblin Bruiser,16,45K,6,2,3+,4+,8+,Dodge;Right Stuff;Stunty;Thick Skull
+Black Orc,Black Orc,6,90K,4,4,4+,5+,10+,Brawler;Grab
+Black Orc,Trained Troll,1,115K,4,5,5+,5+,10+,Always Hungry;Mighty Blow;Projectile Vomit;Really Stupid;Regeneration;Throw Team-mate
+Bretonnian,Bretonnian Squire,16,50K,6,3,3+,4+,8+,Wrestle
+Bretonnian,Bretonnian Knight Catcher,2,85K,7,3,3+,4+,9+,Catch;Dauntless;Nerves of Steel
+Bretonnian,Bretonnian Knight Thrower,2,80K,6,3,3+,3+,9+,Dauntless;Nerves of Steel;Pass
+Bretonnian,Grail Knight,2,95K,7,3,3+,4+,10+,Block;Dauntless;Steady Footing
+Chaos Chosen,Beastman Lineman,16,55K,6,3,3+,3+,9+,Horns;Thick Skull
+Chaos Chosen,Chaos Chosen,4,100K,5,4,3+,5+,10+,Arm Bar
+Chaos Chosen,Troll,1,115K,4,5,5+,5+,10+,Always Hungry;Loner (4+);Mighty Blow;Projectile Vomit;Really Stupid;Regeneration;Throw Team-mate
+Chaos Chosen,Ogre,1,140K,5,5,4+,5+,10+,Bone Head;Loner (4+);Mighty Blow;Thick Skull;Throw Team-mate
+Chaos Chosen,Minotaur,1,150K,5,5,4+,6+,9+,Frenzy;Horns;Loner (4+);Mighty Blow;Thick Skull;Unchannelled Fury
+Chaos Dwarf,Hobgoblin Lineman,16,40K,6,3,3+,4+,8+,
+Chaos Dwarf,Sneaky Stabba,2,60K,6,3,3+,5+,8+,Shadowing;Stab
+Chaos Dwarf,Chaos Dwarf Blocker,4,70K,4,3,4+,6+,10+,Block;Iron Hard Skin;Thick Skull
+Chaos Dwarf,Flamesmith,2,80K,5,3,4+,6+,10+,Brawler;Breathe Fire;Disturbing Presence;Thick Skull
+Chaos Dwarf,Bull Centaur,2,130K,6,4,4+,6+,10+,Sprint;Sure Feet;Thick Skull;Unsteady
+Chaos Dwarf,Minotaur,1,150K,5,5,4+,6+,9+,Frenzy;Horns;Loner (4+);Mighty Blow;Thick Skull;Unchannelled Fury
+Chaos Renegades,Renegade Human,16,50K,6,3,3+,4+,9+,Animosity (All)
+Chaos Renegades,Renegade Goblin,1,40K,6,2,3+,4+,8+,Animosity (All);Dodge;Right Stuff;Stunty
+Chaos Renegades,Renegade Orc,1,50K,5,3,3+,4+,10+,Animosity (All)
+Chaos Renegades,Renegade Skaven,1,50K,7,3,3+,4+,8+,Animosity (All)
+Chaos Renegades,Renegade Dark Elf,1,65K,6,3,2+,3+,9+,Animosity (All)
+Chaos Renegades,Renegade Human Thrower,1,75K,6,3,3+,3+,9+,Animosity (All);Pass;Sure Hands
+Chaos Renegades,Troll,1,115K,4,5,5+,5+,10+,Always Hungry;Loner (4+);Mighty Blow;Projectile Vomit;Really Stupid;Regeneration;Throw Team-mate
+Chaos Renegades,Ogre,1,140K,5,5,4+,5+,10+,Bone Head;Loner (3+);Mighty Blow;Thick Skull;Throw Team-mate
+Chaos Renegades,Minotaur,1,150K,5,5,4+,6+,9+,Frenzy;Horns;Loner (4+);Mighty Blow;Thick Skull;Unchannelled Fury
+Chaos Renegades,Rat Ogre,1,150K,6,5,4+,6+,9+,Animal Savagery;Frenzy;Loner (4+);Mighty Blow;Prehensile Tail
+Dark Elf,Dark Elf Lineman,16,65K,6,3,2+,3+,9+,
+Dark Elf,Dark Elf Runner,2,80K,7,3,2+,3+,8+,Dump-off;Punt
+Dark Elf,Dark Elf Assassin,2,90K,7,3,2+,4+,8+,Hit and Run;Shadowing;Stab
+Dark Elf,Dark Elf Blitzer,2,105K,7,3,2+,3+,9+,Block
+Dark Elf,Witch Elf,2,110K,7,3,2+,4+,8+,Dodge;Frenzy;Jump Up
+Dwarf,Dwarf Lineman,16,70K,4,3,4+,5+,10+,Block;Defensive;Thick Skull
+Dwarf,Dwarf Runner,2,80K,6,3,3+,4+,9+,Sprint;Sure Hands;Thick Skull
+Dwarf,Dwarf Blitzer,2,100K,5,3,4+,4+,10+,Block;Diving Tackle;Tackle;Thick Skull
+Dwarf,Troll Slayer,2,95K,5,3,4+,5+,9+,Block;Dauntless;Frenzy;Hatred (Troll);Thick Skull
+Dwarf,Deathroller,1,170K,5,7,5+,-,11+,Break Tackle;Dirty Player;Juggernaut;Loner (4+);Mighty Blow;No Ball;Secret Weapon;Stand Firm
+Elven Union,Elf Lineman,16,65K,6,3,2+,3+,8+,Fumblerooski
+Elven Union,Elf Thrower,2,75K,6,3,2+,2+,8+,Hail Mary Pass;Pass
+Elven Union,Elf Catcher,2,100K,8,3,2+,4+,8+,Catch;Diving Catch;Nerves of Steel
+Elven Union,Elf Blitzer,2,115K,7,3,2+,3+,9+,Block;Sidestep
+Gnome,Gnome Lineman,16,40K,5,2,3+,4+,7+,Jump Up;Right Stuff;Stunty;Wrestle
+Gnome,Woodland Fox,2,50K,7,2,2+,-,6+,Dodge;My Ball;Sidestep;Stunty
+Gnome,Gnome Illusionist,2,50K,5,2,3+,3+,7+,Jump Up;Stunty;Trickster;Wrestle
+Gnome,Gnome Beastmaster,2,55K,5,2,3+,4+,8+,Guard;Jump Up;Stunty;Wrestle
+Gnome,Altern Forest Treeman,2,120K,2,6,5+,5+,11+,Mighty Blow;Stand Firm;Strong Arm;Take Root;Thick Skull;Throw Team-mate;Timmm-ber!
+Goblin,Goblin Lineman,16,40K,6,2,3+,4+,8+,Dodge;Right Stuff;Stunty
+Goblin,Looney,1,40K,6,2,3+,-,8+,Chainsaw;No Ball;Secret Weapon;Stunty
+Goblin,Bomma,1,45K,6,2,3+,4+,8+,Bombardier;Dodge;Secret Weapon;Stunty
+Goblin,'Ooligan,1,60K,6,2,3+,5+,8+,Dirty Player (+1);Disturbing Presence;Dodge;Right Stuff;Stunty;Taunt
+Goblin,Doom Diver,1,65K,6,2,3+,6+,8+,Dodge;Right Stuff;Stunty;Swoop
+Goblin,Fanatic,1,70K,3,7,3+,-,8+,Ball & Chain;No Ball;Secret Weapon;Stunty
+Goblin,Pogoer,1,75K,7,2,3+,4+,8+,Dodge;Pogo;Stunty
+Goblin,Trained Troll,2,115K,4,5,5+,5+,10+,Always Hungry;Mighty Blow;Projectile Vomit;Really Stupid;Regeneration;Throw Team-mate
+Halfling,Halfling Hopeful,16,30K,5,2,3+,4+,7+,Dodge;Right Stuff;Stunty
+Halfling,Halfling Hefty,2,50K,5,2,3+,3+,8+,Dodge;Fend;Stunty
+Halfling,Halfling Catcher,2,55K,5,2,3+,4+,7+,Catch;Dodge;Right Stuff;Sprint;Stunty
+Halfling,Athel Forest Treeman,2,120K,2,6,5+,5+,11+,Mighty Blow;Stand Firm;Strong Arm;Take Root;Thick Skull;Throw Team-mate;Timmm-ber!
+High Elf,High Elf Lineman,16,65K,6,3,2+,3+,9+,
+High Elf,Phoenix Warrior,2,90K,6,3,2+,2+,9+,Cloud Burster;Pass;Safe Pass
+High Elf,Dragon Prince,2,110K,8,3,2+,4+,9+,Block;My Ball;Steady Footing
+High Elf,White Lion,2,110K,7,3,2+,3+,9+,Claws;Wrestle
+Human,Human Lineman,16,50K,6,3,3+,4+,9+,
+Human,Halfling Hopeful,3,30K,5,2,3+,4+,7+,Dodge;Right Stuff;Stunty
+Human,Human Catcher,2,75K,8,3,3+,4+,8+,Catch;Dodge
+Human,Human Thrower,2,75K,6,3,3+,3+,9+,Pass;Sure Hands
+Human,Human Blitzer,2,85K,7,3,3+,4+,9+,Block;Tackle
+Human,Ogre,1,140K,5,5,4+,5+,10+,Bone Head;Loner (3+);Mighty Blow;Thick Skull;Throw Team-mate
+Imperial Nobility,Imperial Retainer,16,45K,6,3,3+,4+,8+,Fend
+Imperial Nobility,Imperial Thrower,2,75K,6,3,3+,2+,9+,Give and Go;Pass;Pro
+Imperial Nobility,Bodyguard,4,85K,5,3,3+,4+,9+,Stand Firm;Wrestle
+Imperial Nobility,Noble Blitzer,2,90K,7,3,3+,4+,9+,Block;Catch;Pro
+Imperial Nobility,Ogre,1,140K,5,5,4+,5+,10+,Bone Head;Loner (3+);Mighty Blow;Thick Skull;Throw Team-mate
+Khorne,Bloodborn Marauder,16,50K,6,3,3+,4+,8+,Frenzy
+Khorne,Khorngor,2,70K,6,3,3+,4+,9+,Horns;Juggernaut;Jump Up;Thick Skull
+Khorne,Bloodseeker,4,105K,5,4,4+,6+,10+,Frenzy
+Khorne,Bloodspawn,1,160K,5,5,4+,6+,9+,Claws;Frenzy;Loner (4+);Mighty Blow;Unchannelled Fury
+Lizardmen,Skink Lineman,16,60K,8,2,3+,4+,8+,Dodge;Stunty
+Lizardmen,Chameleon Skink,2,70K,7,2,3+,3+,8+,Dodge;On the Ball;Shadowing;Stunty
+Lizardmen,Saurus Blocker,6,90K,6,4,5+,6+,10+,Juggernaut;Unsteady
+Lizardmen,Kroxigor,1,140K,6,5,5+,6+,10+,Bone Head;Loner (4+);Mighty Blow;Prehensile Tail;Thick Skull
+Necromantic Horror,Zombie Lineman,16,40K,4,3,4+,6+,9+,Eye Gouge;Regeneration;Unsteady
+Necromantic Horror,Ghoul Runner,2,75K,7,3,3+,3+,8+,Dodge;Regeneration
+Necromantic Horror,Wraith,2,85K,6,3,3+,-,9+,Block;Foul Appearance;No Ball;Regeneration;Sidestep
+Necromantic Horror,Flesh Golem,2,110K,4,4,4+,6+,10+,Regeneration;Stand Firm;Thick Skull;Unsteady
+Necromantic Horror,Werewolf,2,120K,8,3,3+,3+,9+,Claws;Frenzy;Regeneration
+Norse,Norse Raider,16,50K,6,3,3+,4+,8+,Block;Drunkard;Thick Skull;Unsteady
+Norse,Beer Boar,2,20K,5,1,3+,-,6+,Dodge;No Ball;Pick-me-up;Stunty;Titchy
+Norse,Norse Berserker,2,90K,6,3,3+,5+,8+,Block;Frenzy;Jump Up
+Norse,Valkyrie,2,95K,7,3,3+,3+,8+,Catch;Dauntless;Pass;Strip Ball
+Norse,Ulfwerener,2,105K,6,4,4+,6+,9+,Frenzy;Unsteady
+Norse,Yhetee,1,140K,5,5,4+,6+,9+,Claws;Disturbing Presence;Frenzy;Loner (4+);Unchannelled Fury
+Nurgle,Rotter,16,40K,5,3,4+,6+,9+,Decay;Plague Ridden
+Nurgle,Pestigor,2,70K,6,3,3+,4+,9+,Horns;Plague Ridden;Regeneration;Steady Footing;Thick Skull
+Nurgle,Bloater,4,110K,4,4,4+,6+,10+,Disturbing Presence;Foul Appearance;Plague Ridden;Regeneration;Stand Firm;Unsteady
+Nurgle,Rotspawn,1,140K,4,5,5+,6+,10+,Disturbing Presence;Foul Appearance;Loner (4+);Mighty Blow;Pick-me-up;Plague Ridden;Really Stupid;Regeneration;Tentacles
+Ogre,Gnoblar Lineman,16,15K,5,1,3+,4+,6+,Dodge;Right Stuff;Sidestep;Stunty;Titchy
+Ogre,Ogre Blocker,5,140K,5,5,4+,5+,10+,Bone Head;Mighty Blow;Thick Skull;Throw Team-mate
+Ogre,Ogre Runt Punter,1,145K,5,5,4+,4+,10+,Bone Head;Kick Team-mate;Mighty Blow;Thick Skull
+Old World Alliance,Human Lineman,16,50K,6,3,3+,4+,9+,
+Old World Alliance,Halfling Hopeful,3,30K,5,2,3+,4+,7+,Dodge;Right Stuff;Stunty
+Old World Alliance,Human Catcher,1,75K,8,3,3+,4+,8+,Catch;Dodge
+Old World Alliance,Dwarf Lineman,3,70K,4,3,4+,5+,10+,Block;Defensive;Thick Skull
+Old World Alliance,Human Thrower,1,75K,6,3,3+,3+,9+,Pass;Sure Hands
+Old World Alliance,Dwarf Runner,1,80K,6,3,3+,4+,9+,Sprint;Sure Hands;Thick Skull
+Old World Alliance,Human Blitzer,1,85K,7,3,3+,4+,9+,Block;Tackle
+Old World Alliance,Dwarf Blitzer,1,100K,5,3,4+,4+,10+,Block;Diving Tackle;Tackle;Thick Skull
+Old World Alliance,Troll Slayer,1,95K,5,3,4+,5+,9+,Block;Dauntless;Frenzy;Hatred (Troll);Thick Skull
+Old World Alliance,Ogre,1,140K,5,5,4+,5+,10+,Bone Head;Loner (3+);Mighty Blow;Thick Skull;Throw Team-mate
+Old World Alliance,Altern Forest Treeman,1,120K,2,6,5+,5+,11+,Loner (4+);Mighty Blow;Stand Firm;Strong Arm;Take Root;Thick Skull;Throw Team-mate;Timmm-ber!
+Orc,Orc Lineman,16,50K,5,3,3+,4+,10+,
+Orc,Goblin Lineman,4,40K,6,2,3+,4+,8+,Dodge;Right Stuff;Stunty
+Orc,Orc Thrower,2,75K,6,3,3+,3+,9+,Pass;Sure Hands
+Orc,Orc Blitzer,2,85K,6,3,3+,4+,10+,Block;Break Tackle
+Orc,Big Un Blocker,2,95K,5,4,4+,6+,10+,Mighty Blow;Taunt;Thick Skull;Unsteady
+Orc,Troll,1,115K,4,5,5+,5+,10+,Always Hungry;Loner (4+);Mighty Blow;Projectile Vomit;Really Stupid;Regeneration;Throw Team-mate
+Shambling Undead,Skeleton Lineman,16,40K,5,3,4+,6+,8+,Regeneration;Thick Skull
+Shambling Undead,Zombie Lineman,16,40K,4,3,4+,6+,9+,Eye Gouge;Regeneration;Unsteady
+Shambling Undead,Ghoul Runner,2,75K,7,3,3+,3+,8+,Dodge;Regeneration
+Shambling Undead,Wight Blitzer,2,95K,6,3,3+,5+,9+,Block;Regeneration;Tackle;Thick Skull
+Shambling Undead,Mummy,2,125K,3,5,5+,6+,10+,Mighty Blow;Regeneration
+Skaven,Skaven Clanrat,16,50K,7,3,3+,4+,8+,
+Skaven,Skaven Thrower,2,80K,7,3,3+,2+,8+,Pass;Sure Hands
+Skaven,Gutter Runner,2,85K,9,2,2+,4+,8+,Dodge;Stab
+Skaven,Skaven Blitzer,2,90K,8,3,3+,4+,9+,Block;Strip Ball
+Skaven,Rat Ogre,1,150K,6,5,4+,6+,9+,Animal Savagery;Frenzy;Loner (4+);Mighty Blow;Prehensile Tail
+Snotling,Snotling Lineman,16,15K,5,1,3+,4+,6+,Dodge;Insignificant;Right Stuff;Sidestep;Stunty;Titchy
+Snotling,Fun-hoppa,2,20K,6,1,3+,4+,6+,Dodge;Pogo;Right Stuff;Sidestep;Stunty
+Snotling,Stilty Runna,2,20K,6,1,3+,4+,6+,Dodge;Right Stuff;Sidestep;Sprint;Stunty
+Snotling,Fungus Flinga,2,30K,5,1,3+,4+,6+,Bombardier;Dodge;Right Stuff;Secret Weapon;Sidestep;Stunty;Titchy
+Snotling,Pump Wagon,2,100K,5,5,5+,6+,9+,Dirty Player;Juggernaut;Mighty Blow;Really Stupid;Stand Firm
+Snotling,Trained Troll,2,115K,4,5,5+,5+,10+,Always Hungry;Mighty Blow;Projectile Vomit;Really Stupid;Regeneration;Throw Team-mate
+Tomb Kings,Skeleton Lineman,16,40K,5,3,4+,6+,8+,Regeneration;Thick Skull
+Tomb Kings,Tomb Kings Thrower,2,65K,6,3,4+,3+,9+,Pass;Regeneration;Sure Hands;Thick Skull
+Tomb Kings,Tomb Kings Blitzer,2,85K,6,3,4+,5+,9+,Block;Regeneration;Thick Skull
+Tomb Kings,Tomb Guardian,4,115K,4,5,5+,6+,10+,Brawler;Decay;Regeneration
+Underworld Denizens,Goblin Lineman,16,40K,6,2,3+,4+,8+,Dodge;Right Stuff;Stunty
+Underworld Denizens,Snotling Lineman,6,15K,5,1,3+,4+,6+,Dodge;Insignificant;Right Stuff;Sidestep;Stunty;Titchy
+Underworld Denizens,Skaven Clanrat,3,50K,7,3,3+,4+,8+,Animosity (Goblin)
+Underworld Denizens,Skaven Thrower,1,80K,7,3,3+,2+,8+,Animosity (Goblin);Pass;Sure Hands
+Underworld Denizens,Gutter Runner,1,85K,9,2,2+,4+,8+,Animosity (Goblin);Dodge;Stab
+Underworld Denizens,Skaven Blitzer,1,90K,8,3,3+,4+,9+,Animosity (Goblin);Block;Strip Ball
+Underworld Denizens,Troll,1,115K,4,5,5+,5+,10+,Always Hungry;Loner (4+);Mighty Blow;Projectile Vomit;Really Stupid;Regeneration;Throw Team-mate
+Underworld Denizens,Rat Ogre,1,150K,6,5,4+,6+,9+,Animal Savagery;Frenzy;Loner (4+);Mighty Blow;Prehensile Tail
+Vampire,Thrall Lineman,16,40K,6,3,3+,4+,8+,
+Vampire,Vampire Runner,2,100K,8,3,2+,3+,8+,Bloodlust (2+);Hypnotic Gaze;Regeneration
+Vampire,Vampire Thrower,2,110K,6,4,2+,2+,9+,Bloodlust (2+);Hypnotic Gaze;Pass;Regeneration
+Vampire,Vampire Blitzer,2,110K,6,4,2+,4+,9+,Bloodlust (3+);Hypnotic Gaze;Juggernaut;Regeneration
+Vampire,Vargheist,1,150K,5,5,4+,6+,10+,Bloodlust (3+);Claws;Frenzy;Loner (4+);Regeneration
+Wood Elf,Wood Elf Lineman,16,65K,7,3,2+,3+,8+,
+Wood Elf,Wood Elf Thrower,2,85K,7,3,2+,2+,8+,Pass;Safe Pair of Hands
+Wood Elf,Wood Elf Catcher,2,90K,8,2,2+,3+,8+,Catch;Dodge;Sprint
+Wood Elf,Wardancer,2,130K,8,3,2+,3+,8+,Block;Dodge;Leap
+Wood Elf,Loren Forest Treeman,1,120K,2,6,5+,5+,11+,Loner (4+);Mighty Blow;Stand Firm;Strong Arm;Take Root;Thick Skull;Throw Team-mate

@@ -5,9 +5,11 @@ import pytest
 
 from bb_sandbox import render
 from bb_sandbox.board import BALL_START, Board
+from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
 from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import PlayerKey, Side, Square, Status
+from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import Player, Team
 from bb_sandbox.session import MenuView, RosterEntry
 
@@ -326,3 +328,130 @@ def test_sandbox_draws_save_button_and_clipped_message(font):
     assert surface.get_at((panel.x + panel.width + 2, line.y + 12))[:3] == (
         render.BACKGROUND
     )
+
+
+RACE = Race(
+    name="Human",
+    positionals=(
+        Positional(
+            position="Human Lineman",
+            max_count=16,
+            cost=50,
+            ma=6,
+            st=3,
+            ag=3,
+            pa=4,
+            av=9,
+            skills=(),
+        ),
+        Positional(
+            position="Ogre",
+            max_count=1,
+            cost=140,
+            ma=5,
+            st=5,
+            ag=4,
+            pa=5,
+            av=10,
+            skills=("Bone Head", "Mighty Blow"),
+        ),
+    ),
+)
+
+
+def _draw_builder(font, *picks):
+    builder = RosterBuilder(RACE)
+    for index in picks:
+        builder.add(index)
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_builder(surface, layout, font, builder, "")
+    return surface, layout
+
+
+def _colours(surface, box):
+    return {
+        surface.get_at((x, y))[:3]
+        for x in range(box.x, box.x + box.width)
+        for y in range(box.y, box.y + box.height)
+    }
+
+
+def test_menu_draws_new_roster_button(font):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_menu(surface, layout, font, MenuView((), 0, None, None), "")
+    button = layout.new_roster_button
+    assert surface.get_at((button.x + 3, button.y + 3))[:3] == render.BUTTON_FILL
+
+
+def test_races_screen_draws_one_name_per_race(font):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    races = (RACE, RACE.model_copy(update={"name": "Orc"}))
+    render.draw_races(surface, layout, font, races, "")
+    assert _has_text(surface, layout.race_cell(0))
+    assert _has_text(surface, layout.race_cell(1))
+    assert not _has_text(surface, layout.race_cell(2))
+    back = layout.back_button
+    assert surface.get_at((back.x + 3, back.y + 3))[:3] == render.BUTTON_FILL
+
+
+def test_builder_draws_titles_rows_and_roster_lines(font):
+    surface, layout = _draw_builder(font, 0, 1)
+    assert _has_text(surface, layout.positional_titles)
+    assert _has_text(surface, layout.positional_row(1))
+    assert not _has_text(surface, layout.positional_row(2))
+    assert _has_text(surface, layout.roster_line(1))
+    assert not _has_text(surface, layout.roster_line(2))
+    save = layout.save_roster_button
+    assert surface.get_at((save.x + 3, save.y + 3))[:3] == render.BUTTON_FILL
+
+
+def test_builder_dims_save_roster_while_empty(font):
+    surface, layout = _draw_builder(font)
+    save = layout.save_roster_button
+    assert surface.get_at((save.x + 3, save.y + 3))[:3] == render.BUTTON_DISABLED
+    assert not _has_text(surface, layout.roster_line(0))
+
+
+def _count_cell(layout, index):
+    return layout.positional_row(index)._replace(width=render.TABLE_COLUMNS[1][1])
+
+
+def _total(layout):
+    caption = layout.roster_list._replace(height=32)
+    return caption._replace(x=caption.x + caption.width // 2, width=caption.width // 2)
+
+
+def test_count_over_max_is_over_limit_colour(font):
+    # Two ogres (max 1) cost 280K: over the max, within the budget.
+    surface, layout = _draw_builder(font, 1, 1)
+    assert render.OVER_LIMIT in _colours(surface, _count_cell(layout, 1))
+    assert render.OVER_LIMIT not in _colours(surface, _count_cell(layout, 0))
+    assert render.OVER_LIMIT not in _colours(surface, _total(layout))
+
+
+def test_total_over_budget_is_over_limit_colour(font):
+    # Eight ogres cost 1,120K.
+    surface, layout = _draw_builder(font, *(1,) * 8)
+    assert render.OVER_LIMIT in _colours(surface, _total(layout))
+    # Five ogres and six linemen cost exactly 1,000K, which isn't over.
+    exactly, _ = _draw_builder(font, *(1,) * 5, *(0,) * 6)
+    assert render.OVER_LIMIT not in _colours(exactly, _total(layout))
+
+
+def test_positional_texts_show_max_cost_stats_and_skills():
+    assert render._positional_texts(3, RACE.positionals[1]) == (
+        "3",
+        "0-1",
+        "Ogre",
+        "140K",
+        "5",
+        "5",
+        "4+",
+        "5+",
+        "10+",
+        "Bone Head, Mighty Blow",
+    )
+    assert render._positional_texts(0, RACE.positionals[0])[-1] == ""

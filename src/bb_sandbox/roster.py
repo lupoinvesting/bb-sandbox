@@ -1,10 +1,13 @@
-"""Roster import: CSV files into validated, immutable Team objects.
+"""Roster files: CSV files to and from validated, immutable Team objects.
 
-The only module (with setups) that touches pydantic and csv; callers only see
-Player, Team and RosterError.
+The only module (with races and setups) that touches pydantic and csv; callers
+only see Profile, Player, Team and RosterError.
 """
 
 import csv
+import os
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, TextIO
 
@@ -12,18 +15,23 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 MAX_TEAM_SIZE = 16
 COLUMNS = ("name", "position", "ma", "st", "ag", "pa", "av", "skills")
+# Reason: saved rosters spell the stats as rosters/example.csv does; reading
+# ignores the case.
+HEADER = ("name", "position", "MA", "ST", "AG", "PA", "AV", "skills")
 RACE_KEY = "race"
+# Reason: team and race names come from loaded files too, so anything that
+# isn't safe in a file name (path separators included) is replaced.
+UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
 
 
 class RosterError(Exception):
-    """A roster file could not be read or failed validation."""
+    """A roster file could not be read, written or failed validation."""
 
 
-class Player(BaseModel):
-    """One validated roster entry, with Blood Bowl Third Season stat limits.
+class Profile(BaseModel):
+    """A position's stats and skills, with Blood Bowl Third Season stat limits.
 
     Attributes:
-        name (str): Player name.
         position (str): Free-text position, e.g. Lineman or Blitzer.
         ma (int): Movement Allowance, 1-9.
         st (int): Strength, 1-8.
@@ -35,7 +43,6 @@ class Player(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
-    name: Annotated[str, Field(min_length=1)]
     position: Annotated[str, Field(min_length=1)]
     ma: Annotated[int, Field(ge=1, le=9)]
     st: Annotated[int, Field(ge=1, le=8)]
@@ -81,6 +88,16 @@ class Player(BaseModel):
         if isinstance(value, str):
             return tuple(s.strip() for s in value.split(";") if s.strip())
         return value
+
+
+class Player(Profile):
+    """One validated roster entry: a profile plus the player's name.
+
+    Attributes:
+        name (str): Player name.
+    """
+
+    name: Annotated[str, Field(min_length=1)]
 
 
 class Team(BaseModel):
@@ -256,3 +273,84 @@ def list_rosters(folder: Path) -> tuple[Path, ...]:
     if not folder.is_dir():
         return ()
     return tuple(sorted(p for p in folder.glob("*.csv") if p.is_file()))
+
+
+def format_target(value: int | None) -> str:
+    """
+    Format a target-number stat as printed on a roster.
+
+    Args:
+        value (int | None): The target number, or None for no PA.
+
+    Returns:
+        str: `3+`, or `-` for None.
+    """
+    return "-" if value is None else f"{value}+"
+
+
+def _player_row(player: Player) -> tuple[str | int, ...]:
+    """
+    Lay out one player in HEADER order, with the stats as printed.
+
+    Args:
+        player (Player): The player.
+
+    Returns:
+        tuple[str | int, ...]: The CSV cells.
+    """
+    return (
+        player.name,
+        player.position,
+        player.ma,
+        player.st,
+        format_target(player.ag),
+        format_target(player.pa),
+        format_target(player.av),
+        ";".join(player.skills),
+    )
+
+
+def save_team(team: Team, path: Path) -> None:
+    """
+    Write a team as a roster CSV, creating the folder if needed.
+
+    The team name isn't stored: load_team takes it from the file name.
+
+    Args:
+        team (Team): The team to save.
+        path (Path): The target file; an existing file is replaced.
+
+    Raises:
+        RosterError: If the file can't be written.
+    """
+    temp = path.with_name(path.name + ".tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Reason: newline="" is required by csv, which writes its own line endings.
+        with temp.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow((RACE_KEY, team.race))
+            writer.writerow(HEADER)
+            writer.writerows(_player_row(player) for player in team.players)
+        # Reason: replacing in one step means a failed save never leaves a
+        # half-written file in place of a good one.
+        os.replace(temp, path)
+    except OSError as error:
+        temp.unlink(missing_ok=True)
+        raise RosterError(f"{path.name}: {error}") from error
+
+
+def new_roster_path(folder: Path, race: str, when: datetime) -> Path:
+    """
+    Name a new roster as `<race>-YYYYMMDD-HHMMSS.csv`.
+
+    Args:
+        folder (Path): The rosters folder.
+        race (str): The team's race; characters unsafe in a file name become `_`.
+        when (datetime): The save time.
+
+    Returns:
+        Path: The file to write.
+    """
+    race = UNSAFE_NAME_CHARS.sub("_", race)
+    return folder / f"{race}-{when:%Y%m%d-%H%M%S}.csv"

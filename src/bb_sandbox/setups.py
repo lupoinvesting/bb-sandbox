@@ -1,11 +1,10 @@
 """Saved setups: a Board to and from a JSON file in setups/.
 
-The only module (with roster) that touches pydantic; callers only see Board and
-SetupFileError.
+The only module (with roster and races) that touches pydantic; callers only see
+Board and SetupFileError.
 """
 
 import os
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
@@ -14,12 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from bb_sandbox.board import Board
 from bb_sandbox.pitch import PITCH_COLUMNS, PITCH_ROWS, PlayerKey, Side, Square, Status
-from bb_sandbox.roster import MAX_TEAM_SIZE, Player, Team
+from bb_sandbox.roster import MAX_TEAM_SIZE, UNSAFE_NAME_CHARS, Player, Team
 
 VERSION = 1
-# Reason: team names come from loaded files too, so anything that isn't safe
-# in a file name (path separators included) is replaced.
-UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
 
 
 class SetupFileError(Exception):

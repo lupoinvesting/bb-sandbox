@@ -27,6 +27,14 @@ CONTEXT_MENU_WIDTH = 120
 # Reason: the team preview under each roster list has 1 header line plus one
 # line per player, up to the 16-player team limit.
 PREVIEW_LINES = 17
+# Reason: 12 rows x 3 menu columns = 36 race cells, enough for MAX_RACES.
+RACE_ROWS = 12
+# Reason: enough for MAX_POSITIONALS; 13 is the most that fit below the table's
+# caption and column-title rows.
+POSITIONAL_ROWS = 12
+# Reason: the builder's roster list has one line per player, up to the
+# 16-player team limit.
+ROSTER_LINES = 16
 
 
 class Box(NamedTuple):
@@ -87,7 +95,20 @@ class Layout:
         menu_rows (int): How many file rows fit in a menu column above the
             team preview.
         start_button (Box): Main menu "Start" button.
-        menu_message_line (Box): Main menu status message line.
+        menu_message_line (Box): Main menu status message line; the race menu
+            and the builder use it too.
+        new_roster_button (Box): Main menu "New roster" button, left of
+            start_button.
+        back_button (Box): Race menu and builder "Back" button, where
+            new_roster_button is.
+        save_roster_button (Box): Builder "Save roster" button, where
+            start_button is.
+        positional_table (Box): Builder table of positionals: the first two
+            menu columns merged, starting with a caption row and a
+            column-title row.
+        positional_titles (Box): The column-title row of positional_table.
+        roster_list (Box): Builder roster list, the third menu column; starts
+            with a one-row caption.
     """
 
     square_size: int
@@ -105,6 +126,12 @@ class Layout:
     menu_rows: int
     start_button: Box
     menu_message_line: Box
+    new_roster_button: Box
+    back_button: Box
+    save_roster_button: Box
+    positional_table: Box
+    positional_titles: Box
+    roster_list: Box
 
     def square(self, column: int, row: int) -> Box:
         """
@@ -332,6 +359,133 @@ class Layout:
                 return which, index
         return None
 
+    def race_cell(self, index: int) -> Box:
+        """
+        Return one cell of the race menu.
+
+        Cells fill the menu columns top to bottom, below each column's caption.
+
+        Args:
+            index (int): Zero-based cell, 0..RACE_ROWS * columns - 1.
+
+        Returns:
+            Box: The cell's screen rectangle.
+
+        Raises:
+            ValueError: If the index is beyond the cell capacity.
+        """
+        capacity = RACE_ROWS * len(self.menu_columns)
+        if not 0 <= index < capacity:
+            raise ValueError(f"Race cell {index} is outside 0..{capacity - 1}")
+        column = self.menu_columns[index // RACE_ROWS]
+        return Box(
+            column.x,
+            column.y + (index % RACE_ROWS + 1) * self.square_size,
+            column.width,
+            self.square_size,
+        )
+
+    def race_cell_at(self, pos: tuple[int, int]) -> int | None:
+        """
+        Find the race cell under a point (inverse of race_cell).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            int | None: The cell index, or None off the cells. The cell may
+                hold no race if there are fewer races than cells.
+        """
+        for number, column in enumerate(self.menu_columns):
+            if not column.contains(pos):
+                continue
+            row = (pos[1] - column.y) // self.square_size - 1
+            if 0 <= row < RACE_ROWS:
+                return number * RACE_ROWS + row
+        return None
+
+    def positional_row(self, index: int) -> Box:
+        """
+        Return one row of the builder's positional table, below the column titles.
+
+        Args:
+            index (int): Zero-based row, 0..POSITIONAL_ROWS-1.
+
+        Returns:
+            Box: The row's screen rectangle.
+
+        Raises:
+            ValueError: If index is outside 0..POSITIONAL_ROWS-1.
+        """
+        if not 0 <= index < POSITIONAL_ROWS:
+            raise ValueError(
+                f"Positional row {index} is outside 0..{POSITIONAL_ROWS - 1}"
+            )
+        titles = self.positional_titles
+        return titles._replace(y=titles.y + (index + 1) * self.square_size)
+
+    def positional_row_at(self, pos: tuple[int, int]) -> int | None:
+        """
+        Find the positional row under a point (inverse of positional_row).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            int | None: The row index, or None off the rows. The row may hold
+                no positional if the race has fewer.
+        """
+        if not self.positional_table.contains(pos):
+            return None
+        index = (pos[1] - self.positional_titles.y) // self.square_size - 1
+        if 0 <= index < POSITIONAL_ROWS:
+            return index
+        return None
+
+    def roster_line(self, index: int) -> Box:
+        """
+        Return one half-square-high line of the builder's roster list.
+
+        Args:
+            index (int): Zero-based line, 0..ROSTER_LINES-1.
+
+        Returns:
+            Box: The line's screen rectangle, below the list's caption.
+
+        Raises:
+            ValueError: If index is outside 0..ROSTER_LINES-1.
+        """
+        if not 0 <= index < ROSTER_LINES:
+            raise ValueError(f"Roster line {index} is outside 0..{ROSTER_LINES - 1}")
+        column = self.roster_list
+        height = _preview_line_height(self.square_size)
+        return Box(
+            column.x,
+            column.y + self.square_size + index * height,
+            column.width,
+            height,
+        )
+
+    def roster_line_at(self, pos: tuple[int, int]) -> int | None:
+        """
+        Find the roster line under a point (inverse of roster_line).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            int | None: The line index, or None off the lines. The line may
+                hold no player if the roster is smaller.
+        """
+        column = self.roster_list
+        if not column.contains(pos):
+            return None
+        height = _preview_line_height(self.square_size)
+        index = (pos[1] - column.y - self.square_size) // height
+        if 0 <= index < ROSTER_LINES:
+            return index
+        return None
+
 
 def _preview_line_height(square_size: int) -> int:
     """
@@ -434,6 +588,17 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         Box(MARGIN + i * (column_width + MARGIN), MARGIN, column_width, column_height)
         for i in range(count)
     )
+    new_roster_button = start_button._replace(
+        x=start_button.x - MARGIN - START_BUTTON_WIDTH
+    )
+
+    # Builder: the positional table spans the first two menu columns and the
+    # roster list takes the third.
+    left, middle, right = menu_columns
+    positional_table = left._replace(width=middle.x + middle.width - left.x)
+    positional_titles = positional_table._replace(
+        y=positional_table.y + square_size, height=square_size
+    )
 
     return Layout(
         square_size=square_size,
@@ -453,4 +618,10 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         menu_rows=max(0, (column_height - preview_height) // square_size - 1),
         start_button=start_button,
         menu_message_line=menu_message_line,
+        new_roster_button=new_roster_button,
+        back_button=new_roster_button,
+        save_roster_button=start_button,
+        positional_table=positional_table,
+        positional_titles=positional_titles,
+        roster_list=right,
     )
