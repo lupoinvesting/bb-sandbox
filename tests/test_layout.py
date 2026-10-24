@@ -2,7 +2,10 @@
 
 import pytest
 
+from bb_sandbox.dice import DICE, MAX_DICE
 from bb_sandbox.layout import (
+    DICE_BUTTON_ROWS,
+    DIE_BOXES,
     PITCH_COLUMNS,
     PITCH_ROWS,
     POSITIONAL_ROWS,
@@ -428,3 +431,77 @@ def test_new_roster_button_sits_left_of_start_and_back_and_save_reuse_them():
 def test_new_boxes_out_of_range_raise(method, index):
     with pytest.raises(ValueError):
         getattr(build_layout(32), method)(index)
+
+
+def test_dice_capacities_hold_every_button_and_die():
+    assert sum(DICE_BUTTON_ROWS) == len(DICE)
+    assert DIE_BOXES >= MAX_DICE
+    layout = build_layout(32)
+    assert len(layout.dice_buttons) == len(DICE)
+    assert len(layout.die_boxes) == DIE_BOXES
+
+
+def test_dice_geometry_at_square_size_32():
+    layout = build_layout(32)
+    assert layout.dice_area == Box(864, 304, 240, 216)
+    assert [box[:2] for box in layout.die_boxes] == [
+        (872, 448),
+        (944, 448),
+        (1016, 448),
+    ]
+    assert layout.dice_result_line == Box(872, 416, 224, 32)
+    numbered, blocks = layout.dice_buttons[:4], layout.dice_buttons[4:]
+    assert {(box.y, box.width) for box in numbered} == {(336, 50)}
+    assert {(box.y, box.width) for box in blocks} == {(376, 69)}
+
+
+def _overlap(a, b):
+    return (
+        a.x < b.x + b.width
+        and b.x < a.x + a.width
+        and a.y < b.y + b.height
+        and b.y < a.y + a.height
+    )
+
+
+def test_dice_boxes_fit_the_dice_area_above_the_message_line_without_overlap():
+    layout = build_layout(32)
+    boxes = (*layout.dice_buttons, layout.dice_result_line, *layout.die_boxes)
+    for box in boxes:
+        assert _inside(layout.dice_area, box) and _inside(layout.panel, box)
+        assert box.y + box.height <= layout.sandbox_message_line.y
+    for number, box in enumerate(boxes):
+        assert not any(_overlap(box, other) for other in boxes[number + 1 :])
+    for box in layout.die_boxes:
+        assert box.width == box.height == 64
+    # The caption row sits directly above the first button row.
+    assert layout.dice_buttons[0].y == layout.dice_area.y + 32
+
+
+def test_dice_button_at_inverts_each_button():
+    layout = build_layout(32)
+    for index, box in enumerate(layout.dice_buttons):
+        corner = (box.x + box.width - 1, box.y + box.height - 1)
+        assert layout.dice_button_at(box[:2]) == index
+        assert layout.dice_button_at(corner) == index
+
+
+def test_dice_button_at_misses_caption_gaps_and_outside():
+    layout = build_layout(32)
+    first = layout.dice_buttons[0]
+    result, die = layout.dice_result_line, layout.die_boxes[0]
+    misses = (
+        (layout.dice_area.x + 10, layout.dice_area.y + 5),
+        (first.x + first.width + 2, first.y + 5),
+        (first.x + 5, first.y + first.height + 2),
+        (result.x + 5, result.y + 5),
+        (die.x + 5, die.y + 5),
+        (1, 1),
+    )
+    for pos in misses:
+        assert layout.dice_button_at(pos) is None
+
+
+def test_dice_leave_the_player_info_its_caption_and_eight_rows():
+    layout = build_layout(32)
+    assert layout.dice_area.y >= layout.panel.y + 9 * 32

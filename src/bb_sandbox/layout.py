@@ -46,6 +46,11 @@ POSITIONAL_ROWS = 12
 # Reason: the builder's roster list has one line per player, up to the
 # 16-player team limit.
 ROSTER_LINES = 16
+# Reason: dice buttons per row, top to bottom: the 4 numbered dice, then the
+# 3 block dice; together one per DICE entry.
+DICE_BUTTON_ROWS = (4, 3)
+# Reason: one box per die of the biggest roll, MAX_DICE.
+DIE_BOXES = 3
 
 
 class Box(NamedTuple):
@@ -104,6 +109,13 @@ class Layout:
         menu_button (Box): Sandbox "Main menu" button at the bottom of the panel.
         save_button (Box): Sandbox "Save setup" button just above menu_button.
         sandbox_message_line (Box): Sandbox status message line above save_button.
+        dice_area (Box): Sandbox dice section: the panel's full width, from its
+            "Dice" caption row down to sandbox_message_line.
+        dice_buttons (tuple[Box, ...]): One button per DICE entry, row by row
+            in DICE_BUTTON_ROWS.
+        dice_result_line (Box): The last roll's text, above die_boxes.
+        die_boxes (tuple[Box, ...]): DIE_BOXES square boxes, left to right,
+            one per rolled die.
         menu_columns (tuple[Box, ...]): Main menu list columns, in MenuList order;
             each starts with a one-row caption.
         menu_rows (int): How many file rows fit in a menu column above the
@@ -137,6 +149,10 @@ class Layout:
     menu_button: Box
     save_button: Box
     sandbox_message_line: Box
+    dice_area: Box
+    dice_buttons: tuple[Box, ...]
+    dice_result_line: Box
+    die_boxes: tuple[Box, ...]
     menu_columns: tuple[Box, ...]
     menu_rows: int
     start_button: Box
@@ -316,6 +332,22 @@ class Layout:
                     and ordinal < DUGOUT_CAPACITY[dugout]
                 ):
                     return side, dugout, ordinal
+        return None
+
+    def dice_button_at(self, pos: tuple[int, int]) -> int | None:
+        """
+        Find the dice button under a point.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            int | None: The button's index in dice_buttons (and DICE), or None
+                off the buttons.
+        """
+        for index, button in enumerate(self.dice_buttons):
+            if button.contains(pos):
+                return index
         return None
 
     def menu_column(self, which: MenuList) -> Box:
@@ -558,6 +590,52 @@ def _split_dugouts(area: Box, square_size: int) -> tuple[Box, Box, Box]:
     return reserve, ko, injured
 
 
+def _dice_region(
+    panel: Box, message_line: Box, square_size: int
+) -> tuple[Box, tuple[Box, ...], Box, tuple[Box, ...]]:
+    """
+    Stack the dice section upwards from the sandbox message line.
+
+    From the bottom: the die boxes, the result line, the button rows and the
+    caption row, BUTTON_INSET apart except the result line, which sits
+    directly on the die boxes.
+
+    Args:
+        panel (Box): The right-side panel.
+        message_line (Box): The sandbox message line, just below the dice.
+        square_size (int): Side of one grid square in pixels.
+
+    Returns:
+        tuple[Box, tuple[Box, ...], Box, tuple[Box, ...]]: The dice area, the
+            buttons in DICE_BUTTON_ROWS order, the result line and the die boxes.
+    """
+    left = panel.x + BUTTON_INSET
+    inner = panel.width - 2 * BUTTON_INSET
+    side = min(2 * square_size, (inner - (DIE_BOXES - 1) * BUTTON_INSET) // DIE_BOXES)
+    die_y = message_line.y - BUTTON_INSET - side
+    die_boxes = tuple(
+        Box(left + i * (side + BUTTON_INSET), die_y, side, side)
+        for i in range(DIE_BOXES)
+    )
+    result_line = Box(left, die_y - square_size, inner, square_size)
+
+    # Reason: the button rows stack upwards from the result line, one step (a
+    # row plus a gap) each, so the top row sits one step per row above it.
+    # Each row splits the inner width equally.
+    step = square_size + BUTTON_INSET
+    top = result_line.y - len(DICE_BUTTON_ROWS) * step
+    buttons: list[Box] = []
+    for row, count in enumerate(DICE_BUTTON_ROWS):
+        width = (inner - (count - 1) * BUTTON_INSET) // count
+        buttons.extend(
+            Box(left + i * (width + BUTTON_INSET), top + row * step, width, square_size)
+            for i in range(count)
+        )
+    caption_y = top - square_size
+    area = Box(panel.x, caption_y, panel.width, message_line.y - caption_y)
+    return area, tuple(buttons), result_line, die_boxes
+
+
 def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     """
     Compute the full screen layout from the size of one grid square.
@@ -624,6 +702,9 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     sandbox_message_line = save_button._replace(
         y=save_button.y - BUTTON_INSET - square_size
     )
+    dice_area, dice_buttons, dice_result_line, die_boxes = _dice_region(
+        panel, sandbox_message_line, square_size
+    )
 
     window_width = panel_x + PANEL_WIDTH + MARGIN
     window_height = reserve_y + reserve_height + MARGIN
@@ -675,6 +756,10 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         menu_button=menu_button,
         save_button=save_button,
         sandbox_message_line=sandbox_message_line,
+        dice_area=dice_area,
+        dice_buttons=dice_buttons,
+        dice_result_line=dice_result_line,
+        die_boxes=die_boxes,
         menu_columns=menu_columns,
         # Reason: the first row of each column holds its caption and the team
         # preview takes the bottom of the column.

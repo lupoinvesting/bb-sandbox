@@ -34,6 +34,15 @@ Design: [roster_builder.md](roster_builder.md).
 ## Dugout boxes
 - [x] Split each team's reserve area into Reserve, KO and Injured boxes (drag and right-click menu; new teams start in Reserve; saves keep the box)
 
+## Phase 6: Dice Roller
+Design: [dice.md](dice.md).
+- [x] `dice.py`: `BlockFace`, `D6`/`D8`/`D16`/`BLOCK_DIE`, `Dice`, `DICE`, `Roll`, `roll_dice`
+- [x] layout: dice area, dice buttons, result line, die boxes, `dice_button_at`
+- [x] session: RNG, `last_roll`, dice clicks in the sandbox
+- [x] render: `DICE_SPRITES_DIR`, `SpriteError`, `load_block_sprites`, `draw_dice`; player info clipped above the dice
+- [x] app: die font and sprite loading after `set_mode`; dice drawn on the sandbox
+- [x] README: "Dice" section (the buttons, the sprite folder and the file names)
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -49,6 +58,7 @@ Design: [roster_builder.md](roster_builder.md).
 - [ ] Show position and race in the sandbox hover panel.
 - [ ] The team preview shrinks every menu list to 7 rows, including Saved setups, which has no preview; give SETUPS its own row count if saves pile up.
 - [ ] Setup files saved before race/position existed no longer load (no saves had shipped, so the format stayed at version 1).
-- [ ] `build_layout` is 125 lines (108 before Phase 5), over NASA rule 4's 60; split it, e.g. into pitch, panel and menu regions.
+- [ ] `build_layout` is 137 lines (108 before Phase 5), over NASA rule 4's 60; split it, e.g. into pitch, panel and menu regions.
 - [ ] Builder rows clip long skill lists at about 250px, so Big Guys lose most of theirs (Rotspawn's need 841px); show the full list for the positional under the cursor.
 - [ ] `rosters/example.csv` uses Second Season Human stats (Catcher ST 2/PA 5+, Thrower PA 2+, Blitzer without Tackle, Ogre Loner (4+)) and gives its Halfling no PA. These differ from the Third Season race database.
+- [ ] Add the five block dice PNGs to `src/bb_sandbox/sprites/dice/` (names in the README). The folder doesn't exist until then, so every block face shows its name.

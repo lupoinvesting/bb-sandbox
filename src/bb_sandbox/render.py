@@ -1,12 +1,16 @@
-"""Draws the main menu, the race menu, the roster builder and the sandbox.
+"""Draws the main menu, the race menu, the roster builder and the sandbox, and
+loads the block dice sprites.
 
 The only module that calls Pygame draw.
 """
+
+from pathlib import Path
 
 import pygame
 
 from bb_sandbox.board import Board
 from bb_sandbox.builder import TEAM_BUDGET, RosterBuilder
+from bb_sandbox.dice import DICE, BlockFace, Roll
 from bb_sandbox.interaction import BALL, InteractionView, MenuItem
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Status
@@ -69,6 +73,16 @@ MENU_CAPTIONS = {
     MenuList.AWAY_ROSTERS: "Away roster",
     MenuList.SETUPS: "Saved setups",
 }
+# Reason: shipped inside the package, next to races.csv, so it is found
+# whatever folder the app is launched from.
+DICE_SPRITES_DIR = Path(__file__).with_name("sprites") / "dice"
+# A light die face with dark text, for numbers and for block faces without a sprite.
+DIE_FILL = (236, 232, 220)
+DIE_TEXT = (24, 24, 28)
+
+
+class SpriteError(Exception):
+    """A sprite image exists but could not be decoded."""
 
 
 def _rect(box: Box) -> pygame.Rect:
@@ -606,7 +620,7 @@ def _draw_panel(
     hovered: PlayerKey | None,
 ) -> None:
     """
-    Draw the hovered player's details in the info panel, above the message line.
+    Draw the hovered player's details in the info panel, above the dice.
 
     Args:
         surface (pygame.Surface): Target surface.
@@ -622,10 +636,10 @@ def _draw_panel(
         panel.x + 2,
         panel.y + layout.square_size,
         panel.width - 4,
-        layout.sandbox_message_line.y - panel.y - layout.square_size,
+        layout.dice_area.y - panel.y - layout.square_size,
     )
     # Reason: long names and skill lists are clipped to the panel instead of
-    # spilling over the pitch, the message or the buttons.
+    # spilling over the pitch, the dice, the message or the buttons.
     surface.set_clip(_rect(text_area))
     line_height = font.get_linesize()
     for number, line in enumerate(_player_lines(board, hovered)):
@@ -705,3 +719,131 @@ def draw_sandbox(
     _draw_button(surface, font, layout.save_button, "Save setup")
     _draw_button(surface, font, layout.menu_button, "Main menu")
     _draw_context_menu(surface, font, view.menu)
+
+
+def load_block_sprites(folder: Path, size: int) -> dict[BlockFace, pygame.Surface]:
+    """
+    Load the block dice sprites, each scaled to a die box.
+
+    Each face's file is its BlockFace name in lowercase, e.g. `push_back.png`.
+
+    A face whose file is missing is left out, so it is drawn as words; a
+    missing folder leaves out all five.
+
+    Args:
+        folder (Path): The sprite folder, normally DICE_SPRITES_DIR.
+        size (int): Side of a die box in pixels.
+
+    Returns:
+        dict[BlockFace, pygame.Surface]: The faces that have an image.
+
+    Raises:
+        ValueError: If the display mode isn't set; convert_alpha needs it.
+        SpriteError: If a file exists but can't be decoded.
+    """
+    if pygame.display.get_surface() is None:
+        raise ValueError("load_block_sprites needs the display mode set")
+    sprites = {}
+    for face in BlockFace:
+        path = folder / f"{face.name.lower()}.png"
+        if not path.is_file():
+            continue
+        try:
+            image = pygame.image.load(path)
+        except (pygame.error, OSError) as error:
+            raise SpriteError(f"{path.name}: {error}") from error
+        # Reason: scaling once here keeps the per-frame draw a plain blit.
+        sprites[face] = pygame.transform.smoothscale(
+            image.convert_alpha(), (size, size)
+        )
+    return sprites
+
+
+def _roll_text(roll: Roll) -> str:
+    """
+    Build the dice result line for a roll.
+
+    Args:
+        roll (Roll): The roll.
+
+    Returns:
+        str: `#12  2d6 = 8`; block dice have no total, so `#12  3 blocks`.
+    """
+    text = f"#{roll.number}  {roll.dice.label}"
+    if roll.total is None:
+        return text
+    return f"{text} = {roll.total}"
+
+
+def _draw_die(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    die_font: pygame.font.Font,
+    box: Box,
+    face: int | BlockFace,
+    sprites: dict[BlockFace, pygame.Surface],
+) -> None:
+    """
+    Draw one die: a block face's sprite, or else a light die face holding the
+    number or the block face's words.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        font (pygame.font.Font): Font for a block face's words.
+        die_font (pygame.font.Font): Bigger font for a number.
+        box (Box): The die box.
+        face (int | BlockFace): The rolled face.
+        sprites (dict[BlockFace, pygame.Surface]): Block faces with an image,
+            already scaled to the box.
+    """
+    if face in sprites:
+        surface.blit(sprites[face], (box.x, box.y))
+        return
+    pygame.draw.rect(surface, DIE_FILL, _rect(box))
+    pygame.draw.rect(surface, BORDER, _rect(box), 1)
+    if not isinstance(face, BlockFace):
+        _draw_centred(surface, die_font, str(face), box, DIE_TEXT)
+        return
+    # Reason: one word per line, so the longest name, Player Down!, fits the box.
+    words = face.value.split()
+    height = font.get_linesize()
+    top = box.y + (box.height - len(words) * height) // 2
+    for index, word in enumerate(words):
+        line = box._replace(y=top + index * height, height=height)
+        _draw_centred(surface, font, word, line, DIE_TEXT)
+
+
+def draw_dice(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    die_font: pygame.font.Font,
+    roll: Roll | None,
+    sprites: dict[BlockFace, pygame.Surface],
+) -> None:
+    """
+    Draw the sandbox dice section: caption, buttons, result line and dice.
+
+    Call it after draw_sandbox, over the bottom of the panel.
+
+    Args:
+        surface (pygame.Surface): Target surface, sized to layout.window_size.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for the caption, buttons, result line
+            and block face words.
+        die_font (pygame.font.Font): Bigger font for numbered dice.
+        roll (Roll | None): The last roll; None draws no result and no dice.
+        sprites (dict[BlockFace, pygame.Surface]): Block faces with an image,
+            from load_block_sprites.
+    """
+    area = layout.dice_area
+    right = area.x + area.width - 1
+    pygame.draw.line(surface, BORDER, (area.x, area.y), (right, area.y), 2)
+    _draw_label(surface, font, "Dice", area)
+    for dice, button in zip(DICE, layout.dice_buttons):
+        _draw_button(surface, font, button, dice.label)
+    if roll is None:
+        return
+    _draw_label(surface, font, _roll_text(roll), layout.dice_result_line)
+    for face, box in zip(roll.faces, layout.die_boxes):
+        _draw_die(surface, font, die_font, box, face, sprites)

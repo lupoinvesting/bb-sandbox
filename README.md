@@ -44,6 +44,26 @@ In the sandbox, **Save setup** writes the board to `setups/<home>-vs-<away>-YYYY
 (squares, Prone/Stunned status, Reserve/KO/Injured boxes, the ball, and both full rosters).
 The main menu's **Saved setups** list loads one straight into the sandbox; rename a file in Explorer to name it.
 
+## Dice
+
+The sandbox panel's **Dice** section has seven buttons: 1d6, 2d6, 1d8, 1d16, 1 block, 2 blocks and 3 blocks.
+A click shows each die under a result line such as `#12  2d6 = 8`; block dice have no total (`#12  3 blocks`).
+`#12` counts the rolls in this sandbox, so the line changes even when a roll repeats the last faces.
+
+Block dice are drawn from PNG sprites in `src/bb_sandbox/sprites/dice/` (create the folder), one file per face:
+
+| Face | File |
+|---|---|
+| Player Down! | `player_down.png` |
+| Both Down | `both_down.png` |
+| Push Back (on 2 of the 6 sides) | `push_back.png` |
+| Stumble | `stumble.png` |
+| POW! | `pow.png` |
+
+Any size works: each image is scaled to the 64px die at startup, so square images look best.
+No images ship yet; a face without its file shows its name instead.
+An image that exists but can't be decoded stops the app at startup with an error naming the file.
+
 ## Layout
 
 | Module | Responsibility |

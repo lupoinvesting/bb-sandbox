@@ -6,6 +6,7 @@ happens in the methods app calls explicitly (rescan, import_team, load_setup,
 save_setup, save_roster).
 """
 
+import random
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -14,6 +15,7 @@ from typing import NamedTuple
 
 from bb_sandbox.board import Board
 from bb_sandbox.builder import RosterBuilder
+from bb_sandbox.dice import DICE, Roll, roll_dice
 from bb_sandbox.interaction import Interaction
 from bb_sandbox.layout import Layout, MenuList
 from bb_sandbox.pitch import Side
@@ -133,7 +135,7 @@ def _race_or_none(path: Path) -> str | None:
 
 
 class Session:
-    """Owns the screen, imported teams, roster draft, sandbox board and its input."""
+    """Owns the screen, imported teams, roster draft, sandbox board, input and dice."""
 
     def __init__(
         self,
@@ -141,6 +143,7 @@ class Session:
         rosters_dir: Path,
         setups_dir: Path,
         races: tuple[Race, ...],
+        rng: random.Random | None = None,
     ) -> None:
         """
         Start on the main menu. No disk I/O: call rescan() to list the files.
@@ -150,11 +153,15 @@ class Session:
             rosters_dir (Path): Folder holding the roster CSV files.
             setups_dir (Path): Folder holding the saved setup JSON files.
             races (tuple[Race, ...]): The races the race menu offers.
+            rng (random.Random | None): The dice's only source of randomness;
+                None makes a fresh one. Tests pass a seeded one.
         """
         self._layout = layout
         self._rosters_dir = rosters_dir
         self._setups_dir = setups_dir
         self._races = races
+        self._rng = rng if rng is not None else random.Random()
+        self._last_roll: Roll | None = None
         self._rosters: tuple[Path, ...] = ()
         self._roster_entries: tuple[RosterEntry, ...] = ()
         self._setups: tuple[Path, ...] = ()
@@ -194,6 +201,11 @@ class Session:
     def interaction(self) -> Interaction | None:
         """Interaction | None: Sandbox pointer input; None on the main menu."""
         return self._interaction
+
+    @property
+    def last_roll(self) -> Roll | None:
+        """Roll | None: The last dice roll; None off the sandbox or before a roll."""
+        return self._last_roll
 
     def _visible_count(self, files: tuple[Path, ...]) -> int:
         """
@@ -252,7 +264,8 @@ class Session:
 
     def _press_sandbox(self, pos: tuple[int, int]) -> FileRequest | None:
         """
-        Handle a sandbox click: Save setup, Main menu, or pointer input.
+        Handle a sandbox click: Save setup, Main menu, a dice button, or
+        pointer input.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
@@ -262,9 +275,17 @@ class Session:
         """
         if self._layout.save_button.contains(pos):
             return SaveSetup()
+        index = self._layout.dice_button_at(pos)
         if self._layout.menu_button.contains(pos):
             self._screen, self._board, self._message = Screen.MENU, None, ""
             self._interaction = None
+            self._last_roll = None
+        elif index is not None:
+            # Reason: the number goes up with every roll, so a roll that repeats
+            # the last faces still changes the screen. A roll doesn't reach
+            # Interaction, so it starts no drag and leaves an open menu alone.
+            number = 1 if self._last_roll is None else self._last_roll.number + 1
+            self._last_roll = roll_dice(DICE[index], number, self._rng)
         else:
             self._interaction.press(pos)
         return None
@@ -356,7 +377,7 @@ class Session:
 
     def _open_sandbox(self, board: Board, message: str) -> None:
         """
-        Switch to the sandbox showing a board.
+        Switch to the sandbox showing a board, with no dice rolled yet.
 
         Args:
             board (Board): The board to play with.
@@ -366,6 +387,7 @@ class Session:
         self._interaction = Interaction(board, self._layout)
         self._screen = Screen.SANDBOX
         self._message = message
+        self._last_roll = None
 
     def release(self, pos: tuple[int, int]) -> None:
         """

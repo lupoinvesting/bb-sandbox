@@ -6,6 +6,7 @@ import pytest
 from bb_sandbox import render
 from bb_sandbox.board import BALL_START, Board
 from bb_sandbox.builder import RosterBuilder
+from bb_sandbox.dice import DICE, BlockFace, Roll
 from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
 from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
@@ -459,3 +460,126 @@ def test_positional_texts_show_max_cost_stats_and_skills():
         "Bone Head, Mighty Blow",
     )
     assert render._positional_texts(0, RACE.positionals[0])[-1] == ""
+
+
+SPRITE_COLOUR = (200, 30, 160)
+SPRITE_FILES = (
+    "player_down.png",
+    "both_down.png",
+    "push_back.png",
+    "stumble.png",
+    "pow.png",
+)
+
+
+def _draw_dice(font, roll, sprites=None):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_scene(surface, layout, font)
+    die_font = pygame.font.Font(None, 40)
+    render.draw_dice(surface, layout, font, die_font, roll, sprites or {})
+    return surface, layout
+
+
+def _die_drawn(surface, box):
+    colours = _colours(surface, box)
+    return render.DIE_FILL in colours and render.DIE_TEXT in colours
+
+
+def test_dice_buttons_drawn_and_die_boxes_empty_without_a_roll(font):
+    surface, layout = _draw_dice(font, None)
+    area = layout.dice_area
+    assert surface.get_at((area.x + 50, area.y))[:3] == render.BORDER
+    assert _has_text(surface, Box(area.x, area.y + 2, area.width, 30))
+    for button in layout.dice_buttons:
+        assert surface.get_at((button.x + 3, button.y + 3))[:3] == render.BUTTON_FILL
+    assert not _has_text(surface, layout.dice_result_line)
+    for box in layout.die_boxes:
+        assert _colours(surface, box) == {render.PANEL_FILL}
+
+
+def test_a_2d6_roll_draws_two_numbered_dice_and_leaves_the_third_box_empty(font):
+    surface, layout = _draw_dice(font, Roll(3, DICE[1], (6, 2)))
+    first, second, third = layout.die_boxes
+    assert _die_drawn(surface, first) and _die_drawn(surface, second)
+    assert _colours(surface, third) == {render.PANEL_FILL}
+    assert _has_text(surface, layout.dice_result_line)
+
+
+def test_a_block_roll_without_sprites_draws_words_inside_the_dice(font):
+    faces = (BlockFace.PLAYER_DOWN, BlockFace.STUMBLE, BlockFace.BOTH_DOWN)
+    surface, layout = _draw_dice(font, Roll(1, DICE[6], faces))
+    for box in layout.die_boxes:
+        assert _die_drawn(surface, box)
+    # "Player Down!" is wider than its die on one line; on two it stays inside.
+    first, second, _ = layout.die_boxes
+    gap = Box(first.x + first.width, first.y, second.x - first.x - first.width, 64)
+    assert _colours(surface, gap) == {render.PANEL_FILL}
+
+
+def test_a_pow_sprite_replaces_pows_words_only(font):
+    sprite = pygame.Surface((64, 64))
+    sprite.fill(SPRITE_COLOUR)
+    faces = (BlockFace.POW, BlockFace.STUMBLE, BlockFace.POW)
+    roll = Roll(1, DICE[6], faces)
+    surface, layout = _draw_dice(font, roll, {BlockFace.POW: sprite})
+    first, second, third = layout.die_boxes
+    assert _colours(surface, first) == _colours(surface, third) == {SPRITE_COLOUR}
+    assert _die_drawn(surface, second)
+    assert SPRITE_COLOUR not in _colours(surface, second)
+
+
+def test_roll_text_shows_a_total_for_numbered_dice_only():
+    assert render._roll_text(Roll(12, DICE[1], (3, 5))) == "#12  2d6 = 8"
+    assert render._roll_text(Roll(1, DICE[3], (16,))) == "#1  1d16 = 16"
+    faces = (BlockFace.POW, BlockFace.POW, BlockFace.STUMBLE)
+    assert render._roll_text(Roll(12, DICE[6], faces)) == "#12  3 blocks"
+
+
+def test_panel_text_stops_above_the_dice(font):
+    skills = tuple(f"Skill {number}" for number in range(30))
+    player = _team(1).players[0].model_copy(update={"skills": skills})
+    board = Board(Team(name="t", race="Human", players=(player,)), _team(1))
+    view = InteractionView(PlayerKey(Side.HOME, 0), None, ())
+    surface, layout = _sandbox(board, view)
+    area = layout.dice_area
+    assert _has_text(surface, Box(area.x, area.y - 20, area.width, 20))
+    assert not _has_text(surface, area)
+
+
+@pytest.fixture
+def display():
+    # Reason: load_block_sprites calls convert_alpha, which needs a display mode.
+    pygame.init()
+    pygame.display.set_mode((1, 1))
+    yield
+    pygame.quit()
+
+
+def test_load_block_sprites_loads_each_face_scaled_to_the_box(display, tmp_path):
+    image = pygame.Surface((10, 20))
+    image.fill(SPRITE_COLOUR)
+    for name in SPRITE_FILES:
+        pygame.image.save(image, tmp_path / name)
+    sprites = render.load_block_sprites(tmp_path, 64)
+    assert set(sprites) == set(BlockFace)
+    for sprite in sprites.values():
+        assert sprite.get_size() == (64, 64)
+        assert sprite.get_at((32, 32))[:3] == SPRITE_COLOUR
+
+
+def test_load_block_sprites_skips_missing_files_and_folders(display, tmp_path):
+    assert render.load_block_sprites(tmp_path / "missing", 64) == {}
+    pygame.image.save(pygame.Surface((8, 8)), tmp_path / "pow.png")
+    assert list(render.load_block_sprites(tmp_path, 64)) == [BlockFace.POW]
+
+
+def test_load_block_sprites_names_a_corrupt_file(display, tmp_path):
+    (tmp_path / "push_back.png").write_bytes(b"not a png")
+    with pytest.raises(render.SpriteError, match="push_back.png"):
+        render.load_block_sprites(tmp_path, 64)
+
+
+def test_load_block_sprites_needs_the_display_mode(tmp_path):
+    with pytest.raises(ValueError, match="display mode"):
+        render.load_block_sprites(tmp_path, 64)

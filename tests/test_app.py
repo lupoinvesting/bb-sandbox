@@ -8,7 +8,7 @@ from bb_sandbox.app import _draw, handle_event, run
 from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, RaceError, load_races
-from bb_sandbox.render import BACKGROUND, BUTTON_FILL
+from bb_sandbox.render import BACKGROUND, BUTTON_FILL, PANEL_FILL, SpriteError
 from bb_sandbox.session import Screen, Session
 
 CSV = (
@@ -161,7 +161,8 @@ def frame():
 
     def draw(session):
         surface = pygame.Surface(layout.window_size)
-        _draw(surface, layout, pygame.font.Font(None, 20), session)
+        font, die_font = pygame.font.Font(None, 20), pygame.font.Font(None, 40)
+        _draw(surface, layout, font, die_font, {}, session)
         return surface
 
     yield layout, draw
@@ -186,5 +187,47 @@ def test_run_stops_before_the_window_on_a_broken_race_file(in_tmp, monkeypatch):
     broken.write_text("race,position\nHuman,Lineman\n")
     monkeypatch.setattr(app, "RACES_FILE", broken)
     with pytest.raises(RaceError, match="races.csv: header"):
+        run(max_frames=1)
+    assert not pygame.get_init()
+
+
+def _sandbox(in_tmp):
+    rosters = in_tmp / "rosters"
+    rosters.mkdir()
+    (rosters / "orcs.csv").write_text(CSV)
+    layout = build_layout()
+    session = Session(layout, rosters, in_tmp / "setups", RACES)
+    session.rescan()
+    for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
+        handle_event(session, _click(layout.menu_row(which, 0)))
+    handle_event(session, _click(layout.start_button))
+    return layout, session
+
+
+def test_handle_event_rolls_the_clicked_dice(in_tmp):
+    layout, session = _sandbox(in_tmp)
+    assert session.last_roll is None
+    assert handle_event(session, _click(layout.dice_buttons[5]))
+    assert session.last_roll.dice.label == "2 blocks"
+    assert len(session.last_roll.faces) == 2
+
+
+def test_draw_shows_the_dice_on_the_sandbox_only(in_tmp, frame):
+    layout, draw = frame
+    button = layout.dice_buttons[0]
+    corner = (button.x + 3, button.y + 3)
+    _, session = _sandbox(in_tmp)
+    assert draw(session).get_at(corner)[:3] == BUTTON_FILL
+    handle_event(session, _click(layout.dice_buttons[1]))
+    die = layout.die_boxes[1]
+    assert draw(session).get_at((die.x + 3, die.y + 3))[:3] != PANEL_FILL
+    handle_event(session, _click(layout.menu_button))
+    assert draw(session).get_at(corner)[:3] != BUTTON_FILL
+
+
+def test_run_stops_on_a_corrupt_dice_image(in_tmp, monkeypatch):
+    (in_tmp / "pow.png").write_bytes(b"not a png")
+    monkeypatch.setattr(app, "DICE_SPRITES_DIR", in_tmp)
+    with pytest.raises(SpriteError, match="pow.png"):
         run(max_frames=1)
     assert not pygame.get_init()

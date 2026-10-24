@@ -4,9 +4,18 @@ from pathlib import Path
 
 import pygame
 
+from bb_sandbox.dice import BlockFace
 from bb_sandbox.layout import Layout, build_layout
 from bb_sandbox.races import RACES_FILE, load_races
-from bb_sandbox.render import draw_builder, draw_menu, draw_races, draw_sandbox
+from bb_sandbox.render import (
+    DICE_SPRITES_DIR,
+    draw_builder,
+    draw_dice,
+    draw_menu,
+    draw_races,
+    draw_sandbox,
+    load_block_sprites,
+)
 from bb_sandbox.session import (
     ImportRoster,
     LoadSetup,
@@ -19,6 +28,8 @@ from bb_sandbox.session import (
 WINDOW_TITLE = "Blood Bowl Sandbox"
 FPS = 60
 FONT_SIZE = 20
+# Reason: numbers on the dice are drawn bigger than the rest of the text.
+DIE_FONT_SIZE = 40
 ROSTERS_DIR = Path("rosters")
 SETUPS_DIR = Path("setups")
 LEFT_BUTTON = 1
@@ -69,7 +80,12 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
 
 
 def _draw(
-    surface: pygame.Surface, layout: Layout, font: pygame.font.Font, session: Session
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    die_font: pygame.font.Font,
+    sprites: dict[BlockFace, pygame.Surface],
+    session: Session,
 ) -> None:
     """
     Draw whichever screen the session is showing.
@@ -77,12 +93,16 @@ def _draw(
     Args:
         surface (pygame.Surface): The window surface.
         layout (Layout): Screen geometry.
-        font (pygame.font.Font): Font for all text.
+        font (pygame.font.Font): Font for all text but the numbers on dice.
+        die_font (pygame.font.Font): Bigger font for the numbers on dice.
+        sprites (dict[BlockFace, pygame.Surface]): Block dice images, from
+            load_block_sprites.
         session (Session): The session to draw.
     """
     if session.screen is Screen.SANDBOX and session.interaction is not None:
         view = session.interaction.view()
         draw_sandbox(surface, layout, font, session.board, view, session.message)
+        draw_dice(surface, layout, font, die_font, session.last_roll, sprites)
     elif session.screen is Screen.RACES:
         draw_races(surface, layout, font, session.races, session.message)
     elif session.screen is Screen.BUILDER and session.builder is not None:
@@ -105,6 +125,7 @@ def run(max_frames: int | None = None) -> int:
     Raises:
         ValueError: If max_frames is given and is not positive.
         RaceError: If the race database shipped with the app is invalid.
+        SpriteError: If a block dice image exists but can't be decoded.
     """
     if max_frames is not None and max_frames <= 0:
         raise ValueError(f"max_frames must be positive, got {max_frames}")
@@ -120,6 +141,12 @@ def run(max_frames: int | None = None) -> int:
         screen = pygame.display.set_mode(layout.window_size)
         pygame.display.set_caption(WINDOW_TITLE)
         font = pygame.font.Font(None, FONT_SIZE)
+        die_font = pygame.font.Font(None, DIE_FONT_SIZE)
+        # Reason: loaded once, after set_mode, because convert_alpha needs the
+        # display mode. Like a broken races.csv, an image that exists but can't
+        # be decoded stops the app with a SpriteError naming the file; only a
+        # missing image falls back to the face's name.
+        sprites = load_block_sprites(DICE_SPRITES_DIR, layout.die_boxes[0].width)
         clock = pygame.time.Clock()
         frames = 0
         running = True
@@ -128,7 +155,7 @@ def run(max_frames: int | None = None) -> int:
         while running and (max_frames is None or frames < max_frames):
             for event in pygame.event.get():
                 running = handle_event(session, event) and running
-            _draw(screen, layout, font, session)
+            _draw(screen, layout, font, die_font, sprites, session)
             pygame.display.flip()
             clock.tick(FPS)
             frames += 1

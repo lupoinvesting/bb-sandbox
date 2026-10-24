@@ -1,9 +1,11 @@
 """Tests for bb_sandbox.session, with a temporary rosters/ folder."""
 
+import random
 from datetime import datetime
 
 import pytest
 
+from bb_sandbox.dice import DICE
 from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square
 from bb_sandbox.races import Positional, Race
@@ -363,3 +365,75 @@ def test_failed_roster_save_stays_in_builder(tmp_path):
 def test_save_roster_without_builder_raises(session):
     with pytest.raises(ValueError):
         session.save_roster()
+
+
+def _dice(index):
+    return _click(LAYOUT.dice_buttons[index])
+
+
+def test_dice_clicks_roll_and_number_the_rolls(session):
+    _sandbox(session)
+    assert session.last_roll is None
+    assert session.press(_dice(1)) is None
+    first = session.last_roll
+    assert (first.number, first.dice, len(first.faces)) == (1, DICE[1], 2)
+    assert session.press(_dice(6)) is None
+    second = session.last_roll
+    assert (second.number, second.dice, len(second.faces)) == (2, DICE[6], 3)
+    assert session.screen is Screen.SANDBOX
+
+
+def test_a_roll_starts_no_drag_and_leaves_the_menu_and_message(session):
+    _sandbox(session)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
+    session.save_setup(datetime(2026, 1, 1))
+    message = session.message
+    session.right_click(_click(LAYOUT.square(4, 4)))
+    session.press(_dice(0))
+    session.move(_click(LAYOUT.square(8, 8)))
+    view = session.interaction.view()
+    assert view.dragged is None and len(view.menu) == 6
+    assert session.message == message and session.last_roll.number == 1
+
+
+def _seeded_sandbox(tmp_path, seed):
+    (tmp_path / "orcs.csv").write_text(CSV)
+    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, random.Random(seed))
+    session.rescan()
+    for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
+        request = session.press(_row(which, 0))
+        session.import_team(request.side, request.path)
+    session.press(_click(LAYOUT.start_button))
+    return session
+
+
+def test_sessions_seeded_alike_roll_the_same_faces(tmp_path):
+    first, second = _seeded_sandbox(tmp_path, 3), _seeded_sandbox(tmp_path, 3)
+    for index in range(len(DICE)):
+        first.press(_dice(index))
+        second.press(_dice(index))
+        assert first.last_roll == second.last_roll
+
+
+def test_main_menu_and_a_new_sandbox_clear_the_roll(session, tmp_path):
+    _sandbox(session)
+    session.press(_dice(0))
+    session.press(_click(LAYOUT.menu_button))
+    assert session.last_roll is None
+    session.press(_click(LAYOUT.start_button))
+    assert session.screen is Screen.SANDBOX and session.last_roll is None
+    # Loading a setup straight from the sandbox restarts the numbering too.
+    session.save_setup(datetime(2026, 1, 1))
+    session.press(_dice(0))
+    session.press(_dice(0))
+    assert session.last_roll.number == 2
+    session.load_setup(tmp_path / "setups" / "orcs-vs-orcs-20260101-000000.json")
+    assert session.last_roll is None
+    session.press(_dice(0))
+    assert session.last_roll.number == 1
+
+
+def test_dice_positions_do_nothing_on_the_main_menu(session):
+    for index in range(len(DICE)):
+        assert session.press(_dice(index)) is None
+    assert session.screen is Screen.MENU and session.last_roll is None
