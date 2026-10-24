@@ -1,5 +1,5 @@
-"""Draws the main menu, the race menu, the roster builder and the sandbox, and
-loads the block dice and player sprites.
+"""Draws the main menu, the race menu, the roster builder, the Options screen
+and the sandbox, and loads the block dice, player and pitch sprites.
 
 The only module that calls Pygame draw.
 """
@@ -7,18 +7,20 @@ The only module that calls Pygame draw.
 import re
 from collections.abc import Mapping
 from pathlib import Path
+from typing import NamedTuple
 
 import pygame
 
 from bb_sandbox.board import Board
 from bb_sandbox.builder import TEAM_BUDGET, RosterBuilder
 from bb_sandbox.dice import DICE, BlockFace, Roll
+from bb_sandbox.images import list_images
 from bb_sandbox.interaction import BALL, InteractionView, MenuItem
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
-from bb_sandbox.session import MenuView, RosterEntry
+from bb_sandbox.session import MenuView, OptionsView, RosterEntry
 
 BACKGROUND = (30, 30, 34)
 PITCH_GREEN = (46, 125, 50)
@@ -85,7 +87,6 @@ DICE_SPRITES_DIR = Path("sprites") / "dice"
 DIE_FILL = (236, 232, 220)
 DIE_TEXT = (24, 24, 28)
 # Player images are user files, in one folder per side: see load_player_sprites.
-IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
 DEFAULT_SPRITE = "default"
 # Reason: bounds the decode loop per side, with room for more than one image
 # per database position (125) plus the default.
@@ -111,6 +112,19 @@ def _sprite_name(text: str) -> str:
     # out the underscore), so each run of spaces, apostrophes or underscores
     # becomes one hyphen.
     return re.sub(r"[\W_]+", "-", text.casefold()).strip("-")
+
+
+class PitchSprite(NamedTuple):
+    """The chosen pitch image, or why it didn't load.
+
+    Attributes:
+        image (pygame.Surface | None): The image, exactly the pitch's size;
+            None draws the pitch in code.
+        problem (str): Why the chosen image didn't load, '' if it did.
+    """
+
+    image: pygame.Surface | None = None
+    problem: str = ""
 
 
 class PlayerSprites:
@@ -191,21 +205,31 @@ def _draw_label(
     surface.blit(font.render(text, True, TEXT), (box.x + 8, box.y + 6))
 
 
-def _draw_pitch(surface: pygame.Surface, layout: Layout) -> None:
+def _draw_pitch(
+    surface: pygame.Surface, layout: Layout, image: pygame.Surface | None
+) -> None:
     """
     Draw the pitch grid, wide zones, endzones and line of scrimmage.
 
     Args:
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
+        image (pygame.Surface | None): A pitch image, the pitch's size, drawn
+            in place of the fills; None draws the fills in code.
     """
     pitch = layout.pitch
-    pygame.draw.rect(surface, PITCH_GREEN, _rect(pitch))
-    for zone in layout.wide_zones:
-        pygame.draw.rect(surface, WIDE_ZONE_GREEN, _rect(zone))
-    # Reason: drawn after the wide zones so the endzone colour wins on the corners.
-    for zone in layout.endzones:
-        pygame.draw.rect(surface, ENDZONE_FILL, _rect(zone))
+    if image is not None:
+        # Reason: the image replaces the fills only; the lines below are still
+        # drawn on top so the squares stay readable.
+        surface.blit(image, (pitch.x, pitch.y))
+    else:
+        pygame.draw.rect(surface, PITCH_GREEN, _rect(pitch))
+        for zone in layout.wide_zones:
+            pygame.draw.rect(surface, WIDE_ZONE_GREEN, _rect(zone))
+        # Reason: drawn after the wide zones so the endzone colour wins on the
+        # corners.
+        for zone in layout.endzones:
+            pygame.draw.rect(surface, ENDZONE_FILL, _rect(zone))
 
     # Reason: pygame.draw.line includes its end point, so stop on the last pixel
     # inside the pitch rather than one past it.
@@ -227,7 +251,12 @@ def _draw_pitch(surface: pygame.Surface, layout: Layout) -> None:
     pygame.draw.rect(surface, BORDER, _rect(pitch), 2)
 
 
-def draw_scene(surface: pygame.Surface, layout: Layout, font: pygame.font.Font) -> None:
+def draw_scene(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    pitch_image: pygame.Surface | None = None,
+) -> None:
     """
     Draw the full static scene: pitch, dugout boxes and info panel.
 
@@ -235,9 +264,11 @@ def draw_scene(surface: pygame.Surface, layout: Layout, font: pygame.font.Font) 
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for area captions.
+        pitch_image (pygame.Surface | None): The pitch image, from
+            load_pitch_sprite; None draws the pitch in code.
     """
     surface.fill(BACKGROUND)
-    _draw_pitch(surface, layout)
+    _draw_pitch(surface, layout, pitch_image)
 
     for side in Side:
         for dugout in Dugout:
@@ -401,7 +432,8 @@ def draw_menu(
     message: str,
 ) -> None:
     """
-    Draw the main menu: roster and setup lists, message line and Start.
+    Draw the main menu: roster and setup lists, message line, New roster,
+    Start and Options.
 
     Args:
         surface (pygame.Surface): Target surface, sized to layout.window_size.
@@ -447,6 +479,7 @@ def draw_menu(
     _draw_button(surface, font, layout.new_roster_button, "New roster")
     ready = menu.home is not None and menu.away is not None
     _draw_button(surface, font, layout.start_button, "Start", ready)
+    _draw_button(surface, font, layout.options_button, "Options")
 
 
 def draw_races(
@@ -473,6 +506,47 @@ def draw_races(
     _draw_label(surface, font, "Pick a race", layout.menu_columns[0])
     for index, race in enumerate(races):
         _draw_label(surface, font, race.name, layout.race_cell(index))
+    _draw_label(surface, font, message, layout.menu_message_line)
+    _draw_button(surface, font, layout.back_button, "Back")
+
+
+def draw_options(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    options: OptionsView,
+    message: str,
+) -> None:
+    """
+    Draw the Options screen: the pitch list in the first column, message line
+    and Back.
+
+    Args:
+        surface (pygame.Surface): Target surface, sized to layout.window_size.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        options (OptionsView): The pitch image names and the chosen one.
+        message (str): Status message, '' for none.
+    """
+    surface.fill(BACKGROUND)
+    for column in layout.menu_columns:
+        pygame.draw.rect(surface, PANEL_FILL, _rect(column))
+        pygame.draw.rect(surface, BORDER, _rect(column), 2)
+    _draw_label(surface, font, "Pitch", layout.menu_columns[0])
+    # Reason: row 0 is the drawn pitch, which None selects.
+    rows: list[tuple[str, str | None]] = [("Drawn pitch", None)]
+    rows.extend((name, name) for name in options.pitches)
+    for index, (label, pitch) in enumerate(rows[: layout.option_rows]):
+        row = layout.option_row(index)
+        if pitch == options.selected:
+            pygame.draw.rect(surface, HIGHLIGHT, _rect(row))
+        _draw_label(surface, font, label, row)
+    if len(rows) < layout.option_rows:
+        last = layout.option_row(len(rows))
+        if options.hidden:
+            _draw_label(surface, font, f"+{options.hidden} more", last)
+        elif not options.pitches:
+            _draw_label(surface, font, "No images in sprites/pitch/", last)
     _draw_label(surface, font, message, layout.menu_message_line)
     _draw_button(surface, font, layout.back_button, "Back")
 
@@ -798,6 +872,7 @@ def draw_sandbox(
     board: Board,
     view: InteractionView,
     player_sprites: PlayerSprites,
+    pitch_image: pygame.Surface | None,
     message: str,
 ) -> None:
     """
@@ -811,9 +886,11 @@ def draw_sandbox(
         view (InteractionView): Hover, drag and context menu state.
         player_sprites (PlayerSprites): Player images; a player without one
             is drawn as a token in the team colour.
+        pitch_image (pygame.Surface | None): The pitch image, from
+            load_pitch_sprite; None draws the pitch in code.
         message (str): Status message (save/load feedback), '' for none.
     """
-    draw_scene(surface, layout, font)
+    draw_scene(surface, layout, font, pitch_image)
     images = _player_images(board, player_sprites)
     dragged = view.dragged.item if view.dragged else None
     for key in board.keys():
@@ -906,28 +983,6 @@ def load_block_sprites(folder: Path, size: int) -> dict[BlockFace, pygame.Surfac
     return sprites
 
 
-def _image_files(folder: Path) -> tuple[Path, ...]:
-    """
-    List the image files in a folder.
-
-    Args:
-        folder (Path): Folder to scan.
-
-    Returns:
-        tuple[Path, ...]: Files with one of IMAGE_SUFFIXES, in any case, sorted
-            by name; empty if the folder is missing.
-    """
-    if not folder.is_dir():
-        return ()
-    return tuple(
-        sorted(
-            p
-            for p in folder.iterdir()
-            if p.suffix.lower() in IMAGE_SUFFIXES and p.is_file()
-        )
-    )
-
-
 def _fit_square(image: pygame.Surface, size: int) -> pygame.Surface:
     """
     Scale an image to fit a square, keeping its aspect ratio.
@@ -963,7 +1018,7 @@ def _load_player_side(
             sprite name, and a note per problem, in the order found.
     """
     side_folder = folder / side.value
-    files = _image_files(side_folder)
+    files = list_images(side_folder)
     notes: list[str] = []
     if len(files) > MAX_PLAYER_SPRITES:
         notes.append(f"{side_folder.as_posix()}: more than {MAX_PLAYER_SPRITES} images")
@@ -1014,6 +1069,42 @@ def load_player_sprites(folder: Path, size: int) -> PlayerSprites:
         images.update(((side, name), image) for name, image in side_images.items())
         notes.extend(side_notes)
     return PlayerSprites(images, notes[0] if notes else "")
+
+
+def load_pitch_sprite(path: Path | None, size: tuple[int, int]) -> PitchSprite:
+    """
+    Load the chosen pitch image, stretched to the pitch's size.
+
+    The image is a user file, so a missing or broken one never raises: it
+    draws the pitch in code and names the file in the problem.
+
+    Args:
+        path (Path | None): The image file; None for the drawn pitch.
+        size (tuple[int, int]): The pitch's (width, height) in pixels.
+
+    Returns:
+        PitchSprite: The image, or no image and why.
+
+    Raises:
+        ValueError: If a size isn't positive, or the display mode isn't set;
+            convert_alpha needs it.
+    """
+    if min(size) <= 0:
+        raise ValueError(f"size must be positive, got {size}")
+    if pygame.display.get_surface() is None:
+        raise ValueError("load_pitch_sprite needs the display mode set")
+    if path is None:
+        return PitchSprite()
+    if not path.is_file():
+        return PitchSprite(problem=f"{path.as_posix()}: file not found")
+    try:
+        image = _load_image(path)
+    except SpriteError as error:
+        # Reason: the error starts with the file name, so prefix the folder.
+        return PitchSprite(problem=f"{path.parent.as_posix()}/{error}")
+    # Reason: stretched, not fitted, so the image always covers the pitch;
+    # scaling once here keeps the per-frame draw a plain blit.
+    return PitchSprite(pygame.transform.smoothscale(image, size))
 
 
 def _roll_text(roll: Roll) -> str:

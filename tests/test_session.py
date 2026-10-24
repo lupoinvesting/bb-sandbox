@@ -14,8 +14,10 @@ from bb_sandbox.session import (
     ImportRoster,
     LoadSetup,
     MenuView,
+    OptionsView,
     RosterEntry,
     SaveRoster,
+    SaveSettings,
     SaveSetup,
     Screen,
     Session,
@@ -59,12 +61,16 @@ def _row(which, index):
     return _click(LAYOUT.menu_row(which, index))
 
 
+def _files(folder):
+    return {"pitches_dir": folder / "pitch", "settings_file": folder / "settings.json"}
+
+
 @pytest.fixture
 def session(tmp_path):
     for name in ("orcs", "humans"):
         (tmp_path / f"{name}.csv").write_text(CSV)
     (tmp_path / "broken.csv").write_text("nonsense\n")
-    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES)
+    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
     session.rescan()
     return session
 
@@ -76,7 +82,9 @@ def _import_both(session):
 
 
 def test_starts_on_menu_without_io(tmp_path):
-    session = Session(LAYOUT, tmp_path / "missing", tmp_path / "none", RACES)
+    session = Session(
+        LAYOUT, tmp_path / "missing", tmp_path / "none", RACES, **_files(tmp_path)
+    )
     assert session.screen is Screen.MENU and session.board is None
     assert session.races == RACES and session.builder is None
     assert session.menu_view() == MenuView((), 0, None, None)
@@ -146,7 +154,7 @@ def test_overflow_shows_more_row_and_ignores_it(tmp_path):
     total = LAYOUT.menu_rows + 3
     for index in range(total):
         (tmp_path / f"team{index:02}.csv").write_text(CSV)
-    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES)
+    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
     session.rescan()
     view = session.menu_view()
     assert len(view.rosters) == LAYOUT.menu_rows - 1
@@ -354,7 +362,7 @@ def test_failed_roster_save_stays_in_builder(tmp_path):
     # Reason: a file where the rosters folder should be makes the save fail.
     rosters = tmp_path / "rosters"
     rosters.write_text("not a folder")
-    session = Session(LAYOUT, rosters, tmp_path / "setups", RACES)
+    session = Session(LAYOUT, rosters, tmp_path / "setups", RACES, **_files(tmp_path))
     _builder(session, 0)
     session.press(_click(LAYOUT.positional_row(0)))
     session.save_roster(datetime(2026, 1, 1))
@@ -398,7 +406,14 @@ def test_a_roll_starts_no_drag_and_leaves_the_menu_and_message(session):
 
 def _seeded_sandbox(tmp_path, seed):
     (tmp_path / "orcs.csv").write_text(CSV)
-    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, random.Random(seed))
+    session = Session(
+        LAYOUT,
+        tmp_path,
+        tmp_path / "setups",
+        RACES,
+        random.Random(seed),
+        **_files(tmp_path),
+    )
     session.rescan()
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         request = session.press(_row(which, 0))
@@ -437,3 +452,94 @@ def test_dice_positions_do_nothing_on_the_main_menu(session):
     for index in range(len(DICE)):
         assert session.press(_dice(index)) is None
     assert session.screen is Screen.MENU and session.last_roll is None
+
+
+def _options(tmp_path, *names):
+    folder = tmp_path / "pitch"
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (folder / name).write_bytes(b"")
+    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
+    session.rescan()
+    session.press(_click(LAYOUT.options_button))
+    return session
+
+
+def _option(index):
+    return _click(LAYOUT.option_row(index))
+
+
+def test_options_button_opens_the_options_screen_and_clears_the_message(session):
+    session.press(_click(LAYOUT.start_button))
+    assert session.message
+    session.press(_click(LAYOUT.options_button))
+    assert session.screen is Screen.OPTIONS and session.message == ""
+
+
+def test_options_lists_the_pitch_images_with_the_drawn_pitch_chosen(tmp_path):
+    session = _options(tmp_path, "b.jpg", "a.png", "notes.txt")
+    assert session.options_view() == OptionsView(("a.png", "b.jpg"), 0, None)
+    assert session.pitch is None and session.pitch_path is None
+
+
+def test_a_pitch_row_picks_it_once_and_drawn_pitch_and_back_work(tmp_path):
+    session = _options(tmp_path, "a.png", "b.jpg")
+    assert session.press(_option(2)) == SaveSettings()
+    assert session.pitch == "b.jpg"
+    assert session.pitch_path == tmp_path / "pitch" / "b.jpg"
+    assert session.options_view().selected == "b.jpg"
+    # Picking the current row again changes nothing, so nothing is saved.
+    assert session.press(_option(2)) is None
+    assert session.press(_option(0)) == SaveSettings()
+    assert session.pitch is None
+    assert session.press(_click(LAYOUT.back_button)) is None
+    assert session.screen is Screen.MENU
+
+
+def test_the_more_row_empty_rows_and_the_caption_pick_nothing(tmp_path):
+    names = [f"p{i:02}.png" for i in range(LAYOUT.option_rows)]
+    session = _options(tmp_path, *names)
+    view = session.options_view()
+    # Row 0 is the drawn pitch and the last row "+N more".
+    assert len(view.pitches) == LAYOUT.option_rows - 2 and view.hidden == 2
+    assert session.press(_option(LAYOUT.option_rows - 1)) is None
+    column = LAYOUT.menu_columns[0]
+    assert session.press((column.x + 2, column.y + 2)) is None
+    small = _options(tmp_path / "small", "a.png")
+    assert small.press(_option(2)) is None
+    assert small.pitch is None and small.screen is Screen.OPTIONS
+
+
+def test_load_settings_restores_the_pitch_and_save_settings_writes_it(tmp_path):
+    session = _options(tmp_path, "a.png")
+    session.press(_option(1))
+    session.save_settings()
+    restored = Session(LAYOUT, tmp_path, tmp_path, RACES, **_files(tmp_path))
+    restored.load_settings()
+    assert restored.pitch == "a.png" and restored.message == ""
+
+
+def test_a_missing_file_stays_chosen_and_listed_files_follow_the_folder(tmp_path):
+    session = _options(tmp_path, "a.png")
+    session.press(_option(1))
+    (tmp_path / "pitch" / "a.png").unlink()
+    session.rescan()
+    assert session.options_view() == OptionsView((), 0, "a.png")
+
+
+def test_an_invalid_settings_file_keeps_the_drawn_pitch_with_a_message(tmp_path):
+    (tmp_path / "settings.json").write_text('{"version": 1, "pitch": "../x.png"}')
+    session = Session(LAYOUT, tmp_path, tmp_path, RACES, **_files(tmp_path))
+    session.load_settings()
+    assert session.pitch is None
+    assert session.message.startswith("settings.json: ")
+
+
+def test_a_failed_settings_save_becomes_the_message_and_keeps_the_choice(tmp_path):
+    session = _options(tmp_path, "a.png")
+    session.press(_option(1))
+    # Reason: a folder where the file should be makes the write fail.
+    (tmp_path / "settings.json").mkdir()
+    session.save_settings()
+    assert session.message.startswith("settings.json: ")
+    assert session.pitch == "a.png"

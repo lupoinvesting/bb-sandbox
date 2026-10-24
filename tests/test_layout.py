@@ -505,3 +505,42 @@ def test_dice_button_at_misses_caption_gaps_and_outside():
 def test_dice_leave_the_player_info_its_caption_and_eight_rows():
     layout = build_layout(32)
     assert layout.dice_area.y >= layout.panel.y + 9 * 32
+
+
+def test_options_button_sits_right_of_start_inside_the_window():
+    layout = build_layout(32)
+    options, start = layout.options_button, layout.start_button
+    assert options.y == start.y
+    assert (options.width, options.height) == (start.width, start.height)
+    assert options.x >= start.x + start.width
+    assert options.x + options.width <= layout.window_size[0]
+
+
+def test_option_row_at_inverts_option_row():
+    layout = build_layout(32)
+    column = layout.menu_columns[0]
+    assert layout.option_rows > layout.menu_rows
+    for index in range(layout.option_rows):
+        row = layout.option_row(index)
+        assert row.y + row.height <= column.y + column.height
+        assert layout.option_row_at((row.x + 2, row.y + 2)) == index
+
+
+def test_option_row_at_misses_the_caption_and_other_columns():
+    layout = build_layout(32)
+    column = layout.menu_columns[0]
+    assert layout.option_row_at((column.x + 2, column.y + 2)) is None
+    other = layout.menu_columns[1]
+    assert layout.option_row_at((other.x + 2, other.y + 40)) is None
+
+
+@pytest.mark.parametrize("offset", [-1, 0])
+def test_option_row_out_of_range_raises(offset):
+    layout = build_layout(32)
+    index = offset if offset < 0 else layout.option_rows
+    with pytest.raises(ValueError):
+        layout.option_row(index)
+
+
+def test_tiny_square_keeps_option_rows_non_negative():
+    assert build_layout(1).option_rows >= 0

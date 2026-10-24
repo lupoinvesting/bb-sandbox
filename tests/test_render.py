@@ -12,7 +12,7 @@ from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, Positional, Race, load_races
 from bb_sandbox.roster import Player, Team
-from bb_sandbox.session import MenuView, RosterEntry
+from bb_sandbox.session import MenuView, OptionsView, RosterEntry
 
 EMPTY_VIEW = InteractionView(None, None, ())
 NO_SPRITES = render.PlayerSprites()
@@ -90,7 +90,7 @@ def test_sandbox_draws_tokens_in_dugouts(font):
     board = Board(_team(3), _team(1))
     board.bench(PlayerKey(Side.HOME, 1), Dugout.KO)
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, "")
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, None, "")
 
     home_slot = layout.dugout_slot(Side.HOME, Dugout.RESERVE, 0)
     # Bottom-left corner of the token body, clear of the head bar and number.
@@ -114,7 +114,7 @@ def test_sandbox_draws_placed_token_on_its_square(font):
     board = Board(_team(1), _team(1))
     board.place(PlayerKey(Side.AWAY, 0), Square(5, 7))
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, "")
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, None, "")
     square = layout.square(5, 7)
     assert surface.get_at((square.x + 5, square.y + 27))[:3] == (
         render.TEAM_COLOURS[Side.AWAY]
@@ -216,7 +216,7 @@ def _sandbox(board, view=EMPTY_VIEW, player_sprites=NO_SPRITES):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
     font = pygame.font.Font(None, 20)
-    render.draw_sandbox(surface, layout, font, board, view, player_sprites, "")
+    render.draw_sandbox(surface, layout, font, board, view, player_sprites, None, "")
     return surface, layout
 
 
@@ -325,7 +325,9 @@ def test_sandbox_draws_save_button_and_clipped_message(font):
     surface = pygame.Surface(layout.window_size)
     board = Board(_team(1), _team(1))
     message = "Saved " + "x" * 200
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, message)
+    render.draw_sandbox(
+        surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, None, message
+    )
     save = layout.save_button
     assert surface.get_at((save.x + 3, save.y + 3))[:3] == render.BUTTON_FILL
     line = layout.sandbox_message_line
@@ -771,3 +773,96 @@ def test_a_dragged_player_keeps_their_sprite(font):
     sprites = render.PlayerSprites({(Side.AWAY, "default"): _sprite(SPRITE_COLOUR)})
     surface, _ = _sandbox(board, view, sprites)
     assert surface.get_at((target.x + 1, target.y + 1))[:3] == SPRITE_COLOUR
+
+
+PITCH_SIZE = (832, 480)
+
+
+def test_load_pitch_sprite_stretches_the_image_to_the_pitch(display, tmp_path):
+    _save_image(tmp_path / "grass.png", SPRITE_COLOUR, size=(26, 15))
+    sprite = render.load_pitch_sprite(tmp_path / "grass.png", PITCH_SIZE)
+    assert sprite.problem == ""
+    assert sprite.image.get_size() == PITCH_SIZE
+    assert sprite.image.get_at((416, 240))[:3] == SPRITE_COLOUR
+
+
+def test_load_pitch_sprite_of_none_is_the_drawn_pitch(display):
+    assert render.load_pitch_sprite(None, PITCH_SIZE) == render.PitchSprite(None, "")
+
+
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_load_pitch_sprite_names_a_missing_or_corrupt_file(display, tmp_path, corrupt):
+    path = tmp_path / "pitch" / "grass.png"
+    if corrupt:
+        path.parent.mkdir()
+        path.write_bytes(b"not a png")
+    sprite = render.load_pitch_sprite(path, PITCH_SIZE)
+    assert sprite.image is None
+    assert sprite.problem.startswith(f"{path.as_posix()}: ")
+
+
+@pytest.mark.parametrize("size", [(0, 480), (832, -1)])
+def test_load_pitch_sprite_rejects_a_non_positive_size(display, size):
+    with pytest.raises(ValueError, match="size"):
+        render.load_pitch_sprite(None, size)
+
+
+def test_load_pitch_sprite_needs_the_display_mode(tmp_path):
+    with pytest.raises(ValueError, match="display mode"):
+        render.load_pitch_sprite(tmp_path / "grass.png", PITCH_SIZE)
+
+
+def test_a_pitch_image_replaces_the_fills_under_the_lines(font):
+    layout = build_layout(32)
+    image = pygame.Surface(PITCH_SIZE)
+    image.fill(SPRITE_COLOUR)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_scene(surface, layout, font, image)
+    for column, row in ((5, 7), (5, 0), (0, 7)):
+        centre = _center_of(layout.square(column, row))
+        assert surface.get_at(centre)[:3] == SPRITE_COLOUR
+    grid_x = layout.square(5, 7).x
+    mid_y = _center_of(layout.square(5, 7))[1]
+    assert surface.get_at((grid_x, mid_y))[:3] == render.GRID_LINE
+    los = (layout.line_of_scrimmage_x, mid_y)
+    assert surface.get_at(los)[:3] == render.SCRIMMAGE_LINE
+
+
+def _draw_options(font, options):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_options(surface, layout, font, options, "")
+    return surface, layout
+
+
+def test_options_highlights_the_chosen_pitch(font):
+    options = OptionsView(("a.png", "b.jpg"), 0, "a.png")
+    surface, layout = _draw_options(font, options)
+    for index, fill in enumerate((render.PANEL_FILL, render.HIGHLIGHT)):
+        row = layout.option_row(index)
+        assert surface.get_at((row.x + 3, row.y + 3))[:3] == fill
+    assert _has_text(surface, layout.option_row(2))
+    assert not _has_text(surface, layout.option_row(3))
+    back = layout.back_button
+    assert surface.get_at((back.x + 3, back.y + 3))[:3] == render.BUTTON_FILL
+
+
+def test_options_without_images_highlights_the_drawn_pitch_and_shows_a_hint(font):
+    surface, layout = _draw_options(font, OptionsView((), 0, None))
+    row = layout.option_row(0)
+    assert surface.get_at((row.x + 3, row.y + 3))[:3] == render.HIGHLIGHT
+    assert _has_text(surface, layout.option_row(1))
+    assert not _has_text(surface, layout.option_row(2))
+
+
+def test_options_draws_more_after_the_last_visible_pitch(font):
+    surface, layout = _draw_options(font, OptionsView(("a.png",), 3, None))
+    assert _has_text(surface, layout.option_row(2))
+
+
+def test_menu_draws_the_options_button(font):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_menu(surface, layout, font, MenuView((), 0, None, None), "")
+    button = layout.options_button
+    assert surface.get_at((button.x + 3, button.y + 3))[:3] == render.BUTTON_FILL
