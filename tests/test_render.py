@@ -12,7 +12,7 @@ from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, Positional, Race, load_races
 from bb_sandbox.roster import Player, Team
-from bb_sandbox.session import MenuView, OptionsView, RosterEntry
+from bb_sandbox.session import MenuView, NameView, OptionsView, RosterEntry
 
 EMPTY_VIEW = InteractionView(None, None, ())
 NO_SPRITES = render.PlayerSprites()
@@ -879,3 +879,62 @@ def test_menu_draws_the_options_button(font):
     render.draw_menu(surface, layout, font, MenuView((), 0, None, None), "")
     button = layout.options_button
     assert surface.get_at((button.x + 3, button.y + 3))[:3] == render.BUTTON_FILL
+
+
+def _menu_surface(font, message=""):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_menu(surface, layout, font, MenuView((), 0, None, None), message)
+    return surface, layout
+
+
+def test_menu_hint_shows_only_when_the_message_is_empty(font):
+    hinted, layout = _menu_surface(font)
+    assert render.TEXT_DIM in _colours(hinted, layout.menu_message_line)
+    messaged, _ = _menu_surface(font, "Saved x")
+    assert render.TEXT in _colours(messaged, layout.menu_message_line)
+    assert render.TEXT_DIM not in _colours(messaged, layout.menu_message_line)
+
+
+def _hint_line(layout):
+    field = layout.name_field
+    return field._replace(y=field.y + field.height)
+
+
+def test_name_box_draws_over_the_menu_with_the_hint(font):
+    surface, layout = _menu_surface(font)
+    view = NameView("Rename roster", "orcs", "")
+    render.draw_name_box(surface, layout, font, view)
+    box, field = layout.name_box, layout.name_field
+    assert surface.get_at((box.x + 3, box.y + box.height - 3))[:3] == render.PANEL_FILL
+    assert render.TEXT in _colours(surface, field)
+    hint = _colours(surface, _hint_line(layout))
+    assert render.TEXT_DIM in hint and render.OVER_LIMIT not in hint
+
+
+def test_name_box_problem_replaces_the_hint(font):
+    surface, layout = _menu_surface(font)
+    render.draw_name_box(surface, layout, font, NameView("Save setup as", "", "Oops"))
+    hint = _colours(surface, _hint_line(layout))
+    assert render.OVER_LIMIT in hint and render.TEXT_DIM not in hint
+
+
+def test_a_long_name_shows_its_end(font):
+    layout = build_layout(32)
+    field = layout.name_field
+
+    def field_pixels(text):
+        surface = pygame.Surface(layout.window_size)
+        render.draw_name_box(surface, layout, font, NameView("Save", text, ""))
+        return [
+            surface.get_at((x, y))
+            for x in range(field.x, field.x + field.width)
+            for y in range(field.y, field.y + field.height)
+        ]
+
+    tail = "W" * 63
+    assert font.size(tail)[0] > field.width
+    # Reason: only the first character differs, and it is clipped off.
+    assert field_pixels("A" + tail) == field_pixels("B" + tail)
+    # A short name starts at the left, so its first character shows.
+    assert field_pixels("A") != field_pixels("B")

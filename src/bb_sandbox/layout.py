@@ -51,6 +51,7 @@ ROSTER_LINES = 16
 DICE_BUTTON_ROWS = (4, 3)
 # Reason: one box per die of the biggest roll, MAX_DICE.
 DIE_BOXES = 3
+NAME_BOX_WIDTH = 480
 
 
 class Box(NamedTuple):
@@ -139,6 +140,9 @@ class Layout:
         positional_titles (Box): The column-title row of positional_table.
         roster_list (Box): Builder roster list, the third menu column; starts
             with a one-row caption.
+        name_box (Box): The name box, centred in the window: a caption row,
+            name_field, then a hint row.
+        name_field (Box): The text field inside name_box.
     """
 
     square_size: int
@@ -169,6 +173,8 @@ class Layout:
     positional_table: Box
     positional_titles: Box
     roster_list: Box
+    name_box: Box
+    name_field: Box
 
     def square(self, column: int, row: int) -> Box:
         """
@@ -680,6 +686,33 @@ def _dice_region(
     return area, tuple(buttons), result_line, die_boxes
 
 
+def _name_box(window_size: tuple[int, int], square_size: int) -> tuple[Box, Box]:
+    """
+    Place the name box in the middle of the window and its field inside it.
+
+    Args:
+        window_size (tuple[int, int]): Window (width, height).
+        square_size (int): Side of one grid square; each of the box's three
+            rows is this high.
+
+    Returns:
+        tuple[Box, Box]: name_box and name_field.
+    """
+    width, height = window_size
+    box_width = min(NAME_BOX_WIDTH, width - 2 * MARGIN)
+    box_height = 3 * square_size + 4 * BUTTON_INSET
+    box = Box(
+        (width - box_width) // 2, (height - box_height) // 2, box_width, box_height
+    )
+    field = Box(
+        box.x + BUTTON_INSET,
+        box.y + 2 * BUTTON_INSET + square_size,
+        box_width - 2 * BUTTON_INSET,
+        square_size,
+    )
+    return box, field
+
+
 def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     """
     Compute the full screen layout from the size of one grid square.
@@ -786,6 +819,7 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     positional_titles = positional_table._replace(
         y=positional_table.y + square_size, height=square_size
     )
+    name_box, name_field = _name_box((window_width, window_height), square_size)
 
     return Layout(
         square_size=square_size,
@@ -822,4 +856,6 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         positional_table=positional_table,
         positional_titles=positional_titles,
         roster_list=right,
+        name_box=name_box,
+        name_field=name_field,
     )

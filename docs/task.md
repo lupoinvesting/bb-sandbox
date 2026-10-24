@@ -69,6 +69,15 @@ Design: [plans/ball-moves.md](plans/ball-moves.md).
 - [x] tests: carrier drag, non-carrier, prone carrier, benched carrier, refused drops; render of the carried ball
 - [x] README "Moving the ball" section; design.md's "ball is independent" line points to the plan
 
+## Phase 10: Editable Names
+Design: [names.md](names.md).
+- [x] names: new pygame-free module with `MAX_NAME_LENGTH`, `RESERVED_NAMES`, `FileNameError`, `add_chars`, `remove_char`, `name_problem`, `free_path`, `rename_file`
+- [x] layout: `_name_box`, `name_box`, `name_field`
+- [x] session: `Key`, `NameView`, `clock`, the name box state, `SaveSetup(name)` / `SaveRoster(name)` / `RenameFile`, `type_text`, `key`, `rename`, right-click rename on the main menu
+- [x] render: `draw_name_box`, the dim menu hint
+- [x] app: `TEXTINPUT` / `KEYDOWN` mapping, `_perform` (incl. `RenameFile`), the box drawn last, `set_repeat`
+- [x] README "Naming rosters and setups" section; status line in names.md
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -78,7 +87,7 @@ Design: [plans/ball-moves.md](plans/ball-moves.md).
 - [ ] No linter or type checker enforces NASA rule 10 ("warnings are errors"); only black is configured.
 - [ ] `docs/architecture.md`, a deliverable of `docs/design.md`, was never created; the design currently lives in `docs/design.md`.
 - [ ] CLAUDE.md names `prompt.md` as the PRD, but the PRD is `docs/prd.md`.
-- [ ] Two saves of the same teams (or two rosters of the same race) within one second get the same timestamped name, so the second replaces the first.
+- [x] Two saves of the same teams (or two rosters of the same race) within one second get the same timestamped name, so the second replaces the first. Fixed by Phase 10: a save never overwrites; the box shows `<name> already exists`.
 - [ ] `setups/` is not in `.gitignore`; decide whether saved setups belong in the repo.
 - [x] Race (CSV metadata line) and position (column) on rosters, shown on the main menu (race in the list, team preview below it).
 - [ ] Show position and race in the sandbox hover panel.

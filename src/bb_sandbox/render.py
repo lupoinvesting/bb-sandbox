@@ -1,5 +1,5 @@
-"""Draws the main menu, the race menu, the roster builder, the Options screen
-and the sandbox, and loads the block dice, player and pitch sprites.
+"""Draws the main menu, the race menu, the roster builder, the Options screen,
+the sandbox and the name box, and loads the block dice, player and pitch sprites.
 
 The only module that calls Pygame draw.
 """
@@ -20,7 +20,7 @@ from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
-from bb_sandbox.session import MenuView, OptionsView, RosterEntry
+from bb_sandbox.session import MenuView, NameView, OptionsView, RosterEntry
 
 BACKGROUND = (30, 30, 34)
 PITCH_GREEN = (46, 125, 50)
@@ -80,6 +80,10 @@ MENU_CAPTIONS = {
     MenuList.AWAY_ROSTERS: "Away roster",
     MenuList.SETUPS: "Saved setups",
 }
+MENU_HINT = "Right-click a roster or setup to rename it"
+NAME_HINT = "Enter: OK   Esc: cancel"
+# Reason: the gap between a text line and the left or right edge of its box.
+TEXT_INSET = 8
 # Reason: the dice images sit with the player images, in sprites/ under the
 # folder the app is launched from.
 DICE_SPRITES_DIR = Path("sprites") / "dice"
@@ -191,7 +195,11 @@ def _rect(box: Box) -> pygame.Rect:
 
 
 def _draw_label(
-    surface: pygame.Surface, font: pygame.font.Font, text: str, box: Box
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    text: str,
+    box: Box,
+    colour: tuple[int, int, int] = TEXT,
 ) -> None:
     """
     Draw a caption in the top-left corner of a box.
@@ -201,8 +209,9 @@ def _draw_label(
         font (pygame.font.Font): Font to render with.
         text (str): Caption text.
         box (Box): Region the caption belongs to.
+        colour (tuple[int, int, int]): Text colour.
     """
-    surface.blit(font.render(text, True, TEXT), (box.x + 8, box.y + 6))
+    surface.blit(font.render(text, True, colour), (box.x + TEXT_INSET, box.y + 6))
 
 
 def _draw_pitch(
@@ -475,11 +484,48 @@ def draw_menu(
         "No JSON files in setups/",
     )
 
-    _draw_label(surface, font, message, layout.menu_message_line)
+    if message:
+        _draw_label(surface, font, message, layout.menu_message_line)
+    else:
+        _draw_label(surface, font, MENU_HINT, layout.menu_message_line, TEXT_DIM)
     _draw_button(surface, font, layout.new_roster_button, "New roster")
     ready = menu.home is not None and menu.away is not None
     _draw_button(surface, font, layout.start_button, "Start", ready)
     _draw_button(surface, font, layout.options_button, "Options")
+
+
+def draw_name_box(
+    surface: pygame.Surface, layout: Layout, font: pygame.font.Font, view: NameView
+) -> None:
+    """
+    Draw the name box over whatever screen is showing.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        view (NameView): The caption, the typed text and its problem.
+    """
+    box, field = layout.name_box, layout.name_field
+    pygame.draw.rect(surface, PANEL_FILL, _rect(box))
+    pygame.draw.rect(surface, BORDER, _rect(box), 1)
+    _draw_label(surface, font, view.caption, box)
+    pygame.draw.rect(surface, BACKGROUND, _rect(field))
+    pygame.draw.rect(surface, BORDER, _rect(field), 1)
+    image = font.render(view.text + "|", True, TEXT)
+    # Reason: when the text is wider than the field it is right-aligned, so
+    # the end being typed stays visible and the start is clipped.
+    x = min(
+        field.x + TEXT_INSET, field.x + field.width - TEXT_INSET - image.get_width()
+    )
+    surface.set_clip(_rect(field))
+    surface.blit(image, image.get_rect(midleft=(x, field.y + field.height // 2)))
+    surface.set_clip(None)
+    hint_line = field._replace(y=field.y + field.height)
+    if view.problem:
+        _draw_label(surface, font, view.problem, hint_line, OVER_LIMIT)
+    else:
+        _draw_label(surface, font, NAME_HINT, hint_line, TEXT_DIM)
 
 
 def draw_races(

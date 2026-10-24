@@ -86,6 +86,15 @@ Design: [sprites.md](sprites.md).
 
 Design: [pitch_sprites.md](pitch_sprites.md).
 
+### 3.9. Editable Names
+
+* **Name at Save Time:** Save roster (builder) and Save setup (sandbox) open a name box prefilled with the timestamped default name. Enter saves, Escape cancels.
+* **Rename:** Right-clicking a roster or saved setup on the main menu opens the same box to rename its file. A team's name is its roster file name, so renaming the file renames the team; a setup's team names stay as saved.
+* **Safe Names:** Names use letters, digits, spaces, `-` and `_`, at most 64 characters; Windows device names are refused.
+* **Never Overwrite:** A save or rename to a name another file already has is refused in the box, which stays open.
+
+Design: [names.md](names.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -137,3 +146,9 @@ Design: [pitch_sprites.md](pitch_sprites.md).
 **Phase 9: Ball Carrier**
 
 * Dragging a ball carrier takes the ball along; benching them leaves it on the square.
+
+**Phase 10: Editable Names**
+
+* Name rosters and setups when saving them, in a keyboard name box.
+* Rename roster and setup files from the main menu with a right-click.
+* Never overwrite a file on save or rename.

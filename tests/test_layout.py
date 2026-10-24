@@ -544,3 +544,23 @@ def test_option_row_out_of_range_raises(offset):
 
 def test_tiny_square_keeps_option_rows_non_negative():
     assert build_layout(1).option_rows >= 0
+
+
+@pytest.mark.parametrize("size", [32, 8])
+def test_name_field_lies_in_the_name_box_inside_the_window(size):
+    layout = build_layout(size)
+    window = Box(0, 0, *layout.window_size)
+    assert _inside(layout.name_box, layout.name_field)
+    assert _inside(window, layout.name_box)
+    # A caption row above the field and a hint row below it.
+    assert layout.name_field.y - layout.name_box.y > size
+    bottom = layout.name_box.y + layout.name_box.height
+    assert bottom - (layout.name_field.y + layout.name_field.height) > size
+
+
+def test_name_box_is_centred_at_square_size_32():
+    layout = build_layout(32)
+    box, (width, height) = layout.name_box, layout.window_size
+    assert box.width == 480
+    assert abs(2 * box.x + box.width - width) <= 1
+    assert abs(2 * box.y + box.height - height) <= 1

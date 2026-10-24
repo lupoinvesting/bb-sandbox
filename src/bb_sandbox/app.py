@@ -14,6 +14,7 @@ from bb_sandbox.render import (
     draw_builder,
     draw_dice,
     draw_menu,
+    draw_name_box,
     draw_options,
     draw_races,
     draw_sandbox,
@@ -22,8 +23,11 @@ from bb_sandbox.render import (
     load_player_sprites,
 )
 from bb_sandbox.session import (
+    FileRequest,
     ImportRoster,
+    Key,
     LoadSetup,
+    RenameFile,
     SaveRoster,
     SaveSettings,
     SaveSetup,
@@ -43,6 +47,46 @@ PITCH_SPRITES_DIR = PLAYER_SPRITES_DIR / "pitch"
 SETTINGS_FILE = Path("settings.json")
 LEFT_BUTTON = 1
 RIGHT_BUTTON = 3
+# Reason: holding Backspace in the name box deletes repeatedly.
+KEY_REPEAT_DELAY_MS = 400
+KEY_REPEAT_INTERVAL_MS = 40
+KEYS = {
+    pygame.K_BACKSPACE: Key.BACKSPACE,
+    pygame.K_RETURN: Key.ENTER,
+    pygame.K_KP_ENTER: Key.ENTER,
+    pygame.K_ESCAPE: Key.ESCAPE,
+}
+
+
+def _perform(session: Session, request: FileRequest | None) -> None:
+    """
+    Do the disk I/O a session request asks for.
+
+    Args:
+        session (Session): The session that made the request.
+        request (FileRequest | None): The request; None does nothing.
+    """
+    # Reason: the session only returns file requests; the disk I/O is done
+    # here so it's visible at the call site.
+    match request:
+        case ImportRoster(side=side, path=path):
+            session.import_team(side, path)
+        case LoadSetup(path=path):
+            session.load_setup(path)
+        case SaveSetup(name=name):
+            session.save_setup(name)
+            # Reason: the new file shows up in the setups list right away.
+            session.rescan()
+        case SaveRoster(name=name):
+            session.save_roster(name)
+            # Reason: the new roster shows up in the menu's roster lists
+            # right away.
+            session.rescan()
+        case RenameFile(path=path, name=name):
+            session.rename(path, name)
+            session.rescan()
+        case SaveSettings():
+            session.save_settings()
 
 
 def handle_event(session: Session, event: pygame.event.Event) -> bool:
@@ -59,24 +103,11 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
     if event.type == pygame.QUIT:
         return False
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == LEFT_BUTTON:
-        # Reason: press() only returns file requests; the disk I/O is done
-        # here so it's visible at the call site.
-        match session.press(event.pos):
-            case ImportRoster(side=side, path=path):
-                session.import_team(side, path)
-            case LoadSetup(path=path):
-                session.load_setup(path)
-            case SaveSetup():
-                session.save_setup()
-                # Reason: the new file shows up in the setups list right away.
-                session.rescan()
-            case SaveRoster():
-                session.save_roster()
-                # Reason: the new roster shows up in the menu's roster lists
-                # right away.
-                session.rescan()
-            case SaveSettings():
-                session.save_settings()
+        _perform(session, session.press(event.pos))
+    elif event.type == pygame.TEXTINPUT:
+        session.type_text(event.text)
+    elif event.type == pygame.KEYDOWN and event.key in KEYS:
+        _perform(session, session.key(KEYS[event.key]))
     elif event.type == pygame.MOUSEBUTTONDOWN and event.button == RIGHT_BUTTON:
         session.right_click(event.pos)
     elif event.type == pygame.MOUSEBUTTONUP and event.button == LEFT_BUTTON:
@@ -130,6 +161,9 @@ def _draw(
         draw_builder(surface, layout, font, session.builder, message)
     else:
         draw_menu(surface, layout, font, session.menu_view(), message)
+    # Reason: drawn last so the box sits over whichever screen opened it.
+    if session.name_view is not None:
+        draw_name_box(surface, layout, font, session.name_view)
 
 
 def _load_pitch(session: Session, layout: Layout) -> PitchSprite:
@@ -248,6 +282,9 @@ def run(max_frames: int | None = None) -> int:
     try:
         screen = pygame.display.set_mode(layout.window_size)
         pygame.display.set_caption(WINDOW_TITLE)
+        # Reason: typed text arrives as TEXTINPUT events, which pygame 2 sends
+        # by default; only the name box's keys need KEYDOWN repeats.
+        pygame.key.set_repeat(KEY_REPEAT_DELAY_MS, KEY_REPEAT_INTERVAL_MS)
         return _run_frames(screen, layout, session, max_frames)
     finally:
         pygame.quit()
