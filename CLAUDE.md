@@ -30,6 +30,7 @@ Use Serena to search through the codebase. If you get any errors using Serena, r
 - [Coding Guidelines](docs/architecture_principles.md)
 - [Race database & roster builder](docs/roster_builder.md)
 - [Dice roller](docs/dice.md)
+- [Player sprites](docs/sprites.md)
 
 ## 🧪 Testing & Reliability
 - **Always create Pytest unit tests for new features** (functions, classes, routes, etc).

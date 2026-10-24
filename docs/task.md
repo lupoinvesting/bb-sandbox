@@ -43,6 +43,14 @@ Design: [dice.md](dice.md).
 - [x] app: die font and sprite loading after `set_mode`; dice drawn on the sandbox
 - [x] README: "Dice" section (the buttons, the sprite folder and the file names)
 
+## Phase 7: Player Sprites
+Design: [sprites.md](sprites.md).
+- [x] render: `_load_image` (shared with `load_block_sprites`), `PlayerSprites`, `load_player_sprites` (kebab-case names, per-side `default`, images fitted to the square, first failure kept as `problem`)
+- [x] render: sprite tokens with a shirt-number badge; `draw_sandbox` takes the player sprites
+- [x] app: `PLAYER_SPRITES_DIR`; load the player sprites after `set_mode` and when the window regains focus; show `problem` when the session has no message
+- [x] `sprites/home/` and `sprites/away/` folders: `.gitkeep` files force-added, since `.gitignore` ignores `sprites/`
+- [x] README "Player sprites" section; design.md's "no image files" default points to sprites.md
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -62,3 +70,7 @@ Design: [dice.md](dice.md).
 - [ ] Builder rows clip long skill lists at about 250px, so Big Guys lose most of theirs (Rotspawn's need 841px); show the full list for the positional under the cursor.
 - [ ] `rosters/example.csv` uses Second Season Human stats (Catcher ST 2/PA 5+, Thrower PA 2+, Blitzer without Tackle, Ogre Loner (4+)) and gives its Halfling no PA. These differ from the Third Season race database.
 - [ ] Add the five block dice PNGs to `src/bb_sandbox/sprites/dice/` (names in the README). The folder doesn't exist until then, so every block face shows its name.
+- [x] `sprites/home/sprite-names.txt` and `sprites/away/sprite-names.txt` list `default.png` and the 125 position file names (force-added; a position shared by races is listed under its first race).
+- [ ] Phase 7: add a test that the two `sprite-names.txt` lists match `races.csv`.
+- [ ] `run()` is 59 lines after Phase 7, one under NASA rule 4's 60; move its frame loop into a helper with the next change to it.
+- [ ] The five dice PNGs are now in `src/bb_sandbox/sprites/dice/`, but `.gitignore`'s `sprites/` ignores that folder too, so they can't be committed until they are force-added or the folder is re-included.

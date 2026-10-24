@@ -67,6 +67,15 @@ Design: [roster_builder.md](roster_builder.md).
 
 Design: [dice.md](dice.md).
 
+### 3.7. Player Sprites
+
+* **Sprite Folders:** `sprites/home/` holds player 1's (Home) images and `sprites/away/` player 2's (Away), so each team can have its own colours. The folders sit next to `rosters/`; uploaded images are not committed.
+* **Matching:** An image named after a position in kebab case (`human-blitzer.png` for Human Blitzer) is used for every player of that position on that side; `default.png` covers the side's other players.
+* **Fallback:** A player with no matching image, or whose image fails to load, keeps the drawn token. A failed file is reported on the message line; unlike a broken dice image, it never stops the app.
+* **Display:** Images are fitted to the square, show the shirt number in a corner and rotate with Prone/Stunned. New images show up when the window regains focus.
+
+Design: [sprites.md](sprites.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -103,3 +112,8 @@ Design: [dice.md](dice.md).
 * Build the dice module: the block die faces, the seven rolls and the roll itself.
 * Add the dice section to the sandbox panel: buttons, result line and dice.
 * Load the block dice sprites at startup, falling back to words for missing images.
+
+**Phase 7: Player Sprites**
+
+* Load per-side, per-position player images from `sprites/home` and `sprites/away`, falling back to the drawn token.
+* Draw them on the pitch, in the dugout boxes and while dragging, with a shirt-number badge.

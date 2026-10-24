@@ -1,9 +1,11 @@
 """Draws the main menu, the race menu, the roster builder and the sandbox, and
-loads the block dice sprites.
+loads the block dice and player sprites.
 
 The only module that calls Pygame draw.
 """
 
+import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import pygame
@@ -35,6 +37,9 @@ BUTTON_FILL = (80, 80, 92)
 BUTTON_DISABLED = (50, 50, 56)
 TEAM_COLOURS = {Side.HOME: (190, 40, 40), Side.AWAY: (40, 80, 200)}
 TOKEN_HEAD = (20, 20, 20)
+# The shirt number on a player image sits on a small dark badge.
+BADGE_FILL = (20, 20, 20)
+BADGE_PADDING = 2
 BALL_FILL = (150, 90, 40)
 BALL_OUTLINE = (250, 240, 220)
 MENU_FILL = (60, 60, 70)
@@ -79,10 +84,83 @@ DICE_SPRITES_DIR = Path(__file__).with_name("sprites") / "dice"
 # A light die face with dark text, for numbers and for block faces without a sprite.
 DIE_FILL = (236, 232, 220)
 DIE_TEXT = (24, 24, 28)
+# Player images are user files, in one folder per side: see load_player_sprites.
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
+DEFAULT_SPRITE = "default"
+# Reason: bounds the decode loop per side, with room for more than one image
+# per database position (125) plus the default.
+MAX_PLAYER_SPRITES = 256
 
 
 class SpriteError(Exception):
     """A sprite image exists but could not be decoded."""
+
+
+def _sprite_name(text: str) -> str:
+    """
+    Turn a position or a file name into a sprite name, in kebab case.
+
+    Args:
+        text (str): A position such as `Human Blitzer`, or a file name
+            without its suffix.
+
+    Returns:
+        str: E.g. `human-blitzer`; `'Ooligan` gives `ooligan`.
+    """
+    # Reason: [\W_] is any character that isn't a letter or a digit (\W leaves
+    # out the underscore), so each run of spaces, apostrophes or underscores
+    # becomes one hyphen.
+    return re.sub(r"[\W_]+", "-", text.casefold()).strip("-")
+
+
+class PlayerSprites:
+    """Player images by side and position, each fitted to a pitch square.
+
+    Names are matched in kebab case, so `human-blitzer.png` is the image of
+    every Human Blitzer on its side. A player without an image gets None,
+    which draws the team colour token.
+    """
+
+    def __init__(
+        self,
+        images: Mapping[tuple[Side, str], pygame.Surface] | None = None,
+        problem: str = "",
+    ) -> None:
+        """
+        Keep the images and the first load failure.
+
+        Args:
+            images (Mapping[tuple[Side, str], pygame.Surface] | None): Images
+                by side and name: a position, or DEFAULT_SPRITE for the
+                side's other players. None has no images, so everyone gets
+                the drawn token.
+            problem (str): The first file that failed to load, '' if none.
+        """
+        self._images = {
+            (side, _sprite_name(name)): image
+            for (side, name), image in (images or {}).items()
+        }
+        self._problem = problem
+
+    @property
+    def problem(self) -> str:
+        """str: The first file that failed to load, '' if none."""
+        return self._problem
+
+    def image(self, side: Side, position: str) -> pygame.Surface | None:
+        """
+        Find a player's image.
+
+        Args:
+            side (Side): The player's side.
+            position (str): The player's position, e.g. `Human Blitzer`.
+
+        Returns:
+            pygame.Surface | None: The position's image, else the side's
+                default, else None for the drawn token.
+        """
+        default = self._images.get((side, DEFAULT_SPRITE))
+        return self._images.get((side, _sprite_name(position)), default)
 
 
 def _rect(box: Box) -> pygame.Rect:
@@ -543,15 +621,36 @@ def draw_builder(
     _draw_button(surface, font, layout.save_roster_button, "Save roster", ready)
 
 
+def _draw_badge(surface: pygame.Surface, font: pygame.font.Font, text: str) -> None:
+    """
+    Draw text on a small dark badge in the bottom-left corner of a surface.
+
+    Args:
+        surface (pygame.Surface): Target surface, e.g. a token.
+        font (pygame.font.Font): Font for the text.
+        text (str): The text, e.g. a shirt number.
+    """
+    label = font.render(text, True, TEXT)
+    # Reason: the rendered text has blank rows above and below the digits, so
+    # the badge pads the digits' own bounds to stay small.
+    digits = label.get_bounding_rect()
+    badge = digits.inflate(2 * BADGE_PADDING, 2 * BADGE_PADDING)
+    badge.bottomleft = (0, surface.get_height())
+    pygame.draw.rect(surface, BADGE_FILL, badge)
+    surface.blit(label, (badge.x + BADGE_PADDING, badge.y + BADGE_PADDING), digits)
+
+
 def _draw_token(
     surface: pygame.Surface,
     font: pygame.font.Font,
     box: Box,
     key: PlayerKey,
     status: Status = Status.STANDING,
+    image: pygame.Surface | None = None,
 ) -> None:
     """
-    Draw a player token: team colour, a "head" bar on its top edge and the shirt number.
+    Draw a player token: the player's image with the shirt number on a badge,
+    or else the team colour, a "head" bar on its top edge and the shirt number.
 
     Args:
         surface (pygame.Surface): Target surface.
@@ -559,17 +658,24 @@ def _draw_token(
         box (Box): The square or reserve slot the token sits in.
         key (PlayerKey): The player; the shirt number is index + 1.
         status (Status): Rotates the token 90° when prone, 180° when stunned.
+        image (pygame.Surface | None): The player's image, fitted to the box;
+            None draws the team colour token.
     """
     # Reason: the token is drawn on its own surface so it can be rotated as a
     # whole; a square surface keeps its size under 90° and 180° rotations.
     token = pygame.Surface((box.width, box.height), pygame.SRCALPHA)
-    inset = max(1, box.width // 10)
-    body = Box(inset, inset, box.width - 2 * inset, box.height - 2 * inset)
-    pygame.draw.rect(token, TEAM_COLOURS[key.side], _rect(body))
-    # Reason: the head bar marks the token's top, so the rotations are visible.
-    head = body._replace(height=max(1, body.height // 6))
-    pygame.draw.rect(token, TOKEN_HEAD, _rect(head))
-    _draw_centred(token, font, str(key.index + 1), body)
+    if image is None:
+        inset = max(1, box.width // 10)
+        body = Box(inset, inset, box.width - 2 * inset, box.height - 2 * inset)
+        pygame.draw.rect(token, TEAM_COLOURS[key.side], _rect(body))
+        # Reason: the head bar marks the token's top, so the rotations are visible.
+        head = body._replace(height=max(1, body.height // 6))
+        pygame.draw.rect(token, TOKEN_HEAD, _rect(head))
+        _draw_centred(token, font, str(key.index + 1), body)
+    else:
+        # Reason: the image shows which way is up, so it needs no head bar.
+        token.blit(image, image.get_rect(center=token.get_rect().center))
+        _draw_badge(token, font, str(key.index + 1))
     token = pygame.transform.rotate(token, STATUS_ANGLES[status])
     surface.blit(token, (box.x, box.y))
 
@@ -665,12 +771,33 @@ def _draw_context_menu(
         _draw_label(surface, font, item.label, item.box)
 
 
+def _player_images(
+    board: Board, player_sprites: PlayerSprites
+) -> dict[PlayerKey, pygame.Surface | None]:
+    """
+    Look up every player's image.
+
+    Args:
+        board (Board): The players.
+        player_sprites (PlayerSprites): The loaded player images.
+
+    Returns:
+        dict[PlayerKey, pygame.Surface | None]: Each player's image, or None
+            for the drawn token.
+    """
+    return {
+        key: player_sprites.image(key.side, board.player(key).position)
+        for key in board.keys()
+    }
+
+
 def draw_sandbox(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
     board: Board,
     view: InteractionView,
+    player_sprites: PlayerSprites,
     message: str,
 ) -> None:
     """
@@ -682,16 +809,19 @@ def draw_sandbox(
         font (pygame.font.Font): Font for captions and shirt numbers.
         board (Board): Where every player and the ball are.
         view (InteractionView): Hover, drag and context menu state.
+        player_sprites (PlayerSprites): Player images; a player without one
+            is drawn as a token in the team colour.
         message (str): Status message (save/load feedback), '' for none.
     """
     draw_scene(surface, layout, font)
+    images = _player_images(board, player_sprites)
     dragged = view.dragged.item if view.dragged else None
     for key in board.keys():
         square = board.square_of(key)
         # Reason: a dragged player's origin is drawn empty until release.
         if square is not None and key != dragged:
             box = layout.square(square.column, square.row)
-            _draw_token(surface, font, box, key, board.status_of(key))
+            _draw_token(surface, font, box, key, board.status_of(key), images[key])
     for side in Side:
         for dugout in Dugout:
             # Reason: a dragged player keeps their slot until release, so the
@@ -699,7 +829,7 @@ def draw_sandbox(
             for ordinal, key in enumerate(board.dugout_players(side, dugout)):
                 if key != dragged:
                     box = layout.dugout_slot(side, dugout, ordinal)
-                    _draw_token(surface, font, box, key)
+                    _draw_token(surface, font, box, key, image=images[key])
 
     if dragged is not BALL:
         carried = board.player_at(board.ball) is not None
@@ -708,8 +838,8 @@ def draw_sandbox(
         if view.dragged.item is BALL:
             _draw_ball(surface, view.dragged.box)
         else:
-            key = view.dragged.item
-            _draw_token(surface, font, view.dragged.box, key, board.status_of(key))
+            key, box = view.dragged.item, view.dragged.box
+            _draw_token(surface, font, box, key, board.status_of(key), images[key])
 
     _draw_panel(surface, layout, font, board, view.hovered)
     # Reason: file names in the message can be wider than the panel.
@@ -719,6 +849,29 @@ def draw_sandbox(
     _draw_button(surface, font, layout.save_button, "Save setup")
     _draw_button(surface, font, layout.menu_button, "Main menu")
     _draw_context_menu(surface, font, view.menu)
+
+
+def _load_image(path: Path) -> pygame.Surface:
+    """
+    Decode an image file. The display mode must be set; convert_alpha needs it.
+
+    Args:
+        path (Path): The image file.
+
+    Returns:
+        pygame.Surface: The image, 32-bit with per-pixel alpha.
+
+    Raises:
+        SpriteError: If the file can't be opened or decoded; the message
+            starts with the file name.
+    """
+    try:
+        image = pygame.image.load(path)
+    except (pygame.error, OSError) as error:
+        raise SpriteError(f"{path.name}: {error}") from error
+    # Reason: convert_alpha also turns 8-bit GIFs and 24-bit JPGs into 32-bit
+    # with alpha, which smoothscale needs.
+    return image.convert_alpha()
 
 
 def load_block_sprites(folder: Path, size: int) -> dict[BlockFace, pygame.Surface]:
@@ -748,15 +901,119 @@ def load_block_sprites(folder: Path, size: int) -> dict[BlockFace, pygame.Surfac
         path = folder / f"{face.name.lower()}.png"
         if not path.is_file():
             continue
-        try:
-            image = pygame.image.load(path)
-        except (pygame.error, OSError) as error:
-            raise SpriteError(f"{path.name}: {error}") from error
         # Reason: scaling once here keeps the per-frame draw a plain blit.
-        sprites[face] = pygame.transform.smoothscale(
-            image.convert_alpha(), (size, size)
-        )
+        sprites[face] = pygame.transform.smoothscale(_load_image(path), (size, size))
     return sprites
+
+
+def _image_files(folder: Path) -> tuple[Path, ...]:
+    """
+    List the image files in a folder.
+
+    Args:
+        folder (Path): Folder to scan.
+
+    Returns:
+        tuple[Path, ...]: Files with one of IMAGE_SUFFIXES, in any case, sorted
+            by name; empty if the folder is missing.
+    """
+    if not folder.is_dir():
+        return ()
+    return tuple(
+        sorted(
+            p
+            for p in folder.iterdir()
+            if p.suffix.lower() in IMAGE_SUFFIXES and p.is_file()
+        )
+    )
+
+
+def _fit_square(image: pygame.Surface, size: int) -> pygame.Surface:
+    """
+    Scale an image to fit a square, keeping its aspect ratio.
+
+    Args:
+        image (pygame.Surface): A 32-bit image with alpha, from _load_image.
+        size (int): Side of the square in pixels.
+
+    Returns:
+        pygame.Surface: A size x size image with per-pixel alpha: the scaled
+            image centred on transparency.
+    """
+    square = pygame.Surface((size, size), pygame.SRCALPHA)
+    fitted = image.get_rect().fit(square.get_rect())
+    square.blit(pygame.transform.smoothscale(image, fitted.size), fitted)
+    return square
+
+
+def _load_player_side(
+    folder: Path, side: Side, size: int
+) -> tuple[dict[str, pygame.Surface], list[str]]:
+    """
+    Load one side's player images, leaving out the files that fail.
+
+    Args:
+        folder (Path): The player sprite folder; the side's images are in its
+            `home` or `away` subfolder.
+        side (Side): Which side to load.
+        size (int): Side of a pitch square in pixels.
+
+    Returns:
+        tuple[dict[str, pygame.Surface], list[str]]: The fitted images by
+            sprite name, and a note per problem, in the order found.
+    """
+    side_folder = folder / side.value
+    files = _image_files(side_folder)
+    notes: list[str] = []
+    if len(files) > MAX_PLAYER_SPRITES:
+        notes.append(f"{side_folder.as_posix()}: more than {MAX_PLAYER_SPRITES} images")
+    images: dict[str, pygame.Surface] = {}
+    for path in files[:MAX_PLAYER_SPRITES]:
+        name = _sprite_name(path.stem)
+        # Reason: the files are in name order, so of two files with the same
+        # sprite name (ogre.jpg, ogre.png) the first wins.
+        if name in images:
+            continue
+        try:
+            images[name] = _fit_square(_load_image(path), size)
+        except SpriteError as error:
+            # Reason: a player image is a user file, so a broken one counts as
+            # missing. The error starts with the file name.
+            notes.append(f"{side_folder.as_posix()}/{error}")
+    return images, notes
+
+
+def load_player_sprites(folder: Path, size: int) -> PlayerSprites:
+    """
+    Load the player images in folder/home and folder/away, each fitted to a square.
+
+    An image named after a position in kebab case (`human-blitzer.png`) is
+    that position's; `default` is the side's other players'. A missing folder
+    loads nothing. A file that fails to load counts as missing, and the first
+    failure (home before away) becomes the problem.
+
+    Args:
+        folder (Path): The player sprite folder.
+        size (int): Side of a pitch square in pixels.
+
+    Returns:
+        PlayerSprites: The images and the first problem, '' if none.
+
+    Raises:
+        ValueError: If size isn't positive, or the display mode isn't set;
+            convert_alpha needs it.
+    """
+    if size <= 0:
+        raise ValueError(f"size must be positive, got {size}")
+    if pygame.display.get_surface() is None:
+        raise ValueError("load_player_sprites needs the display mode set")
+    images: dict[tuple[Side, str], pygame.Surface] = {}
+    notes: list[str] = []
+    for side in Side:
+        side_images, side_notes = _load_player_side(folder, side, size)
+        images.update(((side, name), image) for name, image in side_images.items())
+        notes.extend(side_notes)
+    return PlayerSprites(images, notes[0] if notes else "")
 
 
 def _roll_text(roll: Roll) -> str:

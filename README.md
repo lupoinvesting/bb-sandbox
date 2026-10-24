@@ -64,6 +64,30 @@ Any size works: each image is scaled to the 64px die at startup, so square image
 No images ship yet; a face without its file shows its name instead.
 An image that exists but can't be decoded stops the app at startup with an error naming the file.
 
+## Player sprites
+
+Players are drawn as coloured tokens unless they have an image. Put images in `sprites/home/` for the home team (player 1)
+and `sprites/away/` for the away team (player 2), so each side can have its own colours:
+
+| Players | File |
+|---|---|
+| every Human Blitzer on that side | `human-blitzer.png` |
+| every 'Ooligan on that side | `ooligan.png` |
+| that side's players without an image of their own | `default.png` |
+
+- Name a file after the position in kebab case: lowercase, with each run of spaces and punctuation as one `-`.
+  Names match in any case, so `Human_Blitzer.PNG` works too.
+- Formats: `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif` (first frame) and `.webp`, up to 256 images per side.
+  If two files give the same name, the first in name order wins (`ogre.jpg` before `ogre.png`).
+- Each image is fitted to the square, keeping its shape, so square images with a transparent background look best.
+  The shirt number sits on a small dark badge in the bottom-left corner, and the image turns with Prone and Stunned.
+- A player with neither their position's image nor a `default.png` keeps the coloured token.
+- Images reload when the window regains focus: add or change a file, then switch back to the app.
+- A file that can't be loaded counts as missing, so its players fall back to `default.png`, then to the token.
+  The message line names the first such file (e.g. `sprites/away/ogre.png: Unsupported image format`) until it is fixed;
+  unlike a broken dice image, it never stops the app.
+- Images in `sprites/` are not committed: `.gitignore` ignores the folder, which git keeps through its `.gitkeep` files.
+
 ## Layout
 
 | Module | Responsibility |

@@ -10,11 +10,12 @@ from bb_sandbox.dice import DICE, BlockFace, Roll
 from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
 from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
-from bb_sandbox.races import Positional, Race
+from bb_sandbox.races import RACES_FILE, Positional, Race, load_races
 from bb_sandbox.roster import Player, Team
 from bb_sandbox.session import MenuView, RosterEntry
 
 EMPTY_VIEW = InteractionView(None, None, ())
+NO_SPRITES = render.PlayerSprites()
 
 
 @pytest.fixture
@@ -89,7 +90,7 @@ def test_sandbox_draws_tokens_in_dugouts(font):
     board = Board(_team(3), _team(1))
     board.bench(PlayerKey(Side.HOME, 1), Dugout.KO)
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, "")
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, "")
 
     home_slot = layout.dugout_slot(Side.HOME, Dugout.RESERVE, 0)
     # Bottom-left corner of the token body, clear of the head bar and number.
@@ -113,7 +114,7 @@ def test_sandbox_draws_placed_token_on_its_square(font):
     board = Board(_team(1), _team(1))
     board.place(PlayerKey(Side.AWAY, 0), Square(5, 7))
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, "")
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, "")
     square = layout.square(5, 7)
     assert surface.get_at((square.x + 5, square.y + 27))[:3] == (
         render.TEAM_COLOURS[Side.AWAY]
@@ -211,10 +212,11 @@ def test_menu_with_no_rosters_draws(font):
     assert surface.get_at((1, 1))[:3] == render.BACKGROUND
 
 
-def _sandbox(board, view=EMPTY_VIEW):
+def _sandbox(board, view=EMPTY_VIEW, player_sprites=NO_SPRITES):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, pygame.font.Font(None, 20), board, view, "")
+    font = pygame.font.Font(None, 20)
+    render.draw_sandbox(surface, layout, font, board, view, player_sprites, "")
     return surface, layout
 
 
@@ -322,7 +324,8 @@ def test_sandbox_draws_save_button_and_clipped_message(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
     board = Board(_team(1), _team(1))
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, "Saved " + "x" * 200)
+    message = "Saved " + "x" * 200
+    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, message)
     save = layout.save_button
     assert surface.get_at((save.x + 3, save.y + 3))[:3] == render.BUTTON_FILL
     line = layout.sandbox_message_line
@@ -583,3 +586,188 @@ def test_load_block_sprites_names_a_corrupt_file(display, tmp_path):
 def test_load_block_sprites_needs_the_display_mode(tmp_path):
     with pytest.raises(ValueError, match="display mode"):
         render.load_block_sprites(tmp_path, 64)
+
+
+OTHER_COLOUR = (30, 160, 200)
+
+
+def _save_image(path, colour, size=(8, 8)):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = pygame.Surface(size)
+    image.fill(colour)
+    pygame.image.save(image, path)
+
+
+def test_load_player_sprites_matches_the_position_then_the_side_default(
+    display, tmp_path
+):
+    _save_image(tmp_path / "home" / "human-blitzer.png", SPRITE_COLOUR)
+    _save_image(tmp_path / "home" / "default.png", OTHER_COLOUR)
+    _save_image(tmp_path / "away" / "ogre.png", OTHER_COLOUR)
+    sprites = render.load_player_sprites(tmp_path, 32)
+    assert sprites.problem == ""
+    blitzer = sprites.image(Side.HOME, "Human Blitzer")
+    assert blitzer.get_size() == (32, 32)
+    assert blitzer.get_flags() & pygame.SRCALPHA
+    assert blitzer.get_at((0, 0)) == blitzer.get_at((16, 16)) == (*SPRITE_COLOUR, 255)
+    assert sprites.image(Side.HOME, "Ogre").get_at((16, 16))[:3] == OTHER_COLOUR
+    assert sprites.image(Side.AWAY, "Ogre").get_at((16, 16))[:3] == OTHER_COLOUR
+    # The away side has no default, so its other players keep the drawn token.
+    assert sprites.image(Side.AWAY, "Human Blitzer") is None
+
+
+@pytest.mark.parametrize(
+    "position,name",
+    [
+        ("Human Blitzer", "human-blitzer"),
+        ("'Ooligan", "ooligan"),
+        ("Fun-hoppa", "fun-hoppa"),
+        ("Ogre", "ogre"),
+        ("Human_Blitzer", "human-blitzer"),
+    ],
+)
+def test_sprite_name_is_kebab_case(position, name):
+    assert render._sprite_name(position) == name
+
+
+def test_shipped_positions_have_distinct_sprite_names():
+    positions = {
+        p.position for race in load_races(RACES_FILE) for p in race.positionals
+    }
+    names = {render._sprite_name(position) for position in positions}
+    assert len(names) == len(positions)
+    assert render.DEFAULT_SPRITE not in names
+
+
+def test_load_player_sprites_matches_file_names_in_any_case(display, tmp_path):
+    _save_image(tmp_path / "home" / "blitzer.png", SPRITE_COLOUR)
+    # Reason: renamed after saving, so pygame picks the format from a
+    # lowercase suffix.
+    (tmp_path / "home" / "blitzer.png").rename(tmp_path / "home" / "Human_Blitzer.PNG")
+    sprites = render.load_player_sprites(tmp_path, 32)
+    assert sprites.image(Side.HOME, "Human Blitzer").get_at((16, 16))[:3] == (
+        SPRITE_COLOUR
+    )
+
+
+def test_load_player_sprites_fits_a_wide_image_into_the_square(display, tmp_path):
+    _save_image(tmp_path / "home" / "default.png", SPRITE_COLOUR, (64, 32))
+    image = render.load_player_sprites(tmp_path, 32).image(Side.HOME, "Ogre")
+    assert image.get_size() == (32, 32)
+    # Scaled to 32x16 and centred, with transparent bands above and below.
+    assert image.get_at((16, 2)).a == 0
+    assert image.get_at((16, 16)) == (*SPRITE_COLOUR, 255)
+    assert image.get_at((16, 29)).a == 0
+
+
+def test_load_player_sprites_skips_missing_folders_and_other_files(display, tmp_path):
+    missing = render.load_player_sprites(tmp_path / "missing", 32)
+    assert missing.image(Side.HOME, "Ogre") is None and missing.problem == ""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".gitkeep").write_bytes(b"")
+    (home / "notes.txt").write_text("not an image")
+    _save_image(home / "ogre.jpg", (255, 0, 0))
+    _save_image(home / "ogre.png", (0, 0, 255))
+    sprites = render.load_player_sprites(tmp_path, 32)
+    # Loading notes.txt would have failed and set a problem.
+    assert sprites.problem == ""
+    # ogre.jpg comes first in name order, so it wins over ogre.png. JPEG is
+    # lossy, so the red is close, not exact.
+    red, _, blue, _ = sprites.image(Side.HOME, "Ogre").get_at((16, 16))
+    assert red > 200 and blue < 50
+    assert render.PlayerSprites().image(Side.HOME, "Ogre") is None
+
+
+def test_a_corrupt_player_image_falls_back_to_the_default(display, tmp_path):
+    folder = tmp_path / "sprites"
+    _save_image(folder / "home" / "default.png", SPRITE_COLOUR)
+    _save_image(folder / "home" / "orc-lineman.png", OTHER_COLOUR)
+    (folder / "home" / "ogre.png").write_bytes(b"not a png")
+    (folder / "away").mkdir()
+    (folder / "away" / "ogre.png").write_bytes(b"not a png")
+    sprites = render.load_player_sprites(folder, 32)
+    assert sprites.image(Side.HOME, "Ogre").get_at((16, 16))[:3] == SPRITE_COLOUR
+    assert sprites.image(Side.HOME, "Orc Lineman").get_at((16, 16))[:3] == (
+        OTHER_COLOUR
+    )
+    assert sprites.image(Side.AWAY, "Ogre") is None
+    # The first failure is kept, home before away.
+    assert sprites.problem.startswith(f"{(folder / 'home').as_posix()}/ogre.png: ")
+
+
+def test_load_player_sprites_reports_too_many_images(display, tmp_path, monkeypatch):
+    monkeypatch.setattr(render, "MAX_PLAYER_SPRITES", 2)
+    for name in ("a.png", "b.png", "c.png"):
+        _save_image(tmp_path / "away" / name, SPRITE_COLOUR)
+    sprites = render.load_player_sprites(tmp_path, 32)
+    assert sprites.image(Side.AWAY, "b") is not None
+    assert sprites.image(Side.AWAY, "c") is None
+    assert sprites.problem == f"{(tmp_path / 'away').as_posix()}: more than 2 images"
+
+
+@pytest.mark.parametrize("size", [0, -32])
+def test_load_player_sprites_rejects_a_non_positive_size(display, tmp_path, size):
+    with pytest.raises(ValueError, match="size"):
+        render.load_player_sprites(tmp_path, size)
+
+
+def test_load_player_sprites_needs_the_display_mode(tmp_path):
+    with pytest.raises(ValueError, match="display mode"):
+        render.load_player_sprites(tmp_path, 32)
+
+
+def _sprite(top, bottom=None):
+    image = pygame.Surface((32, 32), pygame.SRCALPHA)
+    image.fill(top)
+    if bottom is not None:
+        image.fill(bottom, pygame.Rect(0, 16, 32, 16))
+    return image
+
+
+def test_a_sprite_replaces_the_token_and_shows_the_number_on_a_badge(font):
+    sprites = render.PlayerSprites({(Side.HOME, "default"): _sprite(SPRITE_COLOUR)})
+    surface, layout = _sandbox(Board(_team(1), _team(1)), player_sprites=sprites)
+    slot = layout.dugout_slot(Side.HOME, Dugout.RESERVE, 0)
+    # The sprite fills the slot: no RESERVE_FILL inset and no head bar.
+    assert surface.get_at((slot.x + 1, slot.y + 1))[:3] == SPRITE_COLOUR
+    assert surface.get_at((slot.x + 5, slot.y + 4))[:3] == SPRITE_COLOUR
+    # The badge's padding in the bottom-left corner, and the number on it.
+    assert surface.get_at((slot.x + 1, slot.y + 30))[:3] == render.BADGE_FILL
+    assert render.TEXT in _colours(surface, Box(slot.x, slot.y + 16, 16, 16))
+    # The away side has no images, so its player is still the drawn token.
+    away = layout.dugout_slot(Side.AWAY, Dugout.RESERVE, 0)
+    corner = (away.x + 5, away.y + away.height - 5)
+    assert surface.get_at(corner)[:3] == render.TEAM_COLOURS[Side.AWAY]
+
+
+@pytest.mark.parametrize(
+    "status,top_left,bottom_right",
+    [
+        (Status.STANDING, SPRITE_COLOUR, OTHER_COLOUR),
+        (Status.STUNNED, OTHER_COLOUR, SPRITE_COLOUR),
+    ],
+)
+def test_a_sprite_turns_upside_down_when_stunned(font, status, top_left, bottom_right):
+    board = Board(_team(1), _team(1))
+    key = PlayerKey(Side.HOME, 0)
+    board.place(key, Square(5, 7))
+    board.set_status(key, status)
+    sprite = _sprite(SPRITE_COLOUR, OTHER_COLOUR)
+    sprites = render.PlayerSprites({(Side.HOME, "Lineman"): sprite})
+    surface, layout = _sandbox(board, player_sprites=sprites)
+    square = layout.square(5, 7)
+    # Sampled away from the badge, which turns from bottom-left to top-right.
+    assert surface.get_at((square.x + 4, square.y + 4))[:3] == top_left
+    assert surface.get_at((square.x + 27, square.y + 27))[:3] == bottom_right
+
+
+def test_a_dragged_player_keeps_their_sprite(font):
+    board = Board(_team(1), _team(1))
+    key = PlayerKey(Side.AWAY, 0)
+    board.place(key, Square(5, 7))
+    target = build_layout(32).square(9, 7)
+    view = InteractionView(key, Drag(key, target), ())
+    sprites = render.PlayerSprites({(Side.AWAY, "default"): _sprite(SPRITE_COLOUR)})
+    surface, _ = _sandbox(board, view, sprites)
+    assert surface.get_at((target.x + 1, target.y + 1))[:3] == SPRITE_COLOUR

@@ -1,5 +1,7 @@
 """Tests for bb_sandbox.app, using the headless SDL dummy driver."""
 
+from pathlib import Path
+
 import pygame
 import pytest
 
@@ -8,7 +10,13 @@ from bb_sandbox.app import _draw, handle_event, run
 from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, RaceError, load_races
-from bb_sandbox.render import BACKGROUND, BUTTON_FILL, PANEL_FILL, SpriteError
+from bb_sandbox.render import (
+    BACKGROUND,
+    BUTTON_FILL,
+    PANEL_FILL,
+    PlayerSprites,
+    SpriteError,
+)
 from bb_sandbox.session import Screen, Session
 
 CSV = (
@@ -16,6 +24,7 @@ CSV = (
     "Grishnak,Blitzer,5,3,3+,4+,10+,Block\n"
 )
 RACES = load_races(RACES_FILE)
+NO_PLAYER_SPRITES = PlayerSprites()
 
 
 @pytest.fixture(autouse=True)
@@ -159,10 +168,10 @@ def frame():
     pygame.init()
     layout = build_layout()
 
-    def draw(session):
+    def draw(session, player_sprites=NO_PLAYER_SPRITES):
         surface = pygame.Surface(layout.window_size)
         font, die_font = pygame.font.Font(None, 20), pygame.font.Font(None, 40)
-        _draw(surface, layout, font, die_font, {}, session)
+        _draw(surface, layout, font, die_font, {}, player_sprites, session)
         return surface
 
     yield layout, draw
@@ -231,3 +240,43 @@ def test_run_stops_on_a_corrupt_dice_image(in_tmp, monkeypatch):
     with pytest.raises(SpriteError, match="pow.png"):
         run(max_frames=1)
     assert not pygame.get_init()
+
+
+def test_draw_shows_a_player_sprite_problem_unless_the_session_has_one(in_tmp, frame):
+    layout, draw = frame
+    session = Session(layout, in_tmp, in_tmp, RACES)
+    broken = PlayerSprites(problem="sprites/away/ogre.png: Unsupported image format")
+    line = layout.menu_message_line
+    assert {draw(session).get_at((x, line.y + 12))[:3] for x in range(200)} == {
+        BACKGROUND
+    }
+    shown = draw(session, broken)
+    assert {shown.get_at((x, line.y + 12))[:3] for x in range(200)} != {BACKGROUND}
+    # Start without both teams sets the session's message, which wins.
+    handle_event(session, _click(layout.start_button))
+    assert pygame.image.tobytes(draw(session), "RGB") == pygame.image.tobytes(
+        draw(session, broken), "RGB"
+    )
+
+
+def test_run_reloads_the_player_sprites_when_the_window_regains_focus(monkeypatch):
+    calls = []
+
+    def load(folder, size):
+        calls.append((folder, size))
+        return PlayerSprites()
+
+    monkeypatch.setattr(app, "load_player_sprites", load)
+    pygame.init()
+    # Reason: the dummy video driver sends no focus events of its own, and
+    # run() calls pygame.init() again, which keeps the queued event.
+    pygame.event.post(pygame.event.Event(pygame.WINDOWFOCUSGAINED))
+    assert run(max_frames=2) == 2
+    # Once after the window opens, then once for the focus event.
+    assert calls == [(Path("sprites"), 32)] * 2
+
+
+def test_run_keeps_going_with_a_corrupt_player_image(in_tmp):
+    (in_tmp / "sprites" / "away").mkdir(parents=True)
+    (in_tmp / "sprites" / "away" / "ogre.png").write_bytes(b"not a png")
+    assert run(max_frames=2) == 2

@@ -9,12 +9,14 @@ from bb_sandbox.layout import Layout, build_layout
 from bb_sandbox.races import RACES_FILE, load_races
 from bb_sandbox.render import (
     DICE_SPRITES_DIR,
+    PlayerSprites,
     draw_builder,
     draw_dice,
     draw_menu,
     draw_races,
     draw_sandbox,
     load_block_sprites,
+    load_player_sprites,
 )
 from bb_sandbox.session import (
     ImportRoster,
@@ -32,6 +34,7 @@ FONT_SIZE = 20
 DIE_FONT_SIZE = 40
 ROSTERS_DIR = Path("rosters")
 SETUPS_DIR = Path("setups")
+PLAYER_SPRITES_DIR = Path("sprites")
 LEFT_BUTTON = 1
 RIGHT_BUTTON = 3
 
@@ -85,6 +88,7 @@ def _draw(
     font: pygame.font.Font,
     die_font: pygame.font.Font,
     sprites: dict[BlockFace, pygame.Surface],
+    player_sprites: PlayerSprites,
     session: Session,
 ) -> None:
     """
@@ -97,18 +101,23 @@ def _draw(
         die_font (pygame.font.Font): Bigger font for the numbers on dice.
         sprites (dict[BlockFace, pygame.Surface]): Block dice images, from
             load_block_sprites.
+        player_sprites (PlayerSprites): Player images, from load_player_sprites.
         session (Session): The session to draw.
     """
+    # Reason: a broken player image stays reported until it is fixed, without
+    # hiding the session's own feedback.
+    message = session.message or player_sprites.problem
     if session.screen is Screen.SANDBOX and session.interaction is not None:
         view = session.interaction.view()
-        draw_sandbox(surface, layout, font, session.board, view, session.message)
+        board = session.board
+        draw_sandbox(surface, layout, font, board, view, player_sprites, message)
         draw_dice(surface, layout, font, die_font, session.last_roll, sprites)
     elif session.screen is Screen.RACES:
-        draw_races(surface, layout, font, session.races, session.message)
+        draw_races(surface, layout, font, session.races, message)
     elif session.screen is Screen.BUILDER and session.builder is not None:
-        draw_builder(surface, layout, font, session.builder, session.message)
+        draw_builder(surface, layout, font, session.builder, message)
     else:
-        draw_menu(surface, layout, font, session.menu_view(), session.message)
+        draw_menu(surface, layout, font, session.menu_view(), message)
 
 
 def run(max_frames: int | None = None) -> int:
@@ -147,15 +156,23 @@ def run(max_frames: int | None = None) -> int:
         # be decoded stops the app with a SpriteError naming the file; only a
         # missing image falls back to the face's name.
         sprites = load_block_sprites(DICE_SPRITES_DIR, layout.die_boxes[0].width)
+        # Reason: player images are user files, so a broken one never raises.
+        player_sprites = load_player_sprites(PLAYER_SPRITES_DIR, layout.square_size)
         clock = pygame.time.Clock()
         frames = 0
         running = True
         # Reason: an interactive loop is bounded by the user closing the window;
         # max_frames gives tests an explicit cap.
         while running and (max_frames is None or frames < max_frames):
-            for event in pygame.event.get():
+            events = pygame.event.get()
+            for event in events:
                 running = handle_event(session, event) and running
-            _draw(screen, layout, font, die_font, sprites, session)
+            # Reason: picks up new images once, however many focus events arrive.
+            if any(event.type == pygame.WINDOWFOCUSGAINED for event in events):
+                player_sprites = load_player_sprites(
+                    PLAYER_SPRITES_DIR, layout.square_size
+                )
+            _draw(screen, layout, font, die_font, sprites, player_sprites, session)
             pygame.display.flip()
             clock.tick(FPS)
             frames += 1

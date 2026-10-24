@@ -16,7 +16,7 @@ The doc has to follow CLAUDE.md (black-box modules, primitives first, wrapped de
 - The CSV header uses the rulebook names ST and PA (the PRD's STR/PAS).
 - AG, PA and AV are written as printed: `3+`, with `-` for no PA. The `+` is optional.
 - Shirt number = roster row (1–16). Team name = the CSV file name without its extension.
-- Sprites are drawn in code: a token in the team colour with the shirt number and a "head" bar on its top edge, so the 90°/180° rotations are visible. There are no image files.
+- Sprites are drawn in code: a token in the team colour with the shirt number and a "head" bar on its top edge, so the 90°/180° rotations are visible. A player with an image in `sprites/` is drawn from it instead: see [sprites.md](sprites.md).
 - Dropping a player on one of their own dugout boxes (Reserve, KO, Injured) benches them there. Benching resets the player to Standing.
 - The sandbox gets a **Main menu** button, which is the way back to the setups list. Leaving discards any unsaved board.
 - The file lists rescan when the window regains focus, so there is no Refresh button.
