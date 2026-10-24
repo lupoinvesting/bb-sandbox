@@ -40,6 +40,14 @@ def _click(box, button=1):
     )
 
 
+def _key(key):
+    return pygame.event.Event(pygame.KEYDOWN, key=key)
+
+
+def _text(text):
+    return pygame.event.Event(pygame.TEXTINPUT, text=text)
+
+
 def test_run_renders_requested_frames_and_quits():
     assert run(max_frames=3) == 3
     assert not pygame.get_init()
@@ -125,6 +133,7 @@ def test_handle_event_saves_and_loads_setup(in_tmp):
 
     # Saving rescans, so the new file is listed without a focus event.
     assert handle_event(session, _click(layout.save_button))
+    assert handle_event(session, _key(pygame.K_RETURN))
     assert session.message.startswith("Saved orcs-vs-orcs-")
     handle_event(session, _click(layout.menu_button))
     assert len(session.menu_view().setups) == 1
@@ -148,6 +157,7 @@ def test_handle_event_builds_and_saves_a_roster(in_tmp):
 
     # Saving rescans, so the new roster is listed without a focus event.
     assert handle_event(session, _click(layout.save_roster_button))
+    assert handle_event(session, _key(pygame.K_KP_ENTER))
     assert session.screen is Screen.MENU
     assert session.message.startswith("Saved Human-")
     [entry] = session.menu_view().rosters
@@ -255,12 +265,10 @@ def test_draw_shows_a_player_sprite_problem_unless_the_session_has_one(in_tmp, f
     layout, draw = frame
     session = Session(layout, in_tmp, in_tmp, RACES)
     broken = PlayerSprites(problem="sprites/away/ogre.png: Unsupported image format")
-    line = layout.menu_message_line
-    assert {draw(session).get_at((x, line.y + 12))[:3] for x in range(200)} == {
-        BACKGROUND
-    }
-    shown = draw(session, broken)
-    assert {shown.get_at((x, line.y + 12))[:3] for x in range(200)} != {BACKGROUND}
+    # The problem replaces the menu's rename hint.
+    assert pygame.image.tobytes(draw(session), "RGB") != pygame.image.tobytes(
+        draw(session, broken), "RGB"
+    )
     # Start without both teams sets the session's message, which wins.
     handle_event(session, _click(layout.start_button))
     assert pygame.image.tobytes(draw(session), "RGB") == pygame.image.tobytes(
@@ -289,3 +297,44 @@ def test_run_keeps_going_with_a_corrupt_player_image(in_tmp):
     (in_tmp / "sprites" / "away").mkdir(parents=True)
     (in_tmp / "sprites" / "away" / "ogre.png").write_bytes(b"not a png")
     assert run(max_frames=2) == 2
+
+
+def test_typed_keys_rename_a_roster_and_rescan(in_tmp):
+    rosters = in_tmp / "rosters"
+    rosters.mkdir()
+    (rosters / "orcs.csv").write_text(CSV)
+    layout = build_layout()
+    session = Session(layout, rosters, in_tmp / "setups", RACES)
+    session.rescan()
+    row = layout.menu_row(MenuList.HOME_ROSTERS, 0)
+    assert handle_event(session, _click(row, button=3))
+    assert session.name_view.text == "orcs"
+    for _ in "orcs":
+        assert handle_event(session, _key(pygame.K_BACKSPACE))
+    assert handle_event(session, _text("Reavers"))
+    # Keys the box doesn't use are ignored.
+    assert handle_event(session, _key(pygame.K_a))
+    assert handle_event(session, _key(pygame.K_RETURN))
+    assert session.name_view is None
+    assert session.message == "Renamed orcs to Reavers"
+    # Renaming rescans, so the new name is listed without a focus event.
+    [entry] = session.menu_view().rosters
+    assert entry.name == "Reavers" and (rosters / "Reavers.csv").is_file()
+
+
+def test_escape_closes_the_name_box_and_saves_nothing(in_tmp):
+    layout, session = _sandbox(in_tmp)
+    assert handle_event(session, _click(layout.save_button))
+    assert handle_event(session, _key(pygame.K_ESCAPE))
+    assert session.name_view is None
+    assert not (in_tmp / "setups").exists()
+
+
+def test_draw_shows_the_name_box_last(in_tmp, frame):
+    _, draw = frame
+    layout, session = _sandbox(in_tmp)
+    box = layout.name_box
+    corner = (box.x + 3, box.y + box.height - 3)
+    assert draw(session).get_at(corner)[:3] != PANEL_FILL
+    handle_event(session, _click(layout.save_button))
+    assert draw(session).get_at(corner)[:3] == PANEL_FILL

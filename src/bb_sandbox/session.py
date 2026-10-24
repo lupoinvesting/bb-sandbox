@@ -1,15 +1,17 @@
 """Screen flow: the main menu, roster imports, the roster builder, saved setups
 and the sandbox.
 
-Session never touches Pygame. Clicks come in as screen positions; disk I/O only
-happens in the methods app calls explicitly (rescan, import_team, load_setup,
-save_setup, save_roster).
+Session never touches Pygame. Clicks come in as screen positions and typing as
+text and Key values; disk I/O only happens in the methods app calls explicitly
+(rescan, import_team, load_setup, save_setup, save_roster, rename).
 """
 
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from functools import partial
 from pathlib import Path
 from typing import NamedTuple
 
@@ -18,6 +20,15 @@ from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, Roll, roll_dice
 from bb_sandbox.interaction import Interaction
 from bb_sandbox.layout import Layout, MenuList
+from bb_sandbox.names import (
+    CHARS_PROBLEM,
+    FileNameError,
+    add_chars,
+    free_path,
+    name_problem,
+    remove_char,
+    rename_file,
+)
 from bb_sandbox.pitch import Side
 from bb_sandbox.races import Race
 from bb_sandbox.roster import (
@@ -72,15 +83,80 @@ class LoadSetup:
 
 @dataclass(frozen=True)
 class SaveSetup:
-    """A request from press() to save the sandbox board to a new file."""
+    """A request from key() to save the sandbox board to a new file.
+
+    Attributes:
+        name (str): The file name without suffix.
+    """
+
+    name: str
 
 
 @dataclass(frozen=True)
 class SaveRoster:
-    """A request from press() to save the builder's draft to a new roster file."""
+    """A request from key() to save the builder's draft to a new roster file.
+
+    Attributes:
+        name (str): The file name without suffix, which is also the team name.
+    """
+
+    name: str
 
 
-FileRequest = ImportRoster | LoadSetup | SaveSetup | SaveRoster
+@dataclass(frozen=True)
+class RenameFile:
+    """A request from key() to rename a roster or setup file.
+
+    Attributes:
+        path (Path): The file to rename.
+        name (str): The new file name without suffix.
+    """
+
+    path: Path
+    name: str
+
+
+FileRequest = ImportRoster | LoadSetup | SaveSetup | SaveRoster | RenameFile
+
+
+class Key(Enum):
+    """The keys the name box reacts to; app maps Pygame key codes to these."""
+
+    BACKSPACE = "backspace"
+    ENTER = "enter"
+    ESCAPE = "escape"
+
+
+class NameView(NamedTuple):
+    """What the open name box shows.
+
+    Attributes:
+        caption (str): What the name is for, e.g. "Save setup as".
+        text (str): The name typed so far.
+        problem (str): Why the name can't be used, or '' to show the hint.
+    """
+
+    caption: str
+    text: str
+    problem: str
+
+
+@dataclass
+class _NameBox:
+    """The open name box's state.
+
+    Attributes:
+        caption (str): What the name is for.
+        text (str): The name typed so far.
+        problem (str): Why the name can't be used, or ''.
+        request (Callable[[str], FileRequest]): Turns the stripped name into
+            the request key() returns on Enter.
+    """
+
+    caption: str
+    text: str
+    problem: str
+    request: Callable[[str], FileRequest]
 
 
 class RosterEntry(NamedTuple):
@@ -144,6 +220,7 @@ class Session:
         setups_dir: Path,
         races: tuple[Race, ...],
         rng: random.Random | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         """
         Start on the main menu. No disk I/O: call rescan() to list the files.
@@ -155,12 +232,16 @@ class Session:
             races (tuple[Race, ...]): The races the race menu offers.
             rng (random.Random | None): The dice's only source of randomness;
                 None makes a fresh one. Tests pass a seeded one.
+            clock (Callable[[], datetime] | None): The time for default save
+                names; None means datetime.now. Tests pass a fixed one.
         """
         self._layout = layout
         self._rosters_dir = rosters_dir
         self._setups_dir = setups_dir
         self._races = races
         self._rng = rng if rng is not None else random.Random()
+        self._clock = clock if clock is not None else datetime.now
+        self._name_box: _NameBox | None = None
         self._last_roll: Roll | None = None
         self._rosters: tuple[Path, ...] = ()
         self._roster_entries: tuple[RosterEntry, ...] = ()
@@ -207,6 +288,80 @@ class Session:
         """Roll | None: The last dice roll; None off the sandbox or before a roll."""
         return self._last_roll
 
+    @property
+    def name_view(self) -> NameView | None:
+        """NameView | None: The open name box; None when no box is open."""
+        box = self._name_box
+        return None if box is None else NameView(box.caption, box.text, box.problem)
+
+    def _open_name_box(
+        self, caption: str, default: str, request: Callable[[str], FileRequest]
+    ) -> None:
+        """
+        Open the name box prefilled with a default name.
+
+        Args:
+            caption (str): What the name is for.
+            default (str): The prefilled name; disallowed characters and any
+                past MAX_NAME_LENGTH are dropped.
+            request (Callable[[str], FileRequest]): Builds key()'s request
+                from the typed name.
+        """
+        # Reason: hand-made file names can hold characters the box doesn't
+        # allow, so the box text keeps its invariant from the start.
+        text, ok = add_chars("", default)
+        self._name_box = _NameBox(caption, text, "" if ok else CHARS_PROBLEM, request)
+
+    def type_text(self, text: str) -> None:
+        """
+        Type into the open name box; a dropped character becomes its problem.
+
+        Args:
+            text (str): The typed characters. No-op when no box is open.
+        """
+        box = self._name_box
+        if box is None:
+            return
+        box.text, ok = add_chars(box.text, text)
+        box.problem = "" if ok else CHARS_PROBLEM
+
+    def key(self, key: Key) -> FileRequest | None:
+        """
+        Handle a key in the open name box. No disk I/O.
+
+        Args:
+            key (Key): The key pressed. No-op when no box is open.
+
+        Returns:
+            FileRequest | None: On Enter with a valid name, the save or rename
+                request; the box stays open until that request succeeds.
+        """
+        box = self._name_box
+        if box is None:
+            return None
+        if key is Key.ESCAPE:
+            self._name_box = None
+        elif key is Key.BACKSPACE:
+            box.text, box.problem = remove_char(box.text), ""
+        else:
+            name = box.text.strip()
+            box.problem = name_problem(name)
+            if not box.problem:
+                return box.request(name)
+        return None
+
+    def _report(self, problem: str) -> None:
+        """
+        Show a failed save or rename: in the open name box, else as the message.
+
+        Args:
+            problem (str): The error text.
+        """
+        if self._name_box is not None:
+            self._name_box.problem = problem
+        else:
+            self._message = problem
+
     def _visible_count(self, files: tuple[Path, ...]) -> int:
         """
         Count the file rows that fit, keeping one row for "+N more" on overflow.
@@ -245,14 +400,17 @@ class Session:
         """
         Handle a left click. Does no disk I/O; file work is returned as a request.
 
+        Ignored while the name box is open. The Save buttons open the name box.
+
         Args:
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
-            FileRequest | None: The file action to perform: a roster or setup
-                row on the menu, the sandbox Save button or the builder's Save
-                roster button.
+            FileRequest | None: The file action to perform for a roster or
+                setup row on the menu.
         """
+        if self._name_box is not None:
+            return None
         if self._screen is Screen.SANDBOX:
             return self._press_sandbox(pos)
         if self._screen is Screen.RACES:
@@ -271,10 +429,12 @@ class Session:
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
-            FileRequest | None: SaveSetup for the Save button, else None.
+            FileRequest | None: Always None; Save opens the name box.
         """
         if self._layout.save_button.contains(pos):
-            return SaveSetup()
+            path = new_setup_path(self._setups_dir, self._board, self._clock())
+            self._open_name_box("Save setup as", path.stem, SaveSetup)
+            return None
         index = self._layout.dice_button_at(pos)
         if self._layout.menu_button.contains(pos):
             self._screen, self._board, self._message = Screen.MENU, None, ""
@@ -315,10 +475,11 @@ class Session:
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
-            FileRequest | None: SaveRoster for the Save roster button, else None.
+            FileRequest | None: Always None; Save roster opens the name box.
         """
         if self._layout.save_roster_button.contains(pos):
-            return SaveRoster()
+            self._open_save_roster()
+            return None
         if self._layout.back_button.contains(pos):
             # Reason: going back drops the draft; only Save roster keeps it.
             self._screen, self._builder, self._message = Screen.RACES, None, ""
@@ -339,6 +500,36 @@ class Session:
             self._message = ""
         return None
 
+    def _open_save_roster(self) -> None:
+        """Open the Save roster name box, or explain why the draft can't be saved."""
+        if not self._builder.picks:
+            self._message = "Add at least one player"
+            return
+        race = self._builder.race.name
+        path = new_roster_path(self._rosters_dir, race, self._clock())
+        self._open_name_box("Save roster as", path.stem, SaveRoster)
+
+    def _menu_file_at(self, pos: tuple[int, int]) -> tuple[MenuList, Path] | None:
+        """
+        Find the roster or setup file listed at a main menu position.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            tuple[MenuList, Path] | None: The list and the file, or None for
+                captions, the "+N more" line, empty rows and anything else.
+        """
+        hit = self._layout.menu_row_at(pos)
+        if hit is None:
+            return None
+        which, index = hit
+        files = self._setups if which is MenuList.SETUPS else self._rosters
+        # Reason: rows past the visible names are the "+N more" line or empty.
+        if index >= self._visible_count(files):
+            return None
+        return which, files[index]
+
     def _press_menu(self, pos: tuple[int, int]) -> FileRequest | None:
         """
         Handle a main menu click: New roster, Start, or a roster or setup row.
@@ -355,17 +546,13 @@ class Session:
         if self._layout.start_button.contains(pos):
             self._start()
             return None
-        hit = self._layout.menu_row_at(pos)
+        hit = self._menu_file_at(pos)
         if hit is None:
             return None
-        which, index = hit
-        files = self._setups if which is MenuList.SETUPS else self._rosters
-        # Reason: rows past the visible names are the "+N more" line or empty.
-        if index >= self._visible_count(files):
-            return None
+        which, path = hit
         if which is MenuList.SETUPS:
-            return LoadSetup(files[index])
-        return ImportRoster(LIST_SIDES[which], files[index])
+            return LoadSetup(path)
+        return ImportRoster(LIST_SIDES[which], path)
 
     def _start(self) -> None:
         """Open the sandbox if both teams are imported, else explain why not."""
@@ -393,30 +580,46 @@ class Session:
         """
         Handle a left button release; only the sandbox uses it.
 
+        Ignored while the name box is open.
+
         Args:
             pos (tuple[int, int]): Screen (x, y).
         """
-        if self._interaction is not None:
+        if self._interaction is not None and self._name_box is None:
             self._interaction.release(pos)
 
     def move(self, pos: tuple[int, int]) -> None:
         """
         Handle mouse motion; only the sandbox uses it.
 
+        Ignored while the name box is open.
+
         Args:
             pos (tuple[int, int]): Screen (x, y).
         """
-        if self._interaction is not None:
+        if self._interaction is not None and self._name_box is None:
             self._interaction.move(pos)
 
     def right_click(self, pos: tuple[int, int]) -> None:
         """
-        Handle a right click; only the sandbox uses it.
+        Handle a right click: rename a file on the main menu, or sandbox input.
+
+        Ignored while the name box is open.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
         """
-        if self._interaction is not None:
+        if self._name_box is not None:
+            return
+        if self._screen is Screen.MENU:
+            hit = self._menu_file_at(pos)
+            if hit is not None:
+                which, path = hit
+                caption = (
+                    "Rename setup" if which is MenuList.SETUPS else "Rename roster"
+                )
+                self._open_name_box(caption, path.stem, partial(RenameFile, path))
+        elif self._interaction is not None:
             self._interaction.right_click(pos)
 
     def rescan(self) -> None:
@@ -457,34 +660,40 @@ class Session:
             return
         self._open_sandbox(board, f"Loaded {path.stem}")
 
-    def save_setup(self, when: datetime | None = None) -> None:
+    def save_setup(self, name: str) -> None:
         """
-        Save the sandbox board to a new timestamped file; the outcome is the message.
+        Save the sandbox board to a new file; never overwrites one.
+
+        On success the name box closes and the message says so. A failure
+        becomes the name box's problem, or the message if no box is open.
 
         Args:
-            when (datetime | None): The save time for the file name; None means now.
+            name (str): The file name without suffix.
 
         Raises:
             ValueError: If no sandbox is open.
         """
         if self._board is None:
             raise ValueError("No sandbox board to save")
-        path = new_setup_path(self._setups_dir, self._board, when or datetime.now())
         try:
+            path = free_path(self._setups_dir, name, ".json")
             write_setup(self._board, path)
-        except SetupFileError as error:
-            self._message = str(error)
+        except (FileNameError, SetupFileError) as error:
+            self._report(str(error))
             return
-        self._message = f"Saved {path.stem}"
+        self._name_box = None
+        self._message = f"Saved {name}"
 
-    def save_roster(self, when: datetime | None = None) -> None:
+    def save_roster(self, name: str) -> None:
         """
-        Save the draft as a new timestamped roster CSV; the outcome is the message.
+        Save the draft as a new roster CSV; never overwrites one.
 
-        On success the main menu opens; call rescan() to list the new file.
+        On success the name box closes and the main menu opens; call rescan()
+        to list the new file. A failure becomes the name box's problem, or the
+        message if no box is open.
 
         Args:
-            when (datetime | None): The save time for the file name; None means now.
+            name (str): The file name without suffix, which is also the team name.
 
         Raises:
             ValueError: If no roster is being built.
@@ -494,14 +703,42 @@ class Session:
         if not self._builder.picks:
             self._message = "Add at least one player"
             return
-        race = self._builder.race.name
-        path = new_roster_path(self._rosters_dir, race, when or datetime.now())
         try:
+            path = free_path(self._rosters_dir, name, ".csv")
             # Reason: load_team names a team after its file, so naming it after
             # the file stem makes the saved roster read back unchanged.
-            save_team(self._builder.team(path.stem), path)
-        except RosterError as error:
-            self._message = str(error)
+            save_team(self._builder.team(name), path)
+        except (FileNameError, RosterError) as error:
+            self._report(str(error))
             return
+        self._name_box = None
         self._screen, self._builder = Screen.MENU, None
-        self._message = f"Saved {path.stem}"
+        self._message = f"Saved {name}"
+
+    def rename(self, path: Path, name: str) -> None:
+        """
+        Rename a roster or setup file; never overwrites one.
+
+        An imported team named after the old roster file takes the new name.
+        On success the name box closes; call rescan() to list the file under
+        its new name. A failure becomes the name box's problem, or the message
+        if no box is open.
+
+        Args:
+            path (Path): The roster CSV or setup JSON file.
+            name (str): The new file name without suffix.
+        """
+        try:
+            new = rename_file(path, name)
+        except FileNameError as error:
+            self._report(str(error))
+            return
+        # Reason: load_team names a team after its file, so the imported team
+        # follows the rename and still matches its menu row. Setups keep the
+        # team names stored inside them.
+        old = path.stem if path in self._rosters else None
+        for side, team in self._teams.items():
+            if team is not None and team.name == old:
+                self._teams[side] = team.model_copy(update={"name": new.stem})
+        self._name_box = None
+        self._message = f"Renamed {path.stem} to {new.stem}"

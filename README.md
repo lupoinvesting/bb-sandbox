@@ -32,17 +32,27 @@ The main menu lists each roster as `name (Race)` and previews the picked team's 
 - Each positional shows how many are hired, its max (`0-N`), cost, MA ST AG PA AV and skills.
   The roster shows its size and its total cost against the 1,000K budget.
 - The max and the budget are shown but never enforced: a count over its max and a total over budget turn orange.
-- **Save roster** writes `rosters/<Race>-YYYYMMDD-HHMMSS.csv` and returns to the main menu, which lists it like any other roster.
-  Players are named `<position> <n>` (e.g. `Human Lineman 2`); rename the file in Explorer to rename the team. **Back** discards the draft.
+- **Save roster** asks for a name (default `<Race>-YYYYMMDD-HHMMSS`), writes `rosters/<name>.csv` and returns to the main menu, which lists it like any other roster.
+  Players are named `<position> <n>` (e.g. `Human Lineman 2`); the team is named after the file. **Back** discards the draft.
 
 The teams come from [src/bb_sandbox/races.csv](src/bb_sandbox/races.csv), one row per positional in the roster CSV notation
 (from [bloodbowlbase.ru](https://bloodbowlbase.ru/bb2025/teams/), with errata applied).
 
 ## Saving setups
 
-In the sandbox, **Save setup** writes the board to `setups/<home>-vs-<away>-YYYYMMDD-HHMMSS.json`
+In the sandbox, **Save setup** asks for a name (default `<home>-vs-<away>-YYYYMMDD-HHMMSS`) and writes the board to `setups/<name>.json`
 (squares, Prone/Stunned status, Reserve/KO/Injured boxes, the ball, and both full rosters).
-The main menu's **Saved setups** list loads one straight into the sandbox; rename a file in Explorer to name it.
+The main menu's **Saved setups** list loads one straight into the sandbox.
+
+## Naming rosters and setups
+
+Saving a roster or a setup opens a name box with the default name filled in. Type to change it, **Enter** saves, **Esc** cancels.
+**Right-click** a roster or a saved setup on the main menu to rename its file the same way. Renaming a roster renames the team;
+renaming a setup keeps the team names saved inside it.
+
+- Names use letters, digits, spaces, `-` and `_`, up to 64 characters. Other characters are dropped as you type.
+- A name another file already has is refused (`<name> already exists`) and the box stays open: nothing is ever overwritten.
+- Windows device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) are refused.
 
 ## Dice
 
