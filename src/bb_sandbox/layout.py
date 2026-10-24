@@ -125,8 +125,12 @@ class Layout:
             and the builder use it too.
         new_roster_button (Box): Main menu "New roster" button, left of
             start_button.
-        back_button (Box): Race menu and builder "Back" button, where
-            new_roster_button is.
+        options_button (Box): Main menu "Options" button, right of
+            start_button.
+        option_rows (int): How many rows fit in the Options screen's column,
+            menu_columns[0], below its caption.
+        back_button (Box): Race menu, Options screen and builder "Back"
+            button, where new_roster_button is.
         save_roster_button (Box): Builder "Save roster" button, where
             start_button is.
         positional_table (Box): Builder table of positionals: the first two
@@ -158,6 +162,8 @@ class Layout:
     start_button: Box
     menu_message_line: Box
     new_roster_button: Box
+    options_button: Box
+    option_rows: int
     back_button: Box
     save_roster_button: Box
     positional_table: Box
@@ -428,6 +434,44 @@ class Layout:
             index = (pos[1] - column.y) // self.square_size - 1
             if 0 <= index < self.menu_rows:
                 return which, index
+        return None
+
+    def option_row(self, index: int) -> Box:
+        """
+        Return one row of the Options screen's column, below its caption.
+
+        Args:
+            index (int): Zero-based row, 0..option_rows-1.
+
+        Returns:
+            Box: The row's screen rectangle.
+
+        Raises:
+            ValueError: If index is outside 0..option_rows-1.
+        """
+        if not 0 <= index < self.option_rows:
+            raise ValueError(f"Option row {index} is outside 0..{self.option_rows - 1}")
+        column = self.menu_columns[0]
+        return column._replace(
+            y=column.y + (index + 1) * self.square_size, height=self.square_size
+        )
+
+    def option_row_at(self, pos: tuple[int, int]) -> int | None:
+        """
+        Find the Options row under a point (inverse of option_row).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            int | None: The row index, or None off the rows.
+        """
+        column = self.menu_columns[0]
+        if not column.contains(pos):
+            return None
+        index = (pos[1] - column.y) // self.square_size - 1
+        if 0 <= index < self.option_rows:
+            return index
         return None
 
     def race_cell(self, index: int) -> Box:
@@ -767,6 +811,12 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         start_button=start_button,
         menu_message_line=menu_message_line,
         new_roster_button=new_roster_button,
+        options_button=start_button._replace(
+            x=start_button.x + START_BUTTON_WIDTH + MARGIN
+        ),
+        # Reason: the first row holds the caption; there is no team preview
+        # to leave room for.
+        option_rows=max(0, column_height // square_size - 1),
         back_button=new_roster_button,
         save_roster_button=start_button,
         positional_table=positional_table,

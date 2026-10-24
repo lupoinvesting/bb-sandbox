@@ -5,7 +5,7 @@ The pitch is drawn in code: a green fill, lighter wide zones, blue endzones, gri
 - the image replaces the pitch's fills, and the grid and lines are still drawn on top;
 - the choice is remembered in `settings.json` between runs.
 
-Status: designed, not built (Phase 8 in [task.md](task.md)); the requirements are §3.8 of the [PRD](prd.md).
+Status: implemented (Phase 8 in [task.md](task.md)); the requirements are §3.8 of the [PRD](prd.md).
 It builds on commit `cb1fe96`: Phase 7's player sprites ([sprites.md](sprites.md)) and the dice images moved to `sprites/dice/`.
 
 ## Decisions

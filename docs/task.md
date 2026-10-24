@@ -53,14 +53,14 @@ Design: [sprites.md](sprites.md).
 
 ## Phase 8: Pitch Image & Options
 Design: [pitch_sprites.md](pitch_sprites.md).
-- [ ] images: new pygame-free module with `IMAGE_SUFFIXES` and `list_images`; render's `_image_files` switched to it
-- [ ] settings: new module with the pydantic `Settings` (version, bare-file-name `pitch`), `load_settings`, `save_settings`, `SettingsError`
-- [ ] layout: `options_button` (right of Start), `option_rows`, `option_row`, `option_row_at`
-- [ ] session: `Screen.OPTIONS`, `SaveSettings`, the pitch list (rescanned) and choice, `options_view`, `load_settings` / `save_settings`; `Session` takes `pitches_dir` and `settings_file`
-- [ ] render: `PitchSprite`, `load_pitch_sprite` (stretched to the pitch, problem on failure), `_draw_pitch(image)` under the grid and lines, `draw_options`, the main menu's Options button
-- [ ] app: `PITCH_SPRITES_DIR`, `SETTINGS_FILE`; load settings and the pitch sprite; reload on focus and when the choice changes; handle `SaveSettings`. Move the frame loop into `_run_frames`, which also closes the open `run()` length item below
-- [ ] `sprites/pitch/.gitkeep` force-added; `settings.json` in `.gitignore`
-- [ ] README "Pitch image & options" section; status line in pitch_sprites.md
+- [x] images: new pygame-free module with `IMAGE_SUFFIXES` and `list_images`; render's `_image_files` switched to it
+- [x] settings: new module with the pydantic `Settings` (version, bare-file-name `pitch`), `load_settings`, `save_settings`, `SettingsError`
+- [x] layout: `options_button` (right of Start), `option_rows`, `option_row`, `option_row_at`
+- [x] session: `Screen.OPTIONS`, `SaveSettings`, the pitch list (rescanned) and choice, `options_view`, `load_settings` / `save_settings`; `Session` takes `pitches_dir` and `settings_file`
+- [x] render: `PitchSprite`, `load_pitch_sprite` (stretched to the pitch, problem on failure), `_draw_pitch(image)` under the grid and lines, `draw_options`, the main menu's Options button
+- [x] app: `PITCH_SPRITES_DIR`, `SETTINGS_FILE`; load settings and the pitch sprite; reload on focus and when the choice changes; handle `SaveSettings`. Move the frame loop into `_run_frames`, which also closes the open `run()` length item below
+- [x] `sprites/pitch/.gitkeep` force-added; `settings.json` in `.gitignore`
+- [x] README "Pitch image & options" section; status line in pitch_sprites.md
 
 ## Phase 9: Ball Carrier
 Design: [plans/ball-moves.md](plans/ball-moves.md).
@@ -90,7 +90,9 @@ Design: [plans/ball-moves.md](plans/ball-moves.md).
 - [ ] Add the five block dice PNGs to `sprites/dice/` (names in the README). The folder doesn't exist until then, so every block face shows its name.
 - [x] `sprites/home/sprite-names.txt` and `sprites/away/sprite-names.txt` list `default.png` and the 125 position file names (force-added; a position shared by races is listed under its first race).
 - [ ] Phase 7: add a test that the two `sprite-names.txt` lists match `races.csv`.
-- [ ] `run()` is 59 lines after Phase 7, one under NASA rule 4's 60; move its frame loop into a helper with the next change to it.
+- [x] `run()` is 59 lines after Phase 7, one under NASA rule 4's 60; move its frame loop into a helper with the next change to it.
 - [ ] The five dice PNGs are now in `sprites/dice/`, but `.gitignore`'s `sprites/` ignores that folder too, so they can't be committed until they are force-added or the folder is re-included.
 - [x] Move the block dice images from `src/bb_sandbox/sprites/dice/` to `sprites/dice/`, next to the player images; `DICE_SPRITES_DIR` is now relative to the folder the app is launched from.
 - [ ] Now that the dice images are user files in `sprites/` too, decide whether a broken one should still stop the app or, like a broken player image, only be reported on the message line.
+- [ ] The pitch design lives in `docs/plans/pitch_sprites.md`, but Phase 8's "Design:" link and CLAUDE.md's Documentation list point to `docs/pitch_sprites.md`, which doesn't exist.
+- [ ] `build_layout` is 143 lines after Phase 8 (6 more for the Options button and rows); still to split (item above).

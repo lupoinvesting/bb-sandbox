@@ -13,7 +13,9 @@ from bb_sandbox.races import RACES_FILE, RaceError, load_races
 from bb_sandbox.render import (
     BACKGROUND,
     BUTTON_FILL,
+    HIGHLIGHT,
     PANEL_FILL,
+    PitchSprite,
     PlayerSprites,
     SpriteError,
 )
@@ -32,6 +34,10 @@ def in_tmp(tmp_path, monkeypatch):
     # Reason: run() reads ./rosters, so each test gets its own empty folder.
     monkeypatch.chdir(tmp_path)
     return tmp_path
+
+
+def _files(folder):
+    return {"pitches_dir": folder / "pitch", "settings_file": folder / "settings.json"}
 
 
 def _click(box, button=1):
@@ -63,7 +69,7 @@ def test_handle_event_drives_menu_to_sandbox(in_tmp):
     rosters = in_tmp / "rosters"
     rosters.mkdir()
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES)
+    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     (rosters / "orcs.csv").write_text(CSV)
     # A focus event rescans the folder and picks up the new file.
@@ -78,7 +84,7 @@ def test_handle_event_drives_menu_to_sandbox(in_tmp):
 
 
 def test_handle_event_ignores_right_click_and_reports_quit(in_tmp):
-    session = Session(build_layout(), in_tmp, in_tmp, RACES)
+    session = Session(build_layout(), in_tmp, in_tmp, RACES, **_files(in_tmp))
     assert handle_event(session, _click(build_layout().start_button, button=3))
     assert session.message == ""
     assert not handle_event(session, pygame.event.Event(pygame.QUIT))
@@ -89,7 +95,7 @@ def test_handle_event_drives_drag_and_context_menu(in_tmp):
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES)
+    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         handle_event(session, _click(layout.menu_row(which, 0)))
@@ -116,7 +122,7 @@ def test_handle_event_saves_and_loads_setup(in_tmp):
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES)
+    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         handle_event(session, _click(layout.menu_row(which, 0)))
@@ -136,7 +142,9 @@ def test_handle_event_saves_and_loads_setup(in_tmp):
 
 def test_handle_event_builds_and_saves_a_roster(in_tmp):
     layout = build_layout()
-    session = Session(layout, in_tmp / "rosters", in_tmp / "setups", RACES)
+    session = Session(
+        layout, in_tmp / "rosters", in_tmp / "setups", RACES, **_files(in_tmp)
+    )
     session.rescan()
     assert handle_event(session, _click(layout.new_roster_button))
     human = [race.name for race in RACES].index("Human")
@@ -168,10 +176,12 @@ def frame():
     pygame.init()
     layout = build_layout()
 
-    def draw(session, player_sprites=NO_PLAYER_SPRITES):
+    def draw(session, player_sprites=NO_PLAYER_SPRITES, pitch_sprite=PitchSprite()):
         surface = pygame.Surface(layout.window_size)
         font, die_font = pygame.font.Font(None, 20), pygame.font.Font(None, 40)
-        _draw(surface, layout, font, die_font, {}, player_sprites, session)
+        _draw(
+            surface, layout, font, die_font, {}, player_sprites, pitch_sprite, session
+        )
         return surface
 
     yield layout, draw
@@ -180,7 +190,7 @@ def frame():
 
 def test_draw_shows_the_race_menu_and_the_builder(in_tmp, frame):
     layout, draw = frame
-    session = Session(layout, in_tmp, in_tmp, RACES)
+    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
     start = (layout.start_button.x + 3, layout.start_button.y + 3)
     handle_event(session, _click(layout.new_roster_button))
     # The race menu has no button where Start is.
@@ -205,7 +215,7 @@ def _sandbox(in_tmp):
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES)
+    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         handle_event(session, _click(layout.menu_row(which, 0)))
@@ -253,7 +263,7 @@ def test_run_reads_the_dice_images_from_the_launch_folder(in_tmp):
 
 def test_draw_shows_a_player_sprite_problem_unless_the_session_has_one(in_tmp, frame):
     layout, draw = frame
-    session = Session(layout, in_tmp, in_tmp, RACES)
+    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
     broken = PlayerSprites(problem="sprites/away/ogre.png: Unsupported image format")
     line = layout.menu_message_line
     assert {draw(session).get_at((x, line.y + 12))[:3] for x in range(200)} == {
@@ -289,3 +299,64 @@ def test_run_keeps_going_with_a_corrupt_player_image(in_tmp):
     (in_tmp / "sprites" / "away").mkdir(parents=True)
     (in_tmp / "sprites" / "away" / "ogre.png").write_bytes(b"not a png")
     assert run(max_frames=2) == 2
+
+
+def test_run_reloads_the_pitch_sprite_when_the_window_regains_focus(
+    in_tmp, monkeypatch
+):
+    (in_tmp / "settings.json").write_text('{"version": 1, "pitch": "grass.png"}')
+    calls = []
+
+    def load(path, size):
+        calls.append((path, size))
+        return PitchSprite()
+
+    monkeypatch.setattr(app, "load_pitch_sprite", load)
+    pygame.init()
+    pygame.event.post(pygame.event.Event(pygame.WINDOWFOCUSGAINED))
+    assert run(max_frames=2) == 2
+    # Once after the window opens, then once for the focus event.
+    assert calls == [(Path("sprites") / "pitch" / "grass.png", (832, 480))] * 2
+
+
+def test_run_keeps_going_with_a_broken_settings_file_or_pitch_image(in_tmp):
+    (in_tmp / "settings.json").write_text("{not json")
+    assert run(max_frames=1) == 1
+    (in_tmp / "settings.json").write_text('{"version": 1, "pitch": "gone.png"}')
+    assert run(max_frames=1) == 1
+
+
+def test_clicking_an_options_row_saves_the_settings_file(in_tmp):
+    (in_tmp / "pitch").mkdir()
+    (in_tmp / "pitch" / "grass.png").write_bytes(b"")
+    layout = build_layout()
+    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session.rescan()
+    assert handle_event(session, _click(layout.options_button))
+    assert handle_event(session, _click(layout.option_row(1)))
+    assert session.pitch == "grass.png"
+    saved = (in_tmp / "settings.json").read_text()
+    assert '"pitch": "grass.png"' in saved
+
+
+def test_draw_shows_the_options_screen(in_tmp, frame):
+    layout, draw = frame
+    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    handle_event(session, _click(layout.options_button))
+    # The drawn pitch is chosen, so its row is highlighted.
+    row = layout.option_row(0)
+    assert draw(session).get_at((row.x + 3, row.y + 3))[:3] == HIGHLIGHT
+
+
+def test_draw_falls_back_to_the_pitch_sprite_problem(in_tmp, frame):
+    layout, draw = frame
+    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    broken = PitchSprite(problem="sprites/pitch/grass.png: file not found")
+    line = layout.menu_message_line
+    shown = draw(session, pitch_sprite=broken)
+    assert {shown.get_at((x, line.y + 12))[:3] for x in range(200)} != {BACKGROUND}
+    # A player sprite problem comes first.
+    players = PlayerSprites(problem="sprites/away/ogre.png: Unsupported image format")
+    assert pygame.image.tobytes(draw(session, players), "RGB") == pygame.image.tobytes(
+        draw(session, players, broken), "RGB"
+    )

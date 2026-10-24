@@ -93,6 +93,22 @@ and `sprites/away/` for the away team (player 2), so each side can have its own 
   unlike a broken dice image, it never stops the app.
 - Images in `sprites/` are not committed: `.gitignore` ignores the folder, which git keeps through its `.gitkeep` files.
 
+## Pitch image & options
+
+The pitch is drawn in green unless you pick an image for it. Put images in `sprites/pitch/`, any name, then click
+**Options** on the main menu (right of Start):
+- The Pitch list shows "Drawn pitch" and each image by file name, in name order; "+N more" when they don't all fit.
+  Click a row to use it at once; the current one is highlighted. Back returns to the main menu.
+- Formats: `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif` (first frame) and `.webp`, in any case.
+- The image is stretched to the whole pitch (832 x 480 pixels), so a 26:15 image looks best.
+  The grid, wide-zone lines and line of scrimmage are still drawn on top.
+- The choice is saved in `settings.json` in the folder you launch from, and restored on the next start.
+- The list and the chosen image reload when the window regains focus.
+- If the chosen image is missing or can't be loaded, the drawn pitch shows and the message line names the file
+  (e.g. `sprites/pitch/astrogranite.png: file not found`); it never stops the app.
+  An invalid `settings.json` puts its error on the message line and starts with the drawn pitch; the next pick replaces it.
+- Neither the images nor `settings.json` are committed: `.gitignore` ignores both.
+
 ## Layout
 
 | Module | Responsibility |
