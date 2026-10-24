@@ -50,7 +50,7 @@ The sandbox panel's **Dice** section has seven buttons: 1d6, 2d6, 1d8, 1d16, 1 b
 A click shows each die under a result line such as `#12  2d6 = 8`; block dice have no total (`#12  3 blocks`).
 `#12` counts the rolls in this sandbox, so the line changes even when a roll repeats the last faces.
 
-Block dice are drawn from PNG sprites in `src/bb_sandbox/sprites/dice/` (create the folder), one file per face:
+Block dice are drawn from PNG sprites in `sprites/dice/` (create the folder), one file per face:
 
 | Face | File |
 |---|---|

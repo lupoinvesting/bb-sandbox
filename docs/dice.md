@@ -13,7 +13,7 @@ It builds on commit `5147769` (the Reserve, KO and Injured dugout boxes, which m
 **Confirmed with the user**
 - **Buttons:** 1d6, 2d6, 1 block, 2 blocks, 3 blocks, 1d8 and 1d16.
 - **Images:** block dice use sprites, and a face whose image is missing falls back to words.
-- **Folder:** `src/bb_sandbox/sprites/dice/`, shipped with the app next to `races.csv`, so it is found whatever folder the app is launched from.
+- **Folder:** `sprites/dice/`, next to the player images in `sprites/home/` and `sprites/away/`, and like them relative to the folder the app is launched from. Moved there from `src/bb_sandbox/sprites/dice/`, inside the package, on 2026-10-24.
 - **Files:** one PNG per face, added later. No images ship with this feature.
 
 **Defaults (veto any)**
@@ -106,7 +106,7 @@ Session(layout, rosters_dir, setups_dir, races, rng: random.Random | None = None
 last_roll: Roll | None                                 # read-only; None off the sandbox and before the first roll
 
 # render.py
-DICE_SPRITES_DIR = Path(__file__).with_name("sprites") / "dice"
+DICE_SPRITES_DIR = Path("sprites") / "dice"
 DIE_FILL, DIE_TEXT                                     # light die face, dark text
 class SpriteError(Exception)
 def load_block_sprites(folder: Path, size: int) -> dict[BlockFace, pygame.Surface]
@@ -184,7 +184,7 @@ At tiny square sizes the stack runs above the panel. `build_layout` still succee
 - The context menu never covers the panel (`Layout.context_menu` opens left of it), so drawing the dice last hides nothing.
 
 ## Sprites
-- **Folder:** `src/bb_sandbox/sprites/dice/` (`DICE_SPRITES_DIR`).
+- **Folder:** `sprites/dice/` (`DICE_SPRITES_DIR`).
 - **Files:** `player_down.png`, `both_down.png`, `push_back.png`, `stumble.png`, `pow.png`.
   - Any size: each is scaled once at startup to the die box with `smoothscale`. Square images look best; others are stretched.
 - **Missing:** each face falls back on its own, so a missing file gives words for that face only. A missing folder gives words for all five.
@@ -239,7 +239,7 @@ Each module gets tests for expected use, an edge case and a failure case:
 1. `uv run bb-sandbox`, import two rosters and Start.
 2. Click each button. Block dice show their words; numbered dice show big numbers, and 2d6 shows its total.
 3. Click 1 block several times: the roll number goes up even when the face repeats.
-4. Put a `pow.png` in `src/bb_sandbox/sprites/dice/` and restart. POW shows the image; the other faces still show words.
+4. Put a `pow.png` in `sprites/dice/` and restart. POW shows the image; the other faces still show words.
 
 ## Build order (Phase 6)
 1. `dice.py` and test_dice.
@@ -257,7 +257,7 @@ Each module gets tests for expected use, an edge case and a failure case:
 | Buttons 1 block, 2 blocks, 3 blocks | `DICE[4..6]` on the second row; `BLOCK_DIE`, with Push Back on 2 sides |
 | Sprites for block dice | `load_block_sprites(DICE_SPRITES_DIR, ...)` at startup; `_draw_die` blits them |
 | Words when images are missing | `_draw_die` falls back per face to the face's name |
-| Package folder (answer) | `DICE_SPRITES_DIR` = `src/bb_sandbox/sprites/dice/` |
+| Move the folder to `sprites/` (later request) | `DICE_SPRITES_DIR` = `sprites/dice/` |
 | Separate PNGs, added later (answer) | `<face>.png` names; none ship; the README lists them |
 
 ## NASA rules

@@ -37,7 +37,7 @@ sprites/                  project root, next to rosters/ (app.PLAYER_SPRITES_DIR
     default.png
     orc-lineman.png
 ```
-- The block dice images stay in `src/bb_sandbox/sprites/dice/`, shipped with the package. Player images are user files, so they sit next to `rosters/` and `setups/`.
+- The block dice images are in `sprites/dice/` ([dice.md](dice.md)); the player loader reads only `home/` and `away/`. Player images are user files, so they sit next to `rosters/` and `setups/`.
 - **Lookup:** `<side>/<position>.*`, then `<side>/default.*`, then the drawn token.
 - **Kebab rule** (`_sprite_name`): casefold the text, turn each run of characters that aren't letters or digits into `-`, and trim `-` from both ends.
 
@@ -203,7 +203,7 @@ Checked against [architecture_principles.md](architecture_principles.md):
   - a very thin image scales to an empty strip without an error.
 - A prone ball carrier's badge turns into the bottom-right corner, under the carried ball.
 - Every player image is decoded at startup and on each refocus; small images (32–128 px) keep that quick.
-- `.gitignore`'s `sprites/` also covers `src/bb_sandbox/sprites/dice/`, so the dice images aren't committed either; [dice.md](dice.md) ships none yet.
+- `.gitignore`'s `sprites/` also covers the dice images, which moved to `sprites/dice/` on 2026-10-24, so they aren't committed either. They no longer ship inside the package, but a broken one still stops the app (see Defaults and [task.md](task.md)).
 
 ## Implementation notes
 - **Badge size:** `_draw_badge` pads the digits' own bounds (`Surface.get_bounding_rect`), not the rendered text, which has blank rows above and below. At font size 20 the badge for "16" is 18x13 px instead of 18x17. The padding is a constant, `BADGE_PADDING = 2`.

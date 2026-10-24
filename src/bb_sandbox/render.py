@@ -78,9 +78,9 @@ MENU_CAPTIONS = {
     MenuList.AWAY_ROSTERS: "Away roster",
     MenuList.SETUPS: "Saved setups",
 }
-# Reason: shipped inside the package, next to races.csv, so it is found
-# whatever folder the app is launched from.
-DICE_SPRITES_DIR = Path(__file__).with_name("sprites") / "dice"
+# Reason: the dice images sit with the player images, in sprites/ under the
+# folder the app is launched from.
+DICE_SPRITES_DIR = Path("sprites") / "dice"
 # A light die face with dark text, for numbers and for block faces without a sprite.
 DIE_FILL = (236, 232, 220)
 DIE_TEXT = (24, 24, 28)

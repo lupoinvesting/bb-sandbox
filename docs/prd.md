@@ -63,7 +63,7 @@ Design: [roster_builder.md](roster_builder.md).
 ### 3.6. Dice Roller
 
 * **Dice Buttons:** The sandbox panel has seven buttons: 1d6, 2d6, 1d8, 1d16, 1 block, 2 blocks and 3 blocks. A click rolls those dice and shows each die; numbered dice also show their total.
-* **Block Dice Images:** Block dice faces (Player Down!, Both Down, Push Back, Stumble, POW!) are drawn from PNG sprites shipped with the app in `src/bb_sandbox/sprites/dice/`. A face whose image is missing is shown as its name.
+* **Block Dice Images:** Block dice faces (Player Down!, Both Down, Push Back, Stumble, POW!) are drawn from PNG sprites in `sprites/dice/`, next to the player sprite folders. A face whose image is missing is shown as its name.
 
 Design: [dice.md](dice.md).
 

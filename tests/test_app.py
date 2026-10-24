@@ -242,6 +242,15 @@ def test_run_stops_on_a_corrupt_dice_image(in_tmp, monkeypatch):
     assert not pygame.get_init()
 
 
+def test_run_reads_the_dice_images_from_the_launch_folder(in_tmp):
+    # Reason: a corrupt image is how a test sees, from outside run(), which
+    # folder it read.
+    (in_tmp / "sprites" / "dice").mkdir(parents=True)
+    (in_tmp / "sprites" / "dice" / "pow.png").write_bytes(b"not a png")
+    with pytest.raises(SpriteError, match="pow.png"):
+        run(max_frames=1)
+
+
 def test_draw_shows_a_player_sprite_problem_unless_the_session_has_one(in_tmp, frame):
     layout, draw = frame
     session = Session(layout, in_tmp, in_tmp, RACES)
