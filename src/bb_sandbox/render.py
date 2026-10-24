@@ -9,7 +9,7 @@ from bb_sandbox.board import Board
 from bb_sandbox.builder import TEAM_BUDGET, RosterBuilder
 from bb_sandbox.interaction import BALL, InteractionView, MenuItem
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
-from bb_sandbox.pitch import PlayerKey, Side, Status
+from bb_sandbox.pitch import Dugout, PlayerKey, Side, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
 from bb_sandbox.session import MenuView, RosterEntry
@@ -53,6 +53,17 @@ TABLE_COLUMNS = (
 )
 # Reason: prone lies on its side, stunned is upside down (pygame turns anticlockwise).
 STATUS_ANGLES = {Status.STANDING: 0, Status.PRONE: 90, Status.STUNNED: 180}
+# Reason: the KO and Injured boxes are too narrow for a team name; Reserve's
+# caption names the team for all three.
+DUGOUT_CAPTIONS = {
+    (side, dugout): caption
+    for side in Side
+    for dugout, caption in (
+        (Dugout.RESERVE, f"{side.value.capitalize()} Reserve"),
+        (Dugout.KO, "KO"),
+        (Dugout.INJURED, "Injured"),
+    )
+}
 MENU_CAPTIONS = {
     MenuList.HOME_ROSTERS: "Home roster",
     MenuList.AWAY_ROSTERS: "Away roster",
@@ -126,7 +137,7 @@ def _draw_pitch(surface: pygame.Surface, layout: Layout) -> None:
 
 def draw_scene(surface: pygame.Surface, layout: Layout, font: pygame.font.Font) -> None:
     """
-    Draw the full static scene: pitch, reserve areas and info panel.
+    Draw the full static scene: pitch, dugout boxes and info panel.
 
     Args:
         surface (pygame.Surface): Target surface, sized to layout.window_size.
@@ -136,10 +147,12 @@ def draw_scene(surface: pygame.Surface, layout: Layout, font: pygame.font.Font) 
     surface.fill(BACKGROUND)
     _draw_pitch(surface, layout)
 
-    for box, caption in zip(layout.reserves, ("Home Reserves", "Away Reserves")):
-        pygame.draw.rect(surface, RESERVE_FILL, _rect(box))
-        pygame.draw.rect(surface, BORDER, _rect(box), 2)
-        _draw_label(surface, font, caption, box)
+    for side in Side:
+        for dugout in Dugout:
+            box = layout.dugout(side, dugout)
+            pygame.draw.rect(surface, RESERVE_FILL, _rect(box))
+            pygame.draw.rect(surface, BORDER, _rect(box), 2)
+            _draw_label(surface, font, DUGOUT_CAPTIONS[side, dugout], box)
 
     pygame.draw.rect(surface, PANEL_FILL, _rect(layout.panel))
     pygame.draw.rect(surface, BORDER, _rect(layout.panel), 2)
@@ -660,15 +673,19 @@ def draw_sandbox(
     draw_scene(surface, layout, font)
     dragged = view.dragged.item if view.dragged else None
     for key in board.keys():
-        # Reason: a dragged player's origin is drawn empty until release.
-        if key == dragged:
-            continue
         square = board.square_of(key)
-        if square is None:
-            box = layout.reserve_slot(key)
-        else:
+        # Reason: a dragged player's origin is drawn empty until release.
+        if square is not None and key != dragged:
             box = layout.square(square.column, square.row)
-        _draw_token(surface, font, box, key, board.status_of(key))
+            _draw_token(surface, font, box, key, board.status_of(key))
+    for side in Side:
+        for dugout in Dugout:
+            # Reason: a dragged player keeps their slot until release, so the
+            # rest of the box doesn't shift mid-drag.
+            for ordinal, key in enumerate(board.dugout_players(side, dugout)):
+                if key != dragged:
+                    box = layout.dugout_slot(side, dugout, ordinal)
+                    _draw_token(surface, font, box, key)
 
     if dragged is not BALL:
         carried = board.player_at(board.ball) is not None

@@ -1,6 +1,6 @@
 """The sandbox state: where every player and the ball are, and each player's status."""
 
-from bb_sandbox.pitch import PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import DUGOUT_CAPACITY, Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
 
 BALL_START = Square(13, 7)
@@ -9,13 +9,14 @@ BALL_START = Square(13, 7)
 class Board:
     """The only mutable game state.
 
-    Invariants: every player is either on one square or benched (None); no two
-    players share a square; a benched player is standing; the ball is on the pitch.
+    Invariants: every player is either on one square or in one dugout box; no two
+    players share a square; no box holds more than its DUGOUT_CAPACITY; a player
+    off the pitch is standing; the ball is on the pitch.
     """
 
     def __init__(self, home: Team, away: Team) -> None:
         """
-        Start with everyone benched and standing, and the ball mid-pitch.
+        Start with everyone in Reserve and standing, and the ball mid-pitch.
 
         Args:
             home (Team): The home team.
@@ -24,8 +25,8 @@ class Board:
         self._teams = {Side.HOME: home, Side.AWAY: away}
         # Reason: one dict is the single source of truth; player_at scans it
         # (at most 32 entries) instead of keeping a second index in sync.
-        self._locations: dict[PlayerKey, tuple[Square | None, Status]] = {
-            PlayerKey(side, index): (None, Status.STANDING)
+        self._locations: dict[PlayerKey, tuple[Square | Dugout, Status]] = {
+            PlayerKey(side, index): (Dugout.RESERVE, Status.STANDING)
             for side, team in self._teams.items()
             for index in range(len(team.players))
         }
@@ -94,13 +95,49 @@ class Board:
             key (PlayerKey): The player.
 
         Returns:
-            Square | None: The square, or None if benched.
+            Square | None: The square, or None if in a dugout box.
 
         Raises:
             ValueError: If the key is unknown.
         """
         self._check(key)
-        return self._locations[key][0]
+        location = self._locations[key][0]
+        return location if isinstance(location, Square) else None
+
+    def dugout_of(self, key: PlayerKey) -> Dugout | None:
+        """
+        Return the dugout box a player is in.
+
+        Args:
+            key (PlayerKey): The player.
+
+        Returns:
+            Dugout | None: The box, or None if on the pitch.
+
+        Raises:
+            ValueError: If the key is unknown.
+        """
+        self._check(key)
+        location = self._locations[key][0]
+        return location if isinstance(location, Dugout) else None
+
+    def dugout_players(self, side: Side, dugout: Dugout) -> tuple[PlayerKey, ...]:
+        """
+        List the players in one team's dugout box.
+
+        Args:
+            side (Side): Which team.
+            dugout (Dugout): Which box.
+
+        Returns:
+            tuple[PlayerKey, ...]: The box's players in roster order, which is
+                the order they are drawn in.
+        """
+        return tuple(
+            key
+            for key, (location, _) in self._locations.items()
+            if key.side is side and location is dugout
+        )
 
     def status_of(self, key: PlayerKey) -> Status:
         """
@@ -154,18 +191,27 @@ class Board:
         self._locations[key] = (square, self._locations[key][1])
         return True
 
-    def bench(self, key: PlayerKey) -> None:
+    def bench(self, key: PlayerKey, dugout: Dugout = Dugout.RESERVE) -> bool:
         """
-        Send a player to the reserves, standing.
+        Send a player to one of their team's dugout boxes, standing.
 
         Args:
             key (PlayerKey): The player.
+            dugout (Dugout): The box; Reserve by default.
+
+        Returns:
+            bool: False, with nothing changed, if the box is full.
 
         Raises:
             ValueError: If the key is unknown.
         """
         self._check(key)
-        self._locations[key] = (None, Status.STANDING)
+        if self._locations[key][0] is dugout:
+            return True
+        if len(self.dugout_players(key.side, dugout)) >= DUGOUT_CAPACITY[dugout]:
+            return False
+        self._locations[key] = (dugout, Status.STANDING)
+        return True
 
     def set_status(self, key: PlayerKey, status: Status) -> None:
         """
@@ -176,11 +222,11 @@ class Board:
             status (Status): The new status.
 
         Raises:
-            ValueError: If the key is unknown or the player is benched.
+            ValueError: If the key is unknown or the player is off the pitch.
         """
         square = self.square_of(key)
         if square is None:
-            raise ValueError(f"{key} is in the reserves")
+            raise ValueError(f"{key} is off the pitch")
         self._locations[key] = (square, status)
 
     def move_ball(self, square: Square) -> None:

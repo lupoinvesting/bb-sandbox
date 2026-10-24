@@ -25,7 +25,7 @@
 
 * **Dimensions & Markings:** The pitch will be rendered as a grid divided into 26 columns and 15 rows (26x15 squares). It must include visual indicators for standard Blood Bowl markings: the Line of Scrimmage and the Wide Zones.
 * **Occupancy Constraint:** Strict collision logic ensuring no two players can occupy the same square simultaneously.
-* **Reserve Areas:** Designated off-pitch areas located at the bottom of the screen to hold players not currently on the 26x15 grid.
+* **Reserve Areas:** Designated off-pitch areas located at the bottom of the screen to hold players not currently on the 26x15 grid. Each team's area is split into three boxes: **Reserve**, **KO** and **Injured**. A new team starts in Reserve.
 * **The Ball:** A distinct, draggable ball object must be spawned on the pitch, allowing users to position it freely to simulate kick-offs, loose balls, or ball carriers.
 
 ### 3.3. Player & Object Interaction
@@ -34,7 +34,7 @@
 * **Context Menu / State Toggles:** Right-clicking a player sprite cycles or selects their current physical state:
 * **Prone:** Sprite image is rotated 90 degrees (flipped on its side).
 * **Stunned:** Sprite image is rotated 180 degrees (upside down).
-* **Remove:** Player is removed from the active pitch and placed into the bottom reserve area.
+* **Reserve / KO / Injured:** Player is removed from the active pitch and placed into that box of their team's bottom area.
 
 
 

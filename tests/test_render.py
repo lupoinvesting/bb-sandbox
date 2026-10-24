@@ -8,7 +8,7 @@ from bb_sandbox.board import BALL_START, Board
 from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
 from bb_sandbox.layout import Box, MenuList, build_layout
-from bb_sandbox.pitch import PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import Player, Team
 from bb_sandbox.session import MenuView, RosterEntry
@@ -54,9 +54,9 @@ def test_endzones_are_highlighted(drawn):
     assert surface.get_at(_center_of(layout.square(1, 7)))[:3] == render.PITCH_GREEN
 
 
-def test_reserves_and_panel_are_filled(drawn):
+def test_dugouts_and_panel_are_filled(drawn):
     surface, layout = drawn
-    for box in layout.reserves:
+    for box in layout.dugouts:
         corner = (box.x + box.width - 10, box.y + box.height - 10)
         assert surface.get_at(corner)[:3] == render.RESERVE_FILL
     panel = layout.panel
@@ -83,23 +83,27 @@ def _team(size, name="t"):
     return Team(name=name, race="Human", players=(player,) * size)
 
 
-def test_sandbox_draws_tokens_in_reserves(font):
+def test_sandbox_draws_tokens_in_dugouts(font):
     layout = build_layout(32)
     board = Board(_team(3), _team(1))
+    board.bench(PlayerKey(Side.HOME, 1), Dugout.KO)
     surface = pygame.Surface(layout.window_size)
     render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, "")
 
-    home_slot = layout.reserve_slot(PlayerKey(Side.HOME, 0))
+    home_slot = layout.dugout_slot(Side.HOME, Dugout.RESERVE, 0)
     # Bottom-left corner of the token body, clear of the head bar and number.
     corner = (home_slot.x + 5, home_slot.y + home_slot.height - 5)
     assert surface.get_at(corner)[:3] == render.TEAM_COLOURS[Side.HOME]
     head = (home_slot.x + 5, home_slot.y + 4)
     assert surface.get_at(head)[:3] == render.TOKEN_HEAD
-    away_slot = layout.reserve_slot(PlayerKey(Side.AWAY, 0))
+    ko_slot = layout.dugout_slot(Side.HOME, Dugout.KO, 0)
+    corner = (ko_slot.x + 5, ko_slot.y + ko_slot.height - 5)
+    assert surface.get_at(corner)[:3] == render.TEAM_COLOURS[Side.HOME]
+    away_slot = layout.dugout_slot(Side.AWAY, Dugout.RESERVE, 0)
     corner = (away_slot.x + 5, away_slot.y + away_slot.height - 5)
     assert surface.get_at(corner)[:3] == render.TEAM_COLOURS[Side.AWAY]
     # Slot 1 of the away side is empty.
-    empty = layout.reserve_slot(PlayerKey(Side.AWAY, 1))
+    empty = layout.dugout_slot(Side.AWAY, Dugout.RESERVE, 1)
     assert surface.get_at((empty.x + 5, empty.y + 27))[:3] == render.RESERVE_FILL
 
 

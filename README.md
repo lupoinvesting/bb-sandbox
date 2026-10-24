@@ -41,13 +41,13 @@ The teams come from [src/bb_sandbox/races.csv](src/bb_sandbox/races.csv), one ro
 ## Saving setups
 
 In the sandbox, **Save setup** writes the board to `setups/<home>-vs-<away>-YYYYMMDD-HHMMSS.json`
-(squares, Prone/Stunned status, reserves, the ball, and both full rosters).
+(squares, Prone/Stunned status, Reserve/KO/Injured boxes, the ball, and both full rosters).
 The main menu's **Saved setups** list loads one straight into the sandbox; rename a file in Explorer to name it.
 
 ## Layout
 
 | Module | Responsibility |
 |---|---|
-| `bb_sandbox.layout` | Pure screen geometry: 26x15 pitch, Line of Scrimmage, Wide Zones, reserves, info panel. No Pygame. |
+| `bb_sandbox.layout` | Pure screen geometry: 26x15 pitch, Line of Scrimmage, Wide Zones, Reserve/KO/Injured boxes, info panel. No Pygame. |
 | `bb_sandbox.render` | Draws the static scene with Pygame from a `Layout`. |
 | `bb_sandbox.app` | Window lifecycle and main loop (`run(max_frames=None)`). |

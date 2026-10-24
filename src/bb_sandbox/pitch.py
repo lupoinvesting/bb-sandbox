@@ -1,4 +1,4 @@
-"""Board vocabulary shared by every module: pitch size, squares, sides and statuses."""
+"""Board vocabulary shared by every module: pitch, squares, sides, statuses, dugouts."""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -56,3 +56,16 @@ class PlayerKey(NamedTuple):
 
     side: Side
     index: int
+
+
+class Dugout(Enum):
+    """The off-pitch boxes each team has, left to right under the pitch."""
+
+    RESERVE = "reserve"
+    KO = "ko"
+    INJURED = "injured"
+
+
+# Reason: Reserve must hold a full 16-player team, since new teams start there;
+# KO and Injured are drawn narrower, so they hold fewer.
+DUGOUT_CAPACITY = {Dugout.RESERVE: 18, Dugout.KO: 9, Dugout.INJURED: 9}

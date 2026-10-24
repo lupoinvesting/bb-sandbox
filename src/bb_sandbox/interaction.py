@@ -9,7 +9,7 @@ from typing import NamedTuple
 
 from bb_sandbox.board import Board
 from bb_sandbox.layout import Box, Layout
-from bb_sandbox.pitch import PlayerKey, Status
+from bb_sandbox.pitch import Dugout, PlayerKey, Status
 
 
 class Ball(Enum):
@@ -20,12 +20,15 @@ class Ball(Enum):
 
 BALL = Ball.BALL
 
-# Reason: None means "Remove", which benches the player instead of setting a status.
-MENU_ACTIONS: tuple[tuple[str, Status | None], ...] = (
+# Reason: a Status changes the player's state on the pitch; a Dugout sends them
+# off the pitch into that box instead.
+MENU_ACTIONS: tuple[tuple[str, Status | Dugout], ...] = (
     ("Stand up", Status.STANDING),
     ("Prone", Status.PRONE),
     ("Stunned", Status.STUNNED),
-    ("Remove", None),
+    ("Reserve", Dugout.RESERVE),
+    ("KO", Dugout.KO),
+    ("Injured", Dugout.INJURED),
 )
 
 
@@ -138,14 +141,19 @@ class Interaction:
             # Reason: place() refuses an occupied square by returning False and
             # changing nothing, which is exactly "the token goes back".
             self._board.place(item, square)
-        elif self._layout.reserve(item.side).contains(centre):
-            self._board.bench(item)
+        else:
+            # Reason: likewise bench() refuses a full box; the other team's
+            # boxes are not checked, so a drop there goes back too.
+            for dugout in Dugout:
+                if self._layout.dugout(item.side, dugout).contains(centre):
+                    self._board.bench(item, dugout)
 
     def right_click(self, pos: tuple[int, int]) -> None:
         """
         Open the context menu for the player on the pitch under the cursor.
 
-        Any open menu closes first; reserves, the ball and empty squares get no menu.
+        Any open menu closes first; dugout boxes, the ball and empty squares get
+        no menu.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
@@ -196,13 +204,13 @@ class Interaction:
         """
         key, boxes = self._menu
         self._menu = None
-        for (_, status), box in zip(MENU_ACTIONS, boxes):
+        for (_, action), box in zip(MENU_ACTIONS, boxes):
             if not box.contains(pos):
                 continue
-            if status is None:
-                self._board.bench(key)
+            if isinstance(action, Dugout):
+                self._board.bench(key, action)
             else:
-                self._board.set_status(key, status)
+                self._board.set_status(key, action)
             return
 
     def _pick(self, pos: tuple[int, int]) -> _Grab | None:
@@ -227,7 +235,7 @@ class Interaction:
 
     def _player_at(self, pos: tuple[int, int]) -> PlayerKey | None:
         """
-        Find the player drawn under a point, on the pitch or in the reserves.
+        Find the player drawn under a point, on the pitch or in a dugout box.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
@@ -238,14 +246,13 @@ class Interaction:
         square = self._layout.square_at(pos)
         if square is not None:
             return self._board.player_at(square)
-        key = self._layout.reserve_slot_at(pos)
-        # Reason: a slot is empty when the team is smaller or its player is on
-        # the pitch.
-        if key is None or key not in self._board.keys():
+        slot = self._layout.dugout_slot_at(pos)
+        if slot is None:
             return None
-        if self._board.square_of(key) is not None:
-            return None
-        return key
+        side, dugout, ordinal = slot
+        players = self._board.dugout_players(side, dugout)
+        # Reason: players are packed, so slots past the last one are empty.
+        return players[ordinal] if ordinal < len(players) else None
 
     def _box_of(self, key: PlayerKey) -> Box:
         """
@@ -255,12 +262,14 @@ class Interaction:
             key (PlayerKey): The player.
 
         Returns:
-            Box: Their square, or their reserve slot if benched.
+            Box: Their square, or their slot in their dugout box.
         """
         square = self._board.square_of(key)
-        if square is None:
-            return self._layout.reserve_slot(key)
-        return self._layout.square(square.column, square.row)
+        if square is not None:
+            return self._layout.square(square.column, square.row)
+        dugout = self._board.dugout_of(key)
+        ordinal = self._board.dugout_players(key.side, dugout).index(key)
+        return self._layout.dugout_slot(key.side, dugout, ordinal)
 
     def _dragged_box(self) -> Box:
         """

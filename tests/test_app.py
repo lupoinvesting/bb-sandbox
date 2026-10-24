@@ -6,7 +6,7 @@ import pytest
 from bb_sandbox import app
 from bb_sandbox.app import _draw, handle_event, run
 from bb_sandbox.layout import MenuList, build_layout
-from bb_sandbox.pitch import PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, RaceError, load_races
 from bb_sandbox.render import BACKGROUND, BUTTON_FILL
 from bb_sandbox.session import Screen, Session
@@ -88,7 +88,7 @@ def test_handle_event_drives_drag_and_context_menu(in_tmp):
 
     key = PlayerKey(Side.HOME, 0)
     target = layout.square(4, 4)
-    handle_event(session, _click(layout.reserve_slot(key)))
+    handle_event(session, _click(layout.dugout_slot(Side.HOME, Dugout.RESERVE, 0)))
     pos = (target.x + 2, target.y + 2)
     assert handle_event(session, pygame.event.Event(pygame.MOUSEMOTION, pos=pos))
     assert session.interaction.view().dragged is not None

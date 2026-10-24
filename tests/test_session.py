@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from bb_sandbox.layout import MenuList, build_layout
-from bb_sandbox.pitch import PlayerKey, Side, Square
+from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE
 from bb_sandbox.session import (
@@ -163,14 +163,14 @@ def test_sandbox_forwards_pointer_input(session):
     _import_both(session)
     session.press(_click(LAYOUT.start_button))
     key = PlayerKey(Side.HOME, 0)
-    session.press(_click(LAYOUT.reserve_slot(key)))
+    session.press(_click(LAYOUT.dugout_slot(Side.HOME, Dugout.RESERVE, 0)))
     session.move(_click(LAYOUT.square(4, 4)))
     assert session.interaction.view().dragged.item == key
     session.release(_click(LAYOUT.square(4, 4)))
     assert session.board.square_of(key) == Square(4, 4)
 
     session.right_click(_click(LAYOUT.square(4, 4)))
-    assert len(session.interaction.view().menu) == 4
+    assert len(session.interaction.view().menu) == 6
 
     session.press(_click(LAYOUT.menu_button))
     assert session.interaction is None

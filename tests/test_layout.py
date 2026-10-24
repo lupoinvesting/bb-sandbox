@@ -13,7 +13,7 @@ from bb_sandbox.layout import (
     MenuList,
     build_layout,
 )
-from bb_sandbox.pitch import PlayerKey, Side, Square
+from bb_sandbox.pitch import DUGOUT_CAPACITY, Dugout, Side, Square
 from bb_sandbox.races import MAX_POSITIONALS, MAX_RACES
 from bb_sandbox.roster import MAX_TEAM_SIZE
 
@@ -51,12 +51,25 @@ def test_endzones_scale_with_square_size():
     assert right.x == left.x + PITCH_COLUMNS - 1
 
 
-def test_reserves_sit_below_pitch_without_overlap():
+def test_dugout_areas_sit_below_pitch_without_overlap():
     layout = build_layout(32)
-    home, away = layout.reserves
+    home, away = layout.dugout_areas
     pitch_bottom = layout.pitch.y + layout.pitch.height
     assert home.y > pitch_bottom and away.y > pitch_bottom
     assert home.x + home.width < away.x
+
+
+@pytest.mark.parametrize("side", list(Side))
+def test_dugouts_split_their_area_left_to_right(side):
+    layout = build_layout(32)
+    area = layout.dugout_area(side)
+    reserve, ko, injured = (layout.dugout(side, dugout) for dugout in Dugout)
+    assert reserve.x == area.x and reserve.width == 6 * 32
+    assert ko.x == reserve.x + reserve.width and injured.x == ko.x + ko.width
+    assert injured.x + injured.width == area.x + area.width
+    for box in (reserve, ko, injured):
+        assert (box.y, box.height) == (area.y, area.height)
+        assert box.width >= 3 * 32
 
 
 def test_panel_is_right_of_pitch_and_inside_window():
@@ -64,7 +77,7 @@ def test_panel_is_right_of_pitch_and_inside_window():
     width, height = layout.window_size
     assert layout.panel.x > layout.pitch.x + layout.pitch.width
     assert layout.panel.x + layout.panel.width < width
-    for home_or_away in layout.reserves:
+    for home_or_away in layout.dugout_areas:
         assert home_or_away.y + home_or_away.height < height
 
 
@@ -97,37 +110,43 @@ def test_box_contains_excludes_right_and_bottom_edges():
     assert not box.contains((9, 21))
 
 
-def test_reserve_by_side():
+def test_dugout_area_by_side():
     layout = build_layout(32)
-    assert layout.reserve(Side.HOME) == layout.reserves[0]
-    assert layout.reserve(Side.AWAY) == layout.reserves[1]
+    assert layout.dugout_area(Side.HOME) == layout.dugout_areas[0]
+    assert layout.dugout_area(Side.AWAY) == layout.dugout_areas[1]
+
+
+def test_reserve_holds_a_full_team():
+    assert DUGOUT_CAPACITY[Dugout.RESERVE] >= MAX_TEAM_SIZE
 
 
 @pytest.mark.parametrize("side", list(Side))
-def test_reserve_slots_fit_without_overlap(side):
+@pytest.mark.parametrize("dugout", list(Dugout))
+def test_dugout_slots_fit_without_overlap(side, dugout):
     layout = build_layout(32)
-    area = layout.reserve(side)
-    slots = [layout.reserve_slot(PlayerKey(side, i)) for i in range(MAX_TEAM_SIZE)]
-    assert len(set(slots)) == MAX_TEAM_SIZE
+    box = layout.dugout(side, dugout)
+    capacity = DUGOUT_CAPACITY[dugout]
+    slots = [layout.dugout_slot(side, dugout, i) for i in range(capacity)]
+    assert len(set(slots)) == capacity
     for slot in slots:
         assert slot.width == slot.height == 32
-        assert area.contains((slot.x, slot.y))
-        assert area.contains((slot.x + slot.width - 1, slot.y + slot.height - 1))
+        assert box.contains((slot.x, slot.y))
+        assert box.contains((slot.x + slot.width - 1, slot.y + slot.height - 1))
     # Slot 0 sits below the caption row.
-    assert slots[0].y == area.y + 32
+    assert slots[0].y == box.y + 32
 
 
-@pytest.mark.parametrize("index", [-1, 24])
-def test_reserve_slot_beyond_capacity_raises(index):
+@pytest.mark.parametrize("dugout, ordinal", [(Dugout.RESERVE, -1), (Dugout.KO, 9)])
+def test_dugout_slot_beyond_capacity_raises(dugout, ordinal):
     with pytest.raises(ValueError):
-        build_layout().reserve_slot(PlayerKey(Side.HOME, index))
+        build_layout().dugout_slot(Side.HOME, dugout, ordinal)
 
 
 def test_menu_fits_in_window():
     layout = build_layout(32)
     width, height = layout.window_size
-    # The team preview takes the bottom of each column, leaving 6 file rows.
-    assert layout.menu_rows == 6
+    # The team preview takes the bottom of each column, leaving 7 file rows.
+    assert layout.menu_rows == 7
     for which in MenuList:
         last = layout.menu_row(which, layout.menu_rows - 1)
         assert last.y + last.height <= layout.menu_message_line.y
@@ -247,22 +266,23 @@ def test_context_menu_needs_items():
 
 
 @pytest.mark.parametrize("side", list(Side))
-def test_reserve_slot_at_inverts_reserve_slot(side):
+@pytest.mark.parametrize("dugout", list(Dugout))
+def test_dugout_slot_at_inverts_dugout_slot(side, dugout):
     layout = build_layout(32)
-    for index in (0, 11, 12, 23):
-        slot = layout.reserve_slot(PlayerKey(side, index))
-        assert layout.reserve_slot_at((slot.x + 31, slot.y + 31)) == PlayerKey(
-            side, index
-        )
+    for ordinal in range(DUGOUT_CAPACITY[dugout]):
+        slot = layout.dugout_slot(side, dugout, ordinal)
+        found = layout.dugout_slot_at((slot.x + 31, slot.y + 31))
+        assert found == (side, dugout, ordinal)
 
 
-def test_reserve_slot_at_misses_caption_and_outside():
+def test_dugout_slot_at_misses_caption_gaps_and_outside():
     layout = build_layout(32)
-    area = layout.reserve(Side.HOME)
-    assert layout.reserve_slot_at((area.x + 5, area.y + 5)) is None
-    # Past the 12th slot column, still inside the area.
-    assert layout.reserve_slot_at((area.x + 12 * 32 + 2, area.y + 40)) is None
-    assert layout.reserve_slot_at((1, 1)) is None
+    reserve = layout.dugout(Side.HOME, Dugout.RESERVE)
+    assert layout.dugout_slot_at((reserve.x + 5, reserve.y + 5)) is None
+    # KO is 108px wide at this size: past its 3rd slot column, still inside.
+    ko = layout.dugout(Side.HOME, Dugout.KO)
+    assert layout.dugout_slot_at((ko.x + 3 * 32 + 2, ko.y + 40)) is None
+    assert layout.dugout_slot_at((1, 1)) is None
 
 
 def test_menu_button_inside_panel():
@@ -315,10 +335,10 @@ def test_new_screens_fit_their_frames_above_the_message_line():
     for frame, box in framed:
         assert _inside(frame, box)
         assert box.y + box.height <= layout.menu_message_line.y
-    # A 13th positional row would still fit; that is the most.
+    # A 13th and a 14th positional row would still fit; that is the most.
     last = layout.positional_row(POSITIONAL_ROWS - 1)
     table = layout.positional_table
-    assert last.y + 2 * last.height <= table.y + table.height < last.y + 3 * last.height
+    assert last.y + 2 * last.height <= table.y + table.height < last.y + 4 * last.height
 
 
 def test_builder_frames_reuse_the_menu_columns():

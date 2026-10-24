@@ -5,7 +5,7 @@ import pytest
 from bb_sandbox.board import BALL_START, Board
 from bb_sandbox.interaction import BALL, MENU_ACTIONS, Interaction
 from bb_sandbox.layout import Box, build_layout
-from bb_sandbox.pitch import PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
 
 LAYOUT = build_layout(32)
@@ -45,6 +45,11 @@ def _square(column, row):
     return LAYOUT.square(column, row)
 
 
+def _reserve(key):
+    # Valid while nobody before key has left Reserve, since slots are packed.
+    return LAYOUT.dugout_slot(key.side, Dugout.RESERVE, key.index)
+
+
 def _drag(interaction, start, end):
     interaction.press(start)
     interaction.move(end)
@@ -52,7 +57,7 @@ def _drag(interaction, start, end):
 
 
 def test_drag_from_reserves_snaps_on_release(interaction, board):
-    slot = LAYOUT.reserve_slot(HOME0)
+    slot = _reserve(HOME0)
     interaction.press(_at(slot))
     interaction.move(_at(_square(3, 4), 5, 5))
     # Nothing changes until release; the token follows the cursor.
@@ -69,7 +74,7 @@ def test_drag_from_reserves_snaps_on_release(interaction, board):
 
 def test_drop_uses_token_centre_not_cursor(interaction, board):
     # Grab near the token's right edge: the centre lands one square left of the cursor.
-    slot = LAYOUT.reserve_slot(HOME0)
+    slot = _reserve(HOME0)
     interaction.press(_at(slot, 30, 16))
     interaction.release(_at(_square(6, 6), 30, 16))
     assert board.square_of(HOME0) == Square(6, 6)
@@ -77,7 +82,7 @@ def test_drop_uses_token_centre_not_cursor(interaction, board):
 
 def test_drop_on_occupied_square_snaps_back(interaction, board):
     board.place(AWAY0, Square(5, 5))
-    _drag(interaction, _at(LAYOUT.reserve_slot(HOME0)), _at(_square(5, 5)))
+    _drag(interaction, _at(_reserve(HOME0)), _at(_square(5, 5)))
     assert board.square_of(HOME0) is None
     assert board.player_at(Square(5, 5)) == AWAY0
 
@@ -88,14 +93,57 @@ def test_drop_off_pitch_snaps_back(interaction, board):
     assert board.square_of(HOME0) == Square(2, 2)
 
 
-def test_drop_on_own_reserves_benches_but_not_other_side(interaction, board):
+@pytest.mark.parametrize("dugout", list(Dugout))
+def test_drop_on_own_dugout_benches_but_not_other_side(interaction, board, dugout):
     board.place(HOME0, Square(2, 2))
     board.set_status(HOME0, Status.PRONE)
-    _drag(interaction, _at(_square(2, 2)), _at(LAYOUT.reserve(Side.AWAY), 100, 50))
+    away_box = LAYOUT.dugout(Side.AWAY, dugout)
+    _drag(interaction, _at(_square(2, 2)), _at(away_box, 40, 50))
     assert board.square_of(HOME0) == Square(2, 2)
-    _drag(interaction, _at(_square(2, 2)), _at(LAYOUT.reserve(Side.HOME), 100, 50))
-    assert board.square_of(HOME0) is None
+    _drag(
+        interaction, _at(_square(2, 2)), _at(LAYOUT.dugout(Side.HOME, dugout), 40, 50)
+    )
+    assert board.dugout_of(HOME0) is dugout
     assert board.status_of(HOME0) is Status.STANDING
+
+
+def test_drag_between_dugout_boxes_and_back_to_pitch(interaction, board):
+    ko = LAYOUT.dugout(Side.HOME, Dugout.KO)
+    _drag(interaction, _at(_reserve(HOME1)), _at(ko, 40, 50))
+    assert board.dugout_of(HOME1) is Dugout.KO
+    # HOME1 is now KO slot 0; drag it back onto the pitch.
+    _drag(
+        interaction,
+        _at(LAYOUT.dugout_slot(Side.HOME, Dugout.KO, 0)),
+        _at(_square(7, 7)),
+    )
+    assert board.square_of(HOME1) == Square(7, 7)
+    assert board.dugout_players(Side.HOME, Dugout.KO) == ()
+
+
+def test_drop_on_full_dugout_snaps_back():
+    board = Board(_team(10), _team(1))
+    interaction = Interaction(board, LAYOUT)
+    for index in range(9):
+        assert board.bench(PlayerKey(Side.HOME, index), Dugout.KO)
+    # The 10th home player is Reserve slot 0, the only one left there.
+    last = PlayerKey(Side.HOME, 9)
+    ko = LAYOUT.dugout(Side.HOME, Dugout.KO)
+    _drag(
+        interaction,
+        _at(LAYOUT.dugout_slot(Side.HOME, Dugout.RESERVE, 0)),
+        _at(ko, 40, 50),
+    )
+    assert board.dugout_of(last) is Dugout.RESERVE
+
+
+def test_hover_finds_packed_dugout_slot(interaction, board):
+    board.bench(HOME1, Dugout.INJURED)
+    interaction.move(_at(LAYOUT.dugout_slot(Side.HOME, Dugout.INJURED, 0)))
+    assert interaction.view().hovered == HOME1
+    # HOME1 left Reserve, so Reserve slot 1 is empty now.
+    interaction.move(_at(LAYOUT.dugout_slot(Side.HOME, Dugout.RESERVE, 1)))
+    assert interaction.view().hovered is None
 
 
 def test_ball_drag_and_independence(interaction, board):
@@ -129,26 +177,26 @@ def test_press_on_nothing_and_stray_release_do_nothing(interaction, board):
     assert interaction.view().dragged is None
     interaction.release(_at(_square(1, 1)))
     # An empty reserve slot (team of 1) picks nothing up either.
-    interaction.press(_at(LAYOUT.reserve_slot(PlayerKey(Side.AWAY, 1))))
+    interaction.press(_at(_reserve(PlayerKey(Side.AWAY, 1))))
     assert interaction.view().dragged is None
 
 
 def test_press_during_drag_is_ignored(interaction, board):
-    interaction.press(_at(LAYOUT.reserve_slot(HOME0)))
-    interaction.press(_at(LAYOUT.reserve_slot(HOME1)))
+    interaction.press(_at(_reserve(HOME0)))
+    interaction.press(_at(_reserve(HOME1)))
     assert interaction.view().dragged.item == HOME0
 
 
 def test_hover_on_pitch_reserves_and_while_dragging(interaction, board):
     assert interaction.view().hovered is None
-    interaction.move(_at(LAYOUT.reserve_slot(HOME1)))
+    interaction.move(_at(_reserve(HOME1)))
     assert interaction.view().hovered == HOME1
     board.place(AWAY0, Square(9, 9))
     interaction.move(_at(_square(9, 9)))
     assert interaction.view().hovered == AWAY0
     interaction.move(_at(_square(1, 1)))
     assert interaction.view().hovered is None
-    interaction.press(_at(LAYOUT.reserve_slot(HOME0)))
+    interaction.press(_at(_reserve(HOME0)))
     interaction.move(_at(_square(1, 1)))
     assert interaction.view().hovered == HOME0
 
@@ -169,12 +217,16 @@ def test_context_menu_sets_status(interaction, board, index, status):
     assert interaction.view().menu == ()
 
 
-def test_context_menu_remove_benches(interaction, board):
+@pytest.mark.parametrize(
+    "index,dugout", [(3, Dugout.RESERVE), (4, Dugout.KO), (5, Dugout.INJURED)]
+)
+def test_context_menu_sends_to_dugout(interaction, board, index, dugout):
     board.place(HOME0, Square(4, 4))
     board.set_status(HOME0, Status.STUNNED)
     interaction.right_click(_at(_square(4, 4)))
-    interaction.press(_at(interaction.view().menu[3].box))
+    interaction.press(_at(interaction.view().menu[index].box))
     assert board.square_of(HOME0) is None
+    assert board.dugout_of(HOME0) is dugout
     assert board.status_of(HOME0) is Status.STANDING
 
 
@@ -193,5 +245,5 @@ def test_right_click_without_pitch_player_opens_nothing(interaction, board):
     # A right-click on an empty square closes the open menu.
     interaction.right_click(_at(_square(8, 8)))
     assert interaction.view().menu == ()
-    interaction.right_click(_at(LAYOUT.reserve_slot(HOME1)))
+    interaction.right_click(_at(_reserve(HOME1)))
     assert interaction.view().menu == ()

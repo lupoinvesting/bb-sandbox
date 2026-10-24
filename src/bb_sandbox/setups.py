@@ -12,7 +12,15 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from bb_sandbox.board import Board
-from bb_sandbox.pitch import PITCH_COLUMNS, PITCH_ROWS, PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import (
+    PITCH_COLUMNS,
+    PITCH_ROWS,
+    Dugout,
+    PlayerKey,
+    Side,
+    Square,
+    Status,
+)
 from bb_sandbox.roster import MAX_TEAM_SIZE, UNSAFE_NAME_CHARS, Player, Team
 
 VERSION = 1
@@ -36,11 +44,16 @@ class _SquareData(_Frozen):
 
 
 class _PlayerEntry(_Frozen):
-    """One player with their position stored next to them."""
+    """One player with their position stored next to them.
+
+    Off the pitch, square is None and dugout names the box; files saved before
+    dugout boxes existed have no dugout, which means Reserve.
+    """
 
     player: Player
     square: _SquareData | None
     status: Status
+    dugout: Dugout | None = None
 
 
 class _TeamData(_Frozen):
@@ -98,6 +111,7 @@ def _team_data(board: Board, side: Side) -> _TeamData:
                 player=player,
                 square=None if square is None else _SquareData(**vars(square)),
                 status=board.status_of(key),
+                dugout=board.dugout_of(key),
             )
         )
     return _TeamData(name=team.name, race=team.race, players=tuple(entries))
@@ -144,18 +158,22 @@ def _place_team(board: Board, side: Side, data: _TeamData, name: str) -> None:
         name (str): The file name, for error messages.
 
     Raises:
-        SetupFileError: If two players share a square or a benched player
-            isn't standing.
+        SetupFileError: If two players share a square, a player has both a
+            square and a dugout box, a benched player isn't standing, or a
+            dugout box is over capacity.
     """
     for index, entry in enumerate(data.players):
         key = PlayerKey(side, index)
+        player = f"{name}: {side.value} player {index + 1}"
         if entry.square is None:
             if entry.status is not Status.STANDING:
-                raise SetupFileError(
-                    f"{name}: {side.value} player {index + 1} is benched "
-                    f"but {entry.status.value}"
-                )
+                raise SetupFileError(f"{player} is benched but {entry.status.value}")
+            dugout = entry.dugout or Dugout.RESERVE
+            if not board.bench(key, dugout):
+                raise SetupFileError(f"{name}: {side.value} {dugout.value} box is full")
             continue
+        if entry.dugout is not None:
+            raise SetupFileError(f"{player} has both a square and a dugout box")
         square = Square(entry.square.column, entry.square.row)
         if not board.place(key, square):
             raise SetupFileError(

@@ -8,7 +8,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import NamedTuple
 
-from bb_sandbox.pitch import PITCH_COLUMNS, PITCH_ROWS, PlayerKey, Side, Square
+from bb_sandbox.pitch import (
+    DUGOUT_CAPACITY,
+    PITCH_COLUMNS,
+    PITCH_ROWS,
+    Dugout,
+    Side,
+    Square,
+)
 
 # Reason: Blood Bowl wide zones are the 4 outermost rows on each sideline.
 WIDE_ZONE_ROWS = 4
@@ -16,11 +23,15 @@ WIDE_ZONE_ROWS = 4
 ENDZONE_COLUMNS = 1
 DEFAULT_SQUARE_SIZE = 32
 MARGIN = 16
-RESERVE_ROWS = 3
 PANEL_WIDTH = 240
-# Reason: 2 rows x 12 = 24 slots, enough for the 16-player team limit.
-RESERVE_SLOT_COLUMNS = 12
-RESERVE_SLOT_ROWS = 2
+# Reason: Reserve is wide and KO/Injured narrow, so 6 + 3 + 3 columns fit in a
+# team's half of the pitch width (12.75 squares).
+DUGOUT_COLUMNS = {Dugout.RESERVE: 6, Dugout.KO: 3, Dugout.INJURED: 3}
+DUGOUT_SLOT_ROWS = max(
+    -(-DUGOUT_CAPACITY[dugout] // DUGOUT_COLUMNS[dugout]) for dugout in Dugout
+)
+# Reason: one caption row above the slot rows.
+RESERVE_ROWS = DUGOUT_SLOT_ROWS + 1
 START_BUTTON_WIDTH = 160
 BUTTON_INSET = 8
 CONTEXT_MENU_WIDTH = 120
@@ -29,7 +40,7 @@ CONTEXT_MENU_WIDTH = 120
 PREVIEW_LINES = 17
 # Reason: 12 rows x 3 menu columns = 36 race cells, enough for MAX_RACES.
 RACE_ROWS = 12
-# Reason: enough for MAX_POSITIONALS; 13 is the most that fit below the table's
+# Reason: enough for MAX_POSITIONALS; 14 is the most that fit below the table's
 # caption and column-title rows.
 POSITIONAL_ROWS = 12
 # Reason: the builder's roster list has one line per player, up to the
@@ -85,7 +96,10 @@ class Layout:
         line_of_scrimmage_x (int): Screen x of the halfway line.
         wide_zones (tuple[Box, Box]): Top and bottom wide zone areas.
         endzones (tuple[Box, Box]): Left (column 0) and right (column 25) endzones.
-        reserves (tuple[Box, Box]): Left (home) and right (away) reserve areas.
+        dugout_areas (tuple[Box, Box]): Left (home) and right (away) halves
+            under the pitch, each holding that team's three dugout boxes.
+        dugouts (tuple[Box, ...]): The six dugout boxes: home Reserve, KO,
+            Injured, then away Reserve, KO, Injured.
         panel (Box): Right-side player information panel.
         menu_button (Box): Sandbox "Main menu" button at the bottom of the panel.
         save_button (Box): Sandbox "Save setup" button just above menu_button.
@@ -117,7 +131,8 @@ class Layout:
     line_of_scrimmage_x: int
     wide_zones: tuple[Box, Box]
     endzones: tuple[Box, Box]
-    reserves: tuple[Box, Box]
+    dugout_areas: tuple[Box, Box]
+    dugouts: tuple[Box, ...]
     panel: Box
     menu_button: Box
     save_button: Box
@@ -218,9 +233,9 @@ class Layout:
             for i in range(items)
         )
 
-    def reserve(self, side: Side) -> Box:
+    def dugout_area(self, side: Side) -> Box:
         """
-        Return one team's reserve area.
+        Return one team's half under the pitch, all three dugout boxes included.
 
         Args:
             side (Side): Which team.
@@ -228,55 +243,79 @@ class Layout:
         Returns:
             Box: Home on the left, away on the right.
         """
-        return self.reserves[0 if side is Side.HOME else 1]
+        return self.dugout_areas[0 if side is Side.HOME else 1]
 
-    def reserve_slot(self, key: PlayerKey) -> Box:
+    def dugout(self, side: Side, dugout: Dugout) -> Box:
         """
-        Return the box a benched player is drawn in.
-
-        Slots fill left to right in rows below the area's caption row.
+        Return one team's dugout box, caption row included.
 
         Args:
-            key (PlayerKey): The player.
+            side (Side): Which team.
+            dugout (Dugout): Which box.
 
         Returns:
-            Box: A square_size box inside the player's reserve area.
+            Box: The box; Reserve, KO and Injured sit left to right.
+        """
+        offset = 0 if side is Side.HOME else len(Dugout)
+        return self.dugouts[offset + list(Dugout).index(dugout)]
+
+    def dugout_slot(self, side: Side, dugout: Dugout, ordinal: int) -> Box:
+        """
+        Return the box the n-th player in a dugout box is drawn in.
+
+        Slots fill left to right in rows below the box's caption row.
+
+        Args:
+            side (Side): Which team.
+            dugout (Dugout): Which box.
+            ordinal (int): Zero-based place of the player in the box.
+
+        Returns:
+            Box: A square_size box inside the dugout box.
 
         Raises:
-            ValueError: If the index is beyond the slot capacity.
+            ValueError: If the ordinal is beyond the box's capacity.
         """
-        capacity = RESERVE_SLOT_COLUMNS * RESERVE_SLOT_ROWS
-        if not 0 <= key.index < capacity:
-            raise ValueError(f"Reserve slot {key.index} is outside 0..{capacity - 1}")
-        area = self.reserve(key.side)
-        column = key.index % RESERVE_SLOT_COLUMNS
-        row = key.index // RESERVE_SLOT_COLUMNS
+        capacity = DUGOUT_CAPACITY[dugout]
+        if not 0 <= ordinal < capacity:
+            raise ValueError(
+                f"{dugout.value} slot {ordinal} is outside 0..{capacity - 1}"
+            )
+        box = self.dugout(side, dugout)
+        columns = DUGOUT_COLUMNS[dugout]
         return Box(
-            area.x + column * self.square_size,
-            area.y + (row + 1) * self.square_size,
+            box.x + (ordinal % columns) * self.square_size,
+            box.y + (ordinal // columns + 1) * self.square_size,
             self.square_size,
             self.square_size,
         )
 
-    def reserve_slot_at(self, pos: tuple[int, int]) -> PlayerKey | None:
+    def dugout_slot_at(self, pos: tuple[int, int]) -> tuple[Side, Dugout, int] | None:
         """
-        Find the reserve slot under a point (inverse of reserve_slot).
+        Find the dugout slot under a point (inverse of dugout_slot).
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
-            PlayerKey | None: The key whose slot is there, or None off the slots.
-                The key may name no player if the team is smaller.
+            tuple[Side, Dugout, int] | None: The team, box and ordinal, or None
+                off the slots. The ordinal may be past the box's last player.
         """
         for side in Side:
-            area = self.reserve(side)
-            if not area.contains(pos):
-                continue
-            column = (pos[0] - area.x) // self.square_size
-            row = (pos[1] - area.y) // self.square_size - 1
-            if 0 <= column < RESERVE_SLOT_COLUMNS and 0 <= row < RESERVE_SLOT_ROWS:
-                return PlayerKey(side, row * RESERVE_SLOT_COLUMNS + column)
+            for dugout in Dugout:
+                box = self.dugout(side, dugout)
+                if not box.contains(pos):
+                    continue
+                columns = DUGOUT_COLUMNS[dugout]
+                column = (pos[0] - box.x) // self.square_size
+                row = (pos[1] - box.y) // self.square_size - 1
+                ordinal = row * columns + column
+                if (
+                    0 <= column < columns
+                    and 0 <= row
+                    and ordinal < DUGOUT_CAPACITY[dugout]
+                ):
+                    return side, dugout, ordinal
         return None
 
     def menu_column(self, which: MenuList) -> Box:
@@ -500,6 +539,25 @@ def _preview_line_height(square_size: int) -> int:
     return max(1, square_size // 2)
 
 
+def _split_dugouts(area: Box, square_size: int) -> tuple[Box, Box, Box]:
+    """
+    Split a team's dugout area into its Reserve, KO and Injured boxes.
+
+    Args:
+        area (Box): The team's half under the pitch.
+        square_size (int): Side of one grid square in pixels.
+
+    Returns:
+        tuple[Box, Box, Box]: Reserve as wide as its slot columns, then KO and
+            Injured sharing the rest of the width equally.
+    """
+    reserve = area._replace(width=DUGOUT_COLUMNS[Dugout.RESERVE] * square_size)
+    rest = (area.width - reserve.width) // 2
+    ko = area._replace(x=reserve.x + reserve.width, width=rest)
+    injured = area._replace(x=ko.x + rest, width=area.width - reserve.width - rest)
+    return reserve, ko, injured
+
+
 def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     """
     Compute the full screen layout from the size of one grid square.
@@ -536,11 +594,12 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         ),
     )
 
-    # Two reserve areas side by side under the pitch, one per team.
+    # Two dugout areas side by side under the pitch, one per team, each split
+    # into Reserve, KO and Injured boxes.
     reserve_y = pitch.y + pitch.height + MARGIN
     reserve_width = (pitch.width - MARGIN) // 2
     reserve_height = RESERVE_ROWS * square_size
-    reserves = (
+    dugout_areas = (
         Box(pitch.x, reserve_y, reserve_width, reserve_height),
         Box(
             pitch.x + pitch.width - reserve_width,
@@ -548,6 +607,9 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
             reserve_width,
             reserve_height,
         ),
+    )
+    dugouts = tuple(
+        box for area in dugout_areas for box in _split_dugouts(area, square_size)
     )
 
     panel_x = pitch.x + pitch.width + MARGIN
@@ -607,7 +669,8 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         line_of_scrimmage_x=pitch.x + (PITCH_COLUMNS // 2) * square_size,
         wide_zones=wide_zones,
         endzones=endzones,
-        reserves=reserves,
+        dugout_areas=dugout_areas,
+        dugouts=dugouts,
         panel=panel,
         menu_button=menu_button,
         save_button=save_button,

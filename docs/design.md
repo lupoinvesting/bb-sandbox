@@ -17,7 +17,7 @@ The doc has to follow CLAUDE.md (black-box modules, primitives first, wrapped de
 - AG, PA and AV are written as printed: `3+`, with `-` for no PA. The `+` is optional.
 - Shirt number = roster row (1–16). Team name = the CSV file name without its extension.
 - Sprites are drawn in code: a token in the team colour with the shirt number and a "head" bar on its top edge, so the 90°/180° rotations are visible. There are no image files.
-- Dropping a player on their own reserve area benches them. Benching resets the player to Standing.
+- Dropping a player on one of their own dugout boxes (Reserve, KO, Injured) benches them there. Benching resets the player to Standing.
 - The sandbox gets a **Main menu** button, which is the way back to the setups list. Leaving discards any unsaved board.
 - The file lists rescan when the window regains focus, so there is no Refresh button.
   - To name a setup, rename its file in Explorer.
@@ -43,7 +43,8 @@ No source code changes: this is a design task. No commit unless asked.
 | Type | Module | Definition |
 |---|---|---|
 | `Square` | pitch | frozen dataclass `(column, row)`. Raises `ValueError` outside 26×15, so an off-pitch square can't exist. |
-| `Side` | pitch | Enum `HOME="home"`, `AWAY="away"`. Picks the reserve box, the colour and the JSON key. |
+| `Side` | pitch | Enum `HOME="home"`, `AWAY="away"`. Picks the dugout area, the colour and the JSON key. |
+| `Dugout` | pitch | Enum `RESERVE`, `KO`, `INJURED`: a team's off-pitch boxes. `DUGOUT_CAPACITY` = 18 / 9 / 9. Saved by value. |
 | `Status` | pitch | Enum `STANDING`, `PRONE`, `STUNNED`. Render maps these to 0°/90°/180°. Saved by name. |
 | `PlayerKey` | pitch | NamedTuple `(side, index)`. A player's identity on the board; shirt number = index + 1. |
 | `Player`, `Team` | roster | Frozen pydantic models holding the validated roster data. |
@@ -107,12 +108,13 @@ def list_rosters(folder: Path) -> tuple[Path, ...]         # sorted; a missing f
 
 # board.py
 class Board:
-    def __init__(self, home: Team, away: Team)  # everyone benched and standing; ball on Square(13, 7)
+    def __init__(self, home: Team, away: Team)  # everyone in Reserve and standing; ball on Square(13, 7)
     def team(side) -> Team; player(key) -> Player; keys() -> tuple[PlayerKey, ...]
     def square_of(key) -> Square | None; status_of(key) -> Status; player_at(square) -> PlayerKey | None
     ball: Square                                # read-only
     def place(key, square) -> bool              # False, and nothing changes, if another player is there
-    def bench(key) -> None                      # to reserves, status back to STANDING
+    def dugout_of(key) -> Dugout | None; dugout_players(side, dugout) -> tuple[PlayerKey, ...]  # roster order = packing order
+    def bench(key, dugout=RESERVE) -> bool      # to that box, status back to STANDING; False if the box is full
     def set_status(key, status) -> None         # ValueError if the player is benched
     def move_ball(square) -> None               # any square; may share it with a player
 
@@ -126,9 +128,10 @@ def new_setup_path(folder: Path, board: Board, when: datetime) -> Path  # <home>
 # layout.py additions
 Box.contains(pos) -> bool
 Layout.square_at(pos) -> Square | None              # inverse of square()
-Layout.reserve(side) -> Box
-Layout.reserve_slot(key) -> Box                     # 2 rows x 12 below the caption = 24 slots >= 16
-Layout.reserve_slot_at(pos) -> PlayerKey | None
+Layout.dugout_area(side) -> Box                     # a team's half under the pitch
+Layout.dugout(side, dugout) -> Box                  # Reserve (6 columns), KO and Injured (3 columns), left to right
+Layout.dugout_slot(side, dugout, ordinal) -> Box    # 3 slot rows below the caption; players packed in roster order
+Layout.dugout_slot_at(pos) -> tuple[Side, Dugout, int] | None
 Layout.ball_box(square, carried: bool) -> Box       # half a square: centred, or in the bottom-right corner when carried
 Layout.context_menu(anchor: Box, items: int) -> tuple[Box, ...]  # next to the square, left of the panel, inside the window
 Layout.save_button, Layout.menu_button: Box         # bottom of the panel
@@ -200,30 +203,32 @@ Setup JSON:
 ```
 - Each team carries its full roster, so a save still loads if the CSV later changes or moves.
 - Each position is stored next to its player, so the two lists can never get out of step.
-- `square: null` means the player is in the reserves.
+- `square: null` means the player is off the pitch, in the box named by `dugout` (`"reserve"`, `"ko"`, `"injured"`). Files without `dugout` (saved before the boxes existed) load into Reserve.
 - Load rejects the file when any of these holds:
   - the JSON is malformed or doesn't match the schema;
   - the version isn't 1;
   - a roster breaks the stat limits;
   - a square is off the pitch;
   - two players share a square;
+  - a player has both a `square` and a `dugout`;
+  - a dugout box holds more than its capacity;
   - a benched player isn't standing.
 
 ### Interaction rules
 - **Press:** an open context menu takes the click first: it applies the item under the cursor, or just closes. Otherwise the press picks up the first thing under the cursor:
   1. the ball's box;
   2. the player on that square;
-  3. a reserve slot.
+  3. a dugout slot.
 
   If none of these is there, nothing happens.
 - **Drag:** the token keeps its grab offset and follows the cursor. The board doesn't change until release, and the origin square is drawn empty.
 - **Release:** the token's centre decides:
   - Over a pitch square, a player is placed with `place`. It is refused if another player is there, and the token goes back. The ball is moved with `move_ball`.
-  - A player over their own reserve box is benched with `bench`.
+  - A player over one of their own dugout boxes is benched there with `bench`. A full box refuses, and the token goes back.
   - Anywhere else, the token goes back.
   - A release with no drag in progress is ignored. So is a press during a drag.
-- **Right-click:** on a player on the pitch, it opens the menu next to their square. Any menu already open closes first. Players in the reserves and the ball have no menu.
-- **Hover:** the panel shows the dragged player, or else the player under the cursor, on the pitch or in the reserves. It lists:
+- **Right-click:** on a player on the pitch, it opens the menu (Stand up / Prone / Stunned / Reserve / KO / Injured) next to their square. Any menu already open closes first. Players in the dugout boxes and the ball have no menu.
+- **Hover:** the panel shows the dragged player, or else the player under the cursor, on the pitch or in a dugout box. It lists:
   - the shirt number, name and team;
   - MA, ST, AG, PA and AV (AG as `3+`, PA as `-`);
   - the skills.

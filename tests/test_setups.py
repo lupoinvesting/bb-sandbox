@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 from bb_sandbox.board import Board
-from bb_sandbox.pitch import PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
 from bb_sandbox.setups import (
     SetupFileError,
@@ -42,6 +42,8 @@ def board():
     board.place(PlayerKey(Side.AWAY, 2), Square(20, 1))
     board.set_status(PlayerKey(Side.AWAY, 2), Status.STUNNED)
     board.move_ball(Square(3, 7))
+    board.bench(PlayerKey(Side.HOME, 1), Dugout.KO)
+    board.bench(PlayerKey(Side.AWAY, 1), Dugout.INJURED)
     return board
 
 
@@ -50,7 +52,10 @@ def _snapshot(board):
         board.ball,
         board.team(Side.HOME),
         board.team(Side.AWAY),
-        [(board.square_of(k), board.status_of(k)) for k in board.keys()],
+        [
+            (board.square_of(k), board.dugout_of(k), board.status_of(k))
+            for k in board.keys()
+        ],
     )
 
 
@@ -118,12 +123,52 @@ def test_load_rejects_schema_violations(board, tmp_path, change, message):
         load_setup(path)
 
 
+def test_load_old_file_without_dugout_puts_benched_players_in_reserve(board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(board, path)
+
+    def drop_dugouts(data):
+        for side in ("home", "away"):
+            for entry in data[side]["players"]:
+                entry.pop("dugout")
+
+    _tamper(path, drop_dugouts)
+    loaded = load_setup(path)
+    assert loaded.dugout_of(PlayerKey(Side.HOME, 1)) is Dugout.RESERVE
+    assert loaded.dugout_of(PlayerKey(Side.AWAY, 0)) is Dugout.RESERVE
+    assert loaded.square_of(PlayerKey(Side.HOME, 0)) == Square(3, 7)
+
+
+def test_load_rejects_square_and_dugout_together(board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(board, path)
+    _tamper(path, lambda d: d["home"]["players"][0].update(dugout="ko"))
+    with pytest.raises(SetupFileError, match="both a square and a dugout box"):
+        load_setup(path)
+
+
+def test_load_rejects_overfull_dugout_box(tmp_path):
+    board = Board(_team("orcs", 10), _team("humans"))
+    path = tmp_path / "a.json"
+    save_setup(board, path)
+
+    def all_ko(data):
+        for entry in data["home"]["players"]:
+            entry["dugout"] = "ko"
+
+    _tamper(path, all_ko)
+    with pytest.raises(SetupFileError, match="home ko box is full"):
+        load_setup(path)
+
+
 def test_load_rejects_two_players_on_one_square(board, tmp_path):
     path = tmp_path / "a.json"
     save_setup(board, path)
     _tamper(
         path,
-        lambda d: d["away"]["players"][0].update(square={"column": 3, "row": 7}),
+        lambda d: d["away"]["players"][0].update(
+            square={"column": 3, "row": 7}, dugout=None
+        ),
     )
     with pytest.raises(SetupFileError, match=r"two players on square \(3, 7\)"):
         load_setup(path)
