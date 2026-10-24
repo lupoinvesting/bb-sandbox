@@ -85,6 +85,8 @@ def _perform(session: Session, request: FileRequest | None) -> None:
         case RenameFile(path=path, name=name):
             session.rename(path, name)
             session.rescan()
+        case SaveSettings():
+            session.save_settings()
 
 
 def handle_event(session: Session, event: pygame.event.Event) -> bool:
@@ -106,8 +108,6 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
         session.type_text(event.text)
     elif event.type == pygame.KEYDOWN and event.key in KEYS:
         _perform(session, session.key(KEYS[event.key]))
-            case SaveSettings():
-                session.save_settings()
     elif event.type == pygame.MOUSEBUTTONDOWN and event.button == RIGHT_BUTTON:
         session.right_click(event.pos)
     elif event.type == pygame.MOUSEBUTTONUP and event.button == LEFT_BUTTON:
@@ -282,33 +282,9 @@ def run(max_frames: int | None = None) -> int:
     try:
         screen = pygame.display.set_mode(layout.window_size)
         pygame.display.set_caption(WINDOW_TITLE)
-        font = pygame.font.Font(None, FONT_SIZE)
-        die_font = pygame.font.Font(None, DIE_FONT_SIZE)
-        # Reason: loaded once, after set_mode, because convert_alpha needs the
-        # display mode. Like a broken races.csv, an image that exists but can't
-        # be decoded stops the app with a SpriteError naming the file; only a
-        # missing image falls back to the face's name.
-        sprites = load_block_sprites(DICE_SPRITES_DIR, layout.die_boxes[0].width)
-        # Reason: player images are user files, so a broken one never raises.
-        player_sprites = load_player_sprites(PLAYER_SPRITES_DIR, layout.square_size)
-        clock = pygame.time.Clock()
-        frames = 0
-        running = True
-        # Reason: an interactive loop is bounded by the user closing the window;
-        # max_frames gives tests an explicit cap.
-        while running and (max_frames is None or frames < max_frames):
-            events = pygame.event.get()
-            for event in events:
-                running = handle_event(session, event) and running
-            # Reason: picks up new images once, however many focus events arrive.
-            if any(event.type == pygame.WINDOWFOCUSGAINED for event in events):
-                player_sprites = load_player_sprites(
-                    PLAYER_SPRITES_DIR, layout.square_size
-                )
-            _draw(screen, layout, font, die_font, sprites, player_sprites, session)
-            pygame.display.flip()
-            clock.tick(FPS)
-            frames += 1
-        return frames
+        # Reason: typed text arrives as TEXTINPUT events, which pygame 2 sends
+        # by default; only the name box's keys need KEYDOWN repeats.
+        pygame.key.set_repeat(KEY_REPEAT_DELAY_MS, KEY_REPEAT_INTERVAL_MS)
+        return _run_frames(screen, layout, session, max_frames)
     finally:
         pygame.quit()
