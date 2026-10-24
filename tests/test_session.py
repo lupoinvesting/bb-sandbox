@@ -6,6 +6,7 @@ from datetime import datetime
 import pytest
 
 from bb_sandbox.dice import DICE
+from bb_sandbox.interaction import EditKey
 from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square
 from bb_sandbox.races import Positional, Race
@@ -172,7 +173,7 @@ def test_sandbox_forwards_pointer_input(session):
     assert session.board.square_of(key) == Square(4, 4)
 
     session.right_click(_click(LAYOUT.square(4, 4)))
-    assert len(session.interaction.view().menu) == 6
+    assert len(session.interaction.view().menu) == 7
 
     session.press(_click(LAYOUT.menu_button))
     assert session.interaction is None
@@ -392,7 +393,7 @@ def test_a_roll_starts_no_drag_and_leaves_the_menu_and_message(session):
     session.press(_dice(0))
     session.move(_click(LAYOUT.square(8, 8)))
     view = session.interaction.view()
-    assert view.dragged is None and len(view.menu) == 6
+    assert view.dragged is None and len(view.menu) == 7
     assert session.message == message and session.last_roll.number == 1
 
 
@@ -437,3 +438,47 @@ def test_dice_positions_do_nothing_on_the_main_menu(session):
     for index in range(len(DICE)):
         assert session.press(_dice(index)) is None
     assert session.screen is Screen.MENU and session.last_roll is None
+
+
+def _start_comment(session, text):
+    _sandbox(session)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
+    session.right_click(_click(LAYOUT.square(4, 4)))
+    session.press(_click(session.interaction.view().menu[-1].box))
+    session.type_text(text)
+
+
+def test_typing_reaches_the_comment_edit(session):
+    _start_comment(session, "BLK")
+    session.edit_key(EditKey.ENTER)
+    assert session.board.comment_of(PlayerKey(Side.HOME, 0)) == "BLK"
+
+
+def test_save_setup_while_editing_saves_the_draft(session, tmp_path):
+    _start_comment(session, "MB2")
+    assert session.press(_click(LAYOUT.save_button)) == SaveSetup()
+    assert session.interaction.view().editing is None
+    session.save_setup(datetime(2026, 1, 1))
+    saved = tmp_path / "setups" / "orcs-vs-orcs-20260101-000000.json"
+    assert '"comment": "MB2"' in saved.read_text()
+
+
+def test_dice_click_keeps_the_edit_open(session):
+    _start_comment(session, "X")
+    session.press(_dice(0))
+    assert session.interaction.view().editing.text == "X"
+    assert session.board.comment_of(PlayerKey(Side.HOME, 0)) == ""
+
+
+def test_main_menu_while_editing_saves_and_leaves(session):
+    _start_comment(session, "X")
+    board = session.board
+    session.press(_click(LAYOUT.menu_button))
+    assert session.screen is Screen.MENU
+    assert board.comment_of(PlayerKey(Side.HOME, 0)) == "X"
+
+
+def test_keys_on_the_main_menu_are_ignored(session):
+    session.type_text("A")
+    session.edit_key(EditKey.ENTER)
+    assert session.screen is Screen.MENU

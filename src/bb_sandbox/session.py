@@ -16,7 +16,7 @@ from typing import NamedTuple
 from bb_sandbox.board import Board
 from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, Roll, roll_dice
-from bb_sandbox.interaction import Interaction
+from bb_sandbox.interaction import EditKey, Interaction
 from bb_sandbox.layout import Layout, MenuList
 from bb_sandbox.pitch import Side
 from bb_sandbox.races import Race
@@ -273,10 +273,14 @@ class Session:
         Returns:
             FileRequest | None: SaveSetup for the Save button, else None.
         """
+        # Reason: Save setup and Main menu first save an open comment, so it is
+        # in the file; a dice click leaves the edit open.
         if self._layout.save_button.contains(pos):
+            self._interaction.commit()
             return SaveSetup()
         index = self._layout.dice_button_at(pos)
         if self._layout.menu_button.contains(pos):
+            self._interaction.commit()
             self._screen, self._board, self._message = Screen.MENU, None, ""
             self._interaction = None
             self._last_roll = None
@@ -418,6 +422,26 @@ class Session:
         """
         if self._interaction is not None:
             self._interaction.right_click(pos)
+
+    def type_text(self, text: str) -> None:
+        """
+        Handle typed text; only a comment edit on the sandbox uses it.
+
+        Args:
+            text (str): The typed characters.
+        """
+        if self._interaction is not None:
+            self._interaction.type_text(text)
+
+    def edit_key(self, key: EditKey) -> None:
+        """
+        Handle an editing key; only a comment edit on the sandbox uses it.
+
+        Args:
+            key (EditKey): Backspace, Enter or Escape.
+        """
+        if self._interaction is not None:
+            self._interaction.edit_key(key)
 
     def rescan(self) -> None:
         """Re-list the roster and setup files on disk, reading each roster's race."""

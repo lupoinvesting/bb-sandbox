@@ -5,6 +5,7 @@ from pathlib import Path
 import pygame
 
 from bb_sandbox.dice import BlockFace
+from bb_sandbox.interaction import EditKey
 from bb_sandbox.layout import Layout, build_layout
 from bb_sandbox.races import RACES_FILE, load_races
 from bb_sandbox.render import (
@@ -32,11 +33,21 @@ FPS = 60
 FONT_SIZE = 20
 # Reason: numbers on the dice are drawn bigger than the rest of the text.
 DIE_FONT_SIZE = 40
+# Reason: player comments are drawn smaller, so 4 characters fit on a square.
+COMMENT_FONT_SIZE = 14
 ROSTERS_DIR = Path("rosters")
 SETUPS_DIR = Path("setups")
 PLAYER_SPRITES_DIR = Path("sprites")
 LEFT_BUTTON = 1
 RIGHT_BUTTON = 3
+# Reason: interaction never sees Pygame, so the comment edit keys are mapped
+# here; any other key is ignored.
+EDIT_KEYS = {
+    pygame.K_BACKSPACE: EditKey.BACKSPACE,
+    pygame.K_RETURN: EditKey.ENTER,
+    pygame.K_KP_ENTER: EditKey.ENTER,
+    pygame.K_ESCAPE: EditKey.ESCAPE,
+}
 
 
 def handle_event(session: Session, event: pygame.event.Event) -> bool:
@@ -75,6 +86,10 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
         session.release(event.pos)
     elif event.type == pygame.MOUSEMOTION:
         session.move(event.pos)
+    elif event.type == pygame.TEXTINPUT:
+        session.type_text(event.text)
+    elif event.type == pygame.KEYDOWN and event.key in EDIT_KEYS:
+        session.edit_key(EDIT_KEYS[event.key])
     elif event.type == pygame.WINDOWFOCUSGAINED:
         # Reason: picks up roster and setup files added or renamed in Explorer
         # while the app was in the background.
@@ -87,6 +102,7 @@ def _draw(
     layout: Layout,
     font: pygame.font.Font,
     die_font: pygame.font.Font,
+    comment_font: pygame.font.Font,
     sprites: dict[BlockFace, pygame.Surface],
     player_sprites: PlayerSprites,
     session: Session,
@@ -97,8 +113,9 @@ def _draw(
     Args:
         surface (pygame.Surface): The window surface.
         layout (Layout): Screen geometry.
-        font (pygame.font.Font): Font for all text but the numbers on dice.
+        font (pygame.font.Font): Font for all text but dice numbers and comments.
         die_font (pygame.font.Font): Bigger font for the numbers on dice.
+        comment_font (pygame.font.Font): Smaller font for player comments.
         sprites (dict[BlockFace, pygame.Surface]): Block dice images, from
             load_block_sprites.
         player_sprites (PlayerSprites): Player images, from load_player_sprites.
@@ -110,7 +127,9 @@ def _draw(
     if session.screen is Screen.SANDBOX and session.interaction is not None:
         view = session.interaction.view()
         board = session.board
-        draw_sandbox(surface, layout, font, board, view, player_sprites, message)
+        draw_sandbox(
+            surface, layout, font, comment_font, board, view, player_sprites, message
+        )
         draw_dice(surface, layout, font, die_font, session.last_roll, sprites)
     elif session.screen is Screen.RACES:
         draw_races(surface, layout, font, session.races, message)
@@ -149,33 +168,55 @@ def run(max_frames: int | None = None) -> int:
     try:
         screen = pygame.display.set_mode(layout.window_size)
         pygame.display.set_caption(WINDOW_TITLE)
-        font = pygame.font.Font(None, FONT_SIZE)
-        die_font = pygame.font.Font(None, DIE_FONT_SIZE)
-        # Reason: loaded once, after set_mode, because convert_alpha needs the
-        # display mode. Like a broken races.csv, an image that exists but can't
-        # be decoded stops the app with a SpriteError naming the file; only a
-        # missing image falls back to the face's name.
-        sprites = load_block_sprites(DICE_SPRITES_DIR, layout.die_boxes[0].width)
-        # Reason: player images are user files, so a broken one never raises.
-        player_sprites = load_player_sprites(PLAYER_SPRITES_DIR, layout.square_size)
-        clock = pygame.time.Clock()
-        frames = 0
-        running = True
-        # Reason: an interactive loop is bounded by the user closing the window;
-        # max_frames gives tests an explicit cap.
-        while running and (max_frames is None or frames < max_frames):
-            events = pygame.event.get()
-            for event in events:
-                running = handle_event(session, event) and running
-            # Reason: picks up new images once, however many focus events arrive.
-            if any(event.type == pygame.WINDOWFOCUSGAINED for event in events):
-                player_sprites = load_player_sprites(
-                    PLAYER_SPRITES_DIR, layout.square_size
-                )
-            _draw(screen, layout, font, die_font, sprites, player_sprites, session)
-            pygame.display.flip()
-            clock.tick(FPS)
-            frames += 1
-        return frames
+        return _run_frames(screen, layout, session, max_frames)
     finally:
         pygame.quit()
+
+
+def _run_frames(
+    screen: pygame.Surface, layout: Layout, session: Session, max_frames: int | None
+) -> int:
+    """
+    Load the fonts and images, then handle events and draw until the window closes.
+
+    Args:
+        screen (pygame.Surface): The window surface; the display mode is set.
+        layout (Layout): Screen geometry.
+        session (Session): The session to drive and draw.
+        max_frames (int | None): Stop after this many frames; None runs until
+            the window is closed.
+
+    Returns:
+        int: Number of frames rendered.
+
+    Raises:
+        SpriteError: If a block dice image exists but can't be decoded.
+    """
+    font = pygame.font.Font(None, FONT_SIZE)
+    die_font = pygame.font.Font(None, DIE_FONT_SIZE)
+    comment_font = pygame.font.Font(None, COMMENT_FONT_SIZE)
+    # Reason: loaded once, after set_mode, because convert_alpha needs the
+    # display mode. Like a broken races.csv, an image that exists but can't
+    # be decoded stops the app with a SpriteError naming the file; only a
+    # missing image falls back to the face's name.
+    sprites = load_block_sprites(DICE_SPRITES_DIR, layout.die_boxes[0].width)
+    # Reason: player images are user files, so a broken one never raises.
+    player_sprites = load_player_sprites(PLAYER_SPRITES_DIR, layout.square_size)
+    fonts = (font, die_font, comment_font)
+    clock = pygame.time.Clock()
+    frames = 0
+    running = True
+    # Reason: an interactive loop is bounded by the user closing the window;
+    # max_frames gives tests an explicit cap.
+    while running and (max_frames is None or frames < max_frames):
+        events = pygame.event.get()
+        for event in events:
+            running = handle_event(session, event) and running
+        # Reason: picks up new images once, however many focus events arrive.
+        if any(event.type == pygame.WINDOWFOCUSGAINED for event in events):
+            player_sprites = load_player_sprites(PLAYER_SPRITES_DIR, layout.square_size)
+        _draw(screen, layout, *fonts, sprites, player_sprites, session)
+        pygame.display.flip()
+        clock.tick(FPS)
+        frames += 1
+    return frames

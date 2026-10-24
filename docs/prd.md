@@ -35,6 +35,7 @@
 * **Prone:** Sprite image is rotated 90 degrees (flipped on its side).
 * **Stunned:** Sprite image is rotated 180 degrees (upside down).
 * **Reserve / KO / Injured:** Player is removed from the active pitch and placed into that box of their team's bottom area.
+* **Comment:** Opens a short comment for editing on the token (see §3.9).
 
 
 
@@ -85,6 +86,16 @@ Design: [sprites.md](sprites.md).
 
 Design: [pitch_sprites.md](pitch_sprites.md).
 
+### 3.9. Player Comments
+
+* **Comment Item:** The right-click menu's **Comment** item opens an edit on the player's token.
+* **Content:** Up to 4 printable ASCII characters, such as `BLK`, `MB2` or `!?`, with the case kept. Other characters are dropped as they are typed.
+* **Editing:** Typing adds characters and Backspace deletes one. Enter or any click saves, Esc cancels. Saving an empty comment removes it.
+* **Display:** A small badge in the token's top-right corner, upright for Prone and Stunned players, on the pitch, in the dugout boxes and while dragging.
+* **Persistence:** The comment follows the player through moves, status changes and dugout boxes, and is saved in setup files. Older files load with no comments.
+
+Design: [comments.md](comments.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -132,3 +143,9 @@ Design: [pitch_sprites.md](pitch_sprites.md).
 * Add the Options screen, opened from the main menu, listing the pitch images in `sprites/pitch/`.
 * Draw the chosen image under the grid and lines, falling back to the drawn pitch.
 * Save the choice in `settings.json` and restore it on start.
+
+**Phase 10: Player Comments**
+
+* Add the Comment menu item and the first keyboard input: typing, Backspace, Enter and Esc.
+* Store comments on the board and in setup files.
+* Draw the comment badge, the highlighted draft and the editing hint.

@@ -40,6 +40,10 @@ TOKEN_HEAD = (20, 20, 20)
 # The shirt number on a player image sits on a small dark badge.
 BADGE_FILL = (20, 20, 20)
 BADGE_PADDING = 2
+# Reason: the message line shows this instead of the session message while a
+# comment is being typed; a longer hint doesn't fit the 224 px line.
+COMMENT_HINT = "Enter saves, Esc cancels"
+COMMENT_CARET = "|"
 BALL_FILL = (150, 90, 40)
 BALL_OUTLINE = (250, 240, 220)
 MENU_FILL = (60, 60, 70)
@@ -621,22 +625,33 @@ def draw_builder(
     _draw_button(surface, font, layout.save_roster_button, "Save roster", ready)
 
 
-def _draw_badge(surface: pygame.Surface, font: pygame.font.Font, text: str) -> None:
+def _draw_badge(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    text: str,
+    corner: str,
+    point: tuple[int, int],
+    fill: tuple[int, int, int] = BADGE_FILL,
+) -> None:
     """
-    Draw text on a small dark badge in the bottom-left corner of a surface.
+    Draw text on a small badge with one corner at a point.
 
     Args:
         surface (pygame.Surface): Target surface, e.g. a token.
         font (pygame.font.Font): Font for the text.
-        text (str): The text, e.g. a shirt number.
+        text (str): The text, e.g. a shirt number or a comment.
+        corner (str): The badge corner placed at point, as a pygame.Rect
+            attribute name: "bottomleft" or "topright".
+        point (tuple[int, int]): Where that corner goes on the surface.
+        fill (tuple[int, int, int]): The badge colour.
     """
     label = font.render(text, True, TEXT)
     # Reason: the rendered text has blank rows above and below the digits, so
     # the badge pads the digits' own bounds to stay small.
     digits = label.get_bounding_rect()
     badge = digits.inflate(2 * BADGE_PADDING, 2 * BADGE_PADDING)
-    badge.bottomleft = (0, surface.get_height())
-    pygame.draw.rect(surface, BADGE_FILL, badge)
+    setattr(badge, corner, point)
+    pygame.draw.rect(surface, fill, badge)
     surface.blit(label, (badge.x + BADGE_PADDING, badge.y + BADGE_PADDING), digits)
 
 
@@ -647,10 +662,14 @@ def _draw_token(
     key: PlayerKey,
     status: Status = Status.STANDING,
     image: pygame.Surface | None = None,
+    comment: str = "",
+    comment_font: pygame.font.Font | None = None,
+    editing: bool = False,
 ) -> None:
     """
     Draw a player token: the player's image with the shirt number on a badge,
     or else the team colour, a "head" bar on its top edge and the shirt number.
+    A comment goes on a badge in the top-right corner.
 
     Args:
         surface (pygame.Surface): Target surface.
@@ -660,6 +679,10 @@ def _draw_token(
         status (Status): Rotates the token 90° when prone, 180° when stunned.
         image (pygame.Surface | None): The player's image, fitted to the box;
             None draws the team colour token.
+        comment (str): Text for the comment badge; '' draws no badge.
+        comment_font (pygame.font.Font | None): Font for the comment; needed
+            when comment isn't ''.
+        editing (bool): True draws the comment badge in the highlight colour.
     """
     # Reason: the token is drawn on its own surface so it can be rotated as a
     # whole; a square surface keeps its size under 90° and 180° rotations.
@@ -675,9 +698,16 @@ def _draw_token(
     else:
         # Reason: the image shows which way is up, so it needs no head bar.
         token.blit(image, image.get_rect(center=token.get_rect().center))
-        _draw_badge(token, font, str(key.index + 1))
+        number = str(key.index + 1)
+        _draw_badge(token, font, number, "bottomleft", (0, token.get_height()))
     token = pygame.transform.rotate(token, STATUS_ANGLES[status])
     surface.blit(token, (box.x, box.y))
+    if comment:
+        # Reason: drawn after the rotation, so the comment stays upright for
+        # prone and stunned players.
+        fill = HIGHLIGHT if editing else BADGE_FILL
+        top_right = (box.x + box.width, box.y)
+        _draw_badge(surface, comment_font, comment, "topright", top_right, fill)
 
 
 def _draw_ball(surface: pygame.Surface, box: Box) -> None:
@@ -791,10 +821,72 @@ def _player_images(
     }
 
 
+def _draw_pieces(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    comment_font: pygame.font.Font,
+    board: Board,
+    view: InteractionView,
+    player_sprites: PlayerSprites,
+) -> None:
+    """
+    Draw the tokens on the pitch and in the dugout boxes, the ball, and the
+    dragged item on top.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for shirt numbers.
+        comment_font (pygame.font.Font): Font for comments.
+        board (Board): Where every player and the ball are, and the comments.
+        view (InteractionView): The dragged item and the comment being typed.
+        player_sprites (PlayerSprites): Player images.
+    """
+    images = _player_images(board, player_sprites)
+    comments = {key: board.comment_of(key) for key in board.keys()}
+    edited = view.editing.key if view.editing else None
+    if view.editing is not None:
+        comments[edited] = view.editing.text + COMMENT_CARET
+    dragged = view.dragged.item if view.dragged else None
+
+    def draw(box: Box, key: PlayerKey, status: Status) -> None:
+        """Draw one token with its image and comment."""
+        image, comment = images[key], comments[key]
+        editing = key == edited
+        _draw_token(
+            surface, font, box, key, status, image, comment, comment_font, editing
+        )
+
+    for key in board.keys():
+        square = board.square_of(key)
+        # Reason: a dragged player's origin is drawn empty until release.
+        if square is not None and key != dragged:
+            draw(layout.square(square.column, square.row), key, board.status_of(key))
+    for side in Side:
+        for dugout in Dugout:
+            # Reason: a dragged player keeps their slot until release, so the
+            # rest of the box doesn't shift mid-drag.
+            for ordinal, key in enumerate(board.dugout_players(side, dugout)):
+                if key != dragged:
+                    box = layout.dugout_slot(side, dugout, ordinal)
+                    draw(box, key, Status.STANDING)
+
+    if dragged is not BALL:
+        carried = board.player_at(board.ball) is not None
+        _draw_ball(surface, layout.ball_box(board.ball, carried))
+    if view.dragged is not None:
+        if dragged is BALL:
+            _draw_ball(surface, view.dragged.box)
+        else:
+            draw(view.dragged.box, dragged, board.status_of(dragged))
+
+
 def draw_sandbox(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    comment_font: pygame.font.Font,
     board: Board,
     view: InteractionView,
     player_sprites: PlayerSprites,
@@ -807,41 +899,19 @@ def draw_sandbox(
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for captions and shirt numbers.
+        comment_font (pygame.font.Font): Smaller font for player comments.
         board (Board): Where every player and the ball are.
-        view (InteractionView): Hover, drag and context menu state.
+        view (InteractionView): Hover, drag, context menu and comment edit state.
         player_sprites (PlayerSprites): Player images; a player without one
             is drawn as a token in the team colour.
-        message (str): Status message (save/load feedback), '' for none.
+        message (str): Status message (save/load feedback), '' for none; a
+            comment edit shows COMMENT_HINT instead.
     """
     draw_scene(surface, layout, font)
-    images = _player_images(board, player_sprites)
-    dragged = view.dragged.item if view.dragged else None
-    for key in board.keys():
-        square = board.square_of(key)
-        # Reason: a dragged player's origin is drawn empty until release.
-        if square is not None and key != dragged:
-            box = layout.square(square.column, square.row)
-            _draw_token(surface, font, box, key, board.status_of(key), images[key])
-    for side in Side:
-        for dugout in Dugout:
-            # Reason: a dragged player keeps their slot until release, so the
-            # rest of the box doesn't shift mid-drag.
-            for ordinal, key in enumerate(board.dugout_players(side, dugout)):
-                if key != dragged:
-                    box = layout.dugout_slot(side, dugout, ordinal)
-                    _draw_token(surface, font, box, key, image=images[key])
-
-    if dragged is not BALL:
-        carried = board.player_at(board.ball) is not None
-        _draw_ball(surface, layout.ball_box(board.ball, carried))
-    if view.dragged is not None:
-        if view.dragged.item is BALL:
-            _draw_ball(surface, view.dragged.box)
-        else:
-            key, box = view.dragged.item, view.dragged.box
-            _draw_token(surface, font, box, key, board.status_of(key), images[key])
-
+    _draw_pieces(surface, layout, font, comment_font, board, view, player_sprites)
     _draw_panel(surface, layout, font, board, view.hovered)
+    if view.editing is not None:
+        message = COMMENT_HINT
     # Reason: file names in the message can be wider than the panel.
     surface.set_clip(_rect(layout.sandbox_message_line))
     _draw_label(surface, font, message, layout.sandbox_message_line)

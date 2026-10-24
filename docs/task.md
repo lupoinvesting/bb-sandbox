@@ -62,6 +62,16 @@ Design: [pitch_sprites.md](pitch_sprites.md).
 - [ ] `sprites/pitch/.gitkeep` force-added; `settings.json` in `.gitignore`
 - [ ] README "Pitch image & options" section; status line in pitch_sprites.md
 
+## Phase 10: Player Comments
+Design: [comments.md](comments.md).
+- [x] board: `MAX_COMMENT_LENGTH`, `comment_char_ok`, `comment_of`, `set_comment` (kept apart from `_locations`)
+- [x] interaction: `MenuCommand.COMMENT` as the 7th menu item, `EditKey`, `CommentEdit`, `InteractionView.editing`; `type_text`, `edit_key`, `commit`; a press or right-click saves an open edit
+- [x] session: `type_text` and `edit_key` pass-through; Save setup and Main menu commit first, a dice click doesn't
+- [x] setups: optional `comment` per player, loaded through `Board.set_comment`
+- [x] app: `TEXTINPUT` and `EDIT_KEYS` mapping, `COMMENT_FONT_SIZE`; frame loop moved into `_run_frames`
+- [x] render: top-right comment badge drawn after rotation, highlighted draft with caret, `COMMENT_HINT`; token, ball and drag drawing moved into `_draw_pieces`
+- [x] README "Player comments" section
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -83,7 +93,8 @@ Design: [pitch_sprites.md](pitch_sprites.md).
 - [ ] Add the five block dice PNGs to `sprites/dice/` (names in the README). The folder doesn't exist until then, so every block face shows its name.
 - [x] `sprites/home/sprite-names.txt` and `sprites/away/sprite-names.txt` list `default.png` and the 125 position file names (force-added; a position shared by races is listed under its first race).
 - [ ] Phase 7: add a test that the two `sprite-names.txt` lists match `races.csv`.
-- [ ] `run()` is 59 lines after Phase 7, one under NASA rule 4's 60; move its frame loop into a helper with the next change to it.
+- [x] `run()` is 59 lines after Phase 7, one under NASA rule 4's 60; move its frame loop into a helper with the next change to it. (Done in Phase 10: `_run_frames`, the name Phase 8 planned.)
 - [ ] The five dice PNGs are now in `sprites/dice/`, but `.gitignore`'s `sprites/` ignores that folder too, so they can't be committed until they are force-added or the folder is re-included.
 - [x] Move the block dice images from `src/bb_sandbox/sprites/dice/` to `sprites/dice/`, next to the player images; `DICE_SPRITES_DIR` is now relative to the folder the app is launched from.
+- [ ] Phase 10 was built on `42d4b20`, before Phase 9 (ball carrier, `25c0383`). Both reshape `draw_sandbox`'s ball and drag drawing: on merge, move Phase 9's `_draw_dragged` and carried-ball check into `_draw_pieces`, and pass the comment to the dragged token.
 - [ ] Now that the dice images are user files in `sprites/` too, decide whether a broken one should still stop the app or, like a broken player image, only be reported on the message line.

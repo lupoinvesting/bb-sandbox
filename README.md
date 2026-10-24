@@ -44,6 +44,13 @@ In the sandbox, **Save setup** writes the board to `setups/<home>-vs-<away>-YYYY
 (squares, Prone/Stunned status, Reserve/KO/Injured boxes, the ball, and both full rosters).
 The main menu's **Saved setups** list loads one straight into the sandbox; rename a file in Explorer to name it.
 
+## Player comments
+
+Right-click a player on the pitch and pick **Comment** to tag them with up to 4 characters, such as `BLK`, `MB2` or `!?`.
+Type on the token: Backspace deletes, Enter or any click saves, Esc cancels. Saving an empty comment removes it.
+The comment shows on a small badge in the token's top-right corner, follows the player into the dugout boxes,
+and is kept in saved setups. Only printable ASCII characters are accepted.
+
 ## Dice
 
 The sandbox panel's **Dice** section has seven buttons: 1d6, 2d6, 1d8, 1d16, 1 block, 2 blocks and 3 blocks.

@@ -171,7 +171,7 @@ def frame():
     def draw(session, player_sprites=NO_PLAYER_SPRITES):
         surface = pygame.Surface(layout.window_size)
         font, die_font = pygame.font.Font(None, 20), pygame.font.Font(None, 40)
-        _draw(surface, layout, font, die_font, {}, player_sprites, session)
+        _draw(surface, layout, font, die_font, font, {}, player_sprites, session)
         return surface
 
     yield layout, draw
@@ -289,3 +289,45 @@ def test_run_keeps_going_with_a_corrupt_player_image(in_tmp):
     (in_tmp / "sprites" / "away").mkdir(parents=True)
     (in_tmp / "sprites" / "away" / "ogre.png").write_bytes(b"not a png")
     assert run(max_frames=2) == 2
+
+
+def _key(key):
+    return pygame.event.Event(pygame.KEYDOWN, key=key)
+
+
+def test_handle_event_types_a_comment(in_tmp):
+    rosters = in_tmp / "rosters"
+    rosters.mkdir()
+    (rosters / "orcs.csv").write_text(CSV)
+    layout = build_layout()
+    session = Session(layout, rosters, in_tmp / "setups", RACES)
+    session.rescan()
+    for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
+        handle_event(session, _click(layout.menu_row(which, 0)))
+    handle_event(session, _click(layout.start_button))
+    key = PlayerKey(Side.HOME, 0)
+    session.board.place(key, Square(4, 4))
+    handle_event(session, _click(layout.square(4, 4), button=3))
+    handle_event(session, _click(session.interaction.view().menu[-1].box))
+
+    for text in ("B", "L", "X"):
+        assert handle_event(session, pygame.event.Event(pygame.TEXTINPUT, text=text))
+    assert handle_event(session, _key(pygame.K_BACKSPACE))
+    # Keys the edit doesn't use are ignored.
+    assert handle_event(session, _key(pygame.K_a))
+    assert handle_event(session, pygame.event.Event(pygame.TEXTINPUT, text="K"))
+    assert handle_event(session, _key(pygame.K_KP_ENTER))
+    assert session.board.comment_of(key) == "BLK"
+
+    handle_event(session, _click(layout.square(4, 4), button=3))
+    handle_event(session, _click(session.interaction.view().menu[-1].box))
+    handle_event(session, pygame.event.Event(pygame.TEXTINPUT, text="Z"))
+    assert handle_event(session, _key(pygame.K_ESCAPE))
+    assert session.board.comment_of(key) == "BLK"
+
+
+def test_text_and_keys_on_the_main_menu_are_ignored(in_tmp):
+    session = Session(build_layout(), in_tmp, in_tmp, RACES)
+    assert handle_event(session, pygame.event.Event(pygame.TEXTINPUT, text="a"))
+    assert handle_event(session, _key(pygame.K_RETURN))
+    assert session.screen is Screen.MENU and session.message == ""

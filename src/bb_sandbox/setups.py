@@ -47,13 +47,15 @@ class _PlayerEntry(_Frozen):
     """One player with their position stored next to them.
 
     Off the pitch, square is None and dugout names the box; files saved before
-    dugout boxes existed have no dugout, which means Reserve.
+    dugout boxes existed have no dugout, which means Reserve. Files saved
+    before comments existed have no comment, which means none; Board checks it.
     """
 
     player: Player
     square: _SquareData | None
     status: Status
     dugout: Dugout | None = None
+    comment: str = ""
 
 
 class _TeamData(_Frozen):
@@ -112,6 +114,7 @@ def _team_data(board: Board, side: Side) -> _TeamData:
                 square=None if square is None else _SquareData(**vars(square)),
                 status=board.status_of(key),
                 dugout=board.dugout_of(key),
+                comment=board.comment_of(key),
             )
         )
     return _TeamData(name=team.name, race=team.race, players=tuple(entries))
@@ -159,12 +162,17 @@ def _place_team(board: Board, side: Side, data: _TeamData, name: str) -> None:
 
     Raises:
         SetupFileError: If two players share a square, a player has both a
-            square and a dugout box, a benched player isn't standing, or a
-            dugout box is over capacity.
+            square and a dugout box, a benched player isn't standing, a
+            dugout box is over capacity, or a comment is invalid.
     """
     for index, entry in enumerate(data.players):
         key = PlayerKey(side, index)
         player = f"{name}: {side.value} player {index + 1}"
+        # Reason: Board owns the comment rule, so the schema doesn't copy it.
+        try:
+            board.set_comment(key, entry.comment)
+        except ValueError as error:
+            raise SetupFileError(f"{player} {error}") from error
         if entry.square is None:
             if entry.status is not Status.STANDING:
                 raise SetupFileError(f"{player} is benched but {entry.status.value}")
