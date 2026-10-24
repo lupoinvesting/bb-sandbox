@@ -115,3 +115,40 @@ def test_unknown_key_raises(board, key):
         board.square_of(key)
     with pytest.raises(ValueError):
         board.place(key, Square(0, 0))
+
+
+def test_set_and_read_a_comment(board):
+    assert board.comment_of(HOME_A) == ""
+    board.set_comment(HOME_A, " MB2 ")
+    assert board.comment_of(HOME_A) == "MB2"
+    assert board.comment_of(HOME_B) == ""
+
+
+def test_comment_survives_moves_status_and_dugout_boxes(board):
+    board.set_comment(HOME_A, "!?")
+    board.place(HOME_A, Square(3, 4))
+    board.set_status(HOME_A, Status.STUNNED)
+    board.bench(HOME_A, Dugout.KO)
+    assert board.comment_of(HOME_A) == "!?"
+
+
+@pytest.mark.parametrize("text", ["", "    "])
+def test_empty_comment_removes_it(board, text):
+    board.set_comment(HOME_A, "BLK")
+    board.set_comment(HOME_A, text)
+    assert board.comment_of(HOME_A) == ""
+
+
+@pytest.mark.parametrize("text", ["ABCDE", "é", "a\tb"])
+def test_bad_comment_raises_and_keeps_the_old_one(board, text):
+    board.set_comment(HOME_A, "BLK")
+    with pytest.raises(ValueError):
+        board.set_comment(HOME_A, text)
+    assert board.comment_of(HOME_A) == "BLK"
+
+
+def test_comment_with_unknown_key_raises(board):
+    with pytest.raises(ValueError):
+        board.set_comment(PlayerKey(Side.AWAY, 1), "X")
+    with pytest.raises(ValueError):
+        board.comment_of(PlayerKey(Side.AWAY, 1))

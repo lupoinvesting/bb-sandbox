@@ -44,6 +44,8 @@ def board():
     board.move_ball(Square(3, 7))
     board.bench(PlayerKey(Side.HOME, 1), Dugout.KO)
     board.bench(PlayerKey(Side.AWAY, 1), Dugout.INJURED)
+    board.set_comment(PlayerKey(Side.HOME, 0), "MB2")
+    board.set_comment(PlayerKey(Side.HOME, 1), "!?")
     return board
 
 
@@ -53,7 +55,12 @@ def _snapshot(board):
         board.team(Side.HOME),
         board.team(Side.AWAY),
         [
-            (board.square_of(k), board.dugout_of(k), board.status_of(k))
+            (
+                board.square_of(k),
+                board.dugout_of(k),
+                board.status_of(k),
+                board.comment_of(k),
+            )
             for k in board.keys()
         ],
     )
@@ -214,3 +221,34 @@ def test_new_setup_path_sanitises_team_names(tmp_path):
     path = new_setup_path(tmp_path, board, datetime(2026, 1, 1))
     assert path.parent == tmp_path
     assert path.name == "_evil-vs-a_b-20260101-000000.json"
+
+
+def test_file_stores_comments(board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(board, path)
+    data = json.loads(path.read_text())
+    assert data["home"]["players"][0]["comment"] == "MB2"
+    assert data["away"]["players"][0]["comment"] == ""
+
+
+def test_load_old_file_without_comments_has_none(board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(board, path)
+
+    def drop_comments(data):
+        for side in ("home", "away"):
+            for entry in data[side]["players"]:
+                entry.pop("comment")
+
+    _tamper(path, drop_comments)
+    loaded = load_setup(path)
+    assert all(loaded.comment_of(key) == "" for key in loaded.keys())
+
+
+@pytest.mark.parametrize("comment", ["ABCDE", "é"])
+def test_load_rejects_a_bad_comment(board, tmp_path, comment):
+    path = tmp_path / "a.json"
+    save_setup(board, path)
+    _tamper(path, lambda d: d["away"]["players"][2].update(comment=comment))
+    with pytest.raises(SetupFileError, match="a.json: away player 3 comment"):
+        load_setup(path)

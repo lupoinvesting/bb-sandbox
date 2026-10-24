@@ -3,7 +3,13 @@
 import pytest
 
 from bb_sandbox.board import BALL_START, Board
-from bb_sandbox.interaction import BALL, MENU_ACTIONS, Interaction
+from bb_sandbox.interaction import (
+    BALL,
+    MENU_ACTIONS,
+    CommentEdit,
+    EditKey,
+    Interaction,
+)
 from bb_sandbox.layout import Box, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
@@ -290,3 +296,87 @@ def test_right_click_without_pitch_player_opens_nothing(interaction, board):
     assert interaction.view().menu == ()
     interaction.right_click(_at(_reserve(HOME1)))
     assert interaction.view().menu == ()
+
+
+def _open_comment(interaction, board, square=Square(4, 4)):
+    board.place(HOME0, square)
+    interaction.right_click(_at(_square(square.column, square.row)))
+    menu = interaction.view().menu
+    assert menu[-1].label == "Comment"
+    interaction.press(_at(menu[-1].box))
+
+
+def test_comment_item_opens_an_edit_with_the_current_comment(interaction, board):
+    board.set_comment(HOME0, "BLK")
+    _open_comment(interaction, board)
+    view = interaction.view()
+    assert view.editing == CommentEdit(HOME0, "BLK")
+    assert view.menu == ()
+
+
+def test_typing_and_enter_save_the_comment(interaction, board):
+    _open_comment(interaction, board)
+    interaction.type_text("M")
+    interaction.type_text("B2")
+    # The board only changes on commit.
+    assert board.comment_of(HOME0) == ""
+    interaction.edit_key(EditKey.ENTER)
+    assert board.comment_of(HOME0) == "MB2"
+    assert interaction.view().editing is None
+
+
+def test_typing_drops_characters_past_the_limit_and_non_ascii(interaction, board):
+    _open_comment(interaction, board)
+    interaction.type_text("éAB")
+    interaction.type_text("CDE")
+    assert interaction.view().editing.text == "ABCD"
+
+
+def test_backspace_deletes_and_is_a_no_op_on_empty(interaction, board):
+    _open_comment(interaction, board)
+    interaction.type_text("A")
+    interaction.edit_key(EditKey.BACKSPACE)
+    interaction.edit_key(EditKey.BACKSPACE)
+    assert interaction.view().editing == CommentEdit(HOME0, "")
+
+
+def test_escape_keeps_the_old_comment(interaction, board):
+    board.set_comment(HOME0, "BLK")
+    _open_comment(interaction, board)
+    interaction.edit_key(EditKey.BACKSPACE)
+    interaction.edit_key(EditKey.ESCAPE)
+    assert board.comment_of(HOME0) == "BLK"
+    assert interaction.view().editing is None
+
+
+def test_saving_an_empty_draft_removes_the_comment(interaction, board):
+    board.set_comment(HOME0, "X")
+    _open_comment(interaction, board)
+    interaction.edit_key(EditKey.BACKSPACE)
+    interaction.edit_key(EditKey.ENTER)
+    assert board.comment_of(HOME0) == ""
+
+
+def test_press_while_editing_saves_and_starts_no_drag(interaction, board):
+    _open_comment(interaction, board)
+    interaction.type_text("!?")
+    interaction.press(_at(_square(4, 4)))
+    assert board.comment_of(HOME0) == "!?"
+    assert interaction.view().editing is None
+    assert interaction.view().dragged is None
+
+
+def test_right_click_while_editing_saves_then_opens_the_menu(interaction, board):
+    _open_comment(interaction, board)
+    interaction.type_text("X")
+    interaction.right_click(_at(_square(4, 4)))
+    assert board.comment_of(HOME0) == "X"
+    assert len(interaction.view().menu) == len(MENU_ACTIONS)
+
+
+def test_keys_without_an_edit_do_nothing(interaction, board):
+    interaction.type_text("A")
+    interaction.edit_key(EditKey.ENTER)
+    interaction.commit()
+    assert interaction.view().editing is None
+    assert board.comment_of(HOME0) == ""

@@ -1,4 +1,5 @@
-"""Pointer input on the sandbox: drag and drop, hover and the right-click menu.
+"""Pointer input on the sandbox: drag and drop, hover, the right-click menu and
+editing a player's comment.
 
 Interaction turns screen positions into Board commands. It never touches Pygame;
 render draws whatever view() describes.
@@ -7,7 +8,7 @@ render draws whatever view() describes.
 from enum import Enum
 from typing import NamedTuple
 
-from bb_sandbox.board import Board
+from bb_sandbox.board import MAX_COMMENT_LENGTH, Board, comment_char_ok
 from bb_sandbox.layout import Box, Layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Status
 
@@ -20,15 +21,31 @@ class Ball(Enum):
 
 BALL = Ball.BALL
 
+
+class MenuCommand(Enum):
+    """A menu action that is neither a status nor a dugout box."""
+
+    COMMENT = "comment"
+
+
+class EditKey(Enum):
+    """The keys a comment edit reacts to; app maps Pygame keys onto these."""
+
+    BACKSPACE = "backspace"
+    ENTER = "enter"
+    ESCAPE = "escape"
+
+
 # Reason: a Status changes the player's state on the pitch; a Dugout sends them
-# off the pitch into that box instead.
-MENU_ACTIONS: tuple[tuple[str, Status | Dugout], ...] = (
+# off the pitch into that box instead; Comment opens an edit on the token.
+MENU_ACTIONS: tuple[tuple[str, Status | Dugout | MenuCommand], ...] = (
     ("Stand up", Status.STANDING),
     ("Prone", Status.PRONE),
     ("Stunned", Status.STUNNED),
     ("Reserve", Dugout.RESERVE),
     ("KO", Dugout.KO),
     ("Injured", Dugout.INJURED),
+    ("Comment", MenuCommand.COMMENT),
 )
 
 
@@ -59,6 +76,18 @@ class MenuItem(NamedTuple):
     box: Box
 
 
+class CommentEdit(NamedTuple):
+    """A comment being typed on a player's token.
+
+    Attributes:
+        key (PlayerKey): The player being commented.
+        text (str): The draft so far; the board changes only on commit.
+    """
+
+    key: PlayerKey
+    text: str
+
+
 class InteractionView(NamedTuple):
     """What render needs to draw the pointer state.
 
@@ -66,11 +95,13 @@ class InteractionView(NamedTuple):
         hovered (PlayerKey | None): The player whose stats the panel shows.
         dragged (Drag | None): The item being dragged; its origin is drawn empty.
         menu (tuple[MenuItem, ...]): The open context menu, or () if closed.
+        editing (CommentEdit | None): The comment being typed, or None.
     """
 
     hovered: PlayerKey | None
     dragged: Drag | None
     menu: tuple[MenuItem, ...]
+    editing: CommentEdit | None = None
 
 
 class _Grab(NamedTuple):
@@ -83,11 +114,14 @@ class _Grab(NamedTuple):
 
 
 class Interaction:
-    """Applies mouse input to a Board. The board only changes on release or menu picks."""
+    """Applies mouse and comment input to a Board.
+
+    The board only changes on release, menu picks or a comment commit.
+    """
 
     def __init__(self, board: Board, layout: Layout) -> None:
         """
-        Start with nothing dragged, hovered or open.
+        Start with nothing dragged, hovered, open or being edited.
 
         Args:
             board (Board): The board to change.
@@ -98,16 +132,23 @@ class Interaction:
         self._pos: tuple[int, int] | None = None
         self._grab: _Grab | None = None
         self._menu: tuple[PlayerKey, tuple[Box, ...]] | None = None
+        self._edit: CommentEdit | None = None
 
     def press(self, pos: tuple[int, int]) -> None:
         """
-        Handle a left press: pick a menu item, or pick up the ball or a player.
+        Handle a left press: save an open comment, pick a menu item, or pick up
+        the ball or a player.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
         """
         self._pos = pos
         if self._grab is not None:
+            return
+        if self._edit is not None:
+            # Reason: like a press that closes the menu, a press that ends an
+            # edit does nothing else, so it starts no drag.
+            self.commit()
             return
         if self._menu is not None:
             self._choose(pos)
@@ -159,8 +200,8 @@ class Interaction:
         """
         Open the context menu for the player on the pitch under the cursor.
 
-        Any open menu closes first; dugout boxes, the ball and empty squares get
-        no menu.
+        An open comment is saved and any open menu closes first; dugout boxes,
+        the ball and empty squares get no menu.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
@@ -168,6 +209,7 @@ class Interaction:
         self._pos = pos
         if self._grab is not None:
             return
+        self.commit()
         self._menu = None
         square = self._layout.square_at(pos)
         if square is None:
@@ -179,12 +221,57 @@ class Interaction:
         boxes = self._layout.context_menu(anchor, len(MENU_ACTIONS))
         self._menu = (key, boxes)
 
+    def type_text(self, text: str) -> None:
+        """
+        Add typed characters to the open comment; does nothing if none is open.
+
+        Characters comment_char_ok refuses, and any past MAX_COMMENT_LENGTH,
+        are dropped.
+
+        Args:
+            text (str): The typed text, usually one character.
+        """
+        if self._edit is None:
+            return
+        draft = self._edit.text
+        for char in text:
+            if len(draft) < MAX_COMMENT_LENGTH and comment_char_ok(char):
+                draft += char
+        self._edit = self._edit._replace(text=draft)
+
+    def edit_key(self, key: EditKey) -> None:
+        """
+        Apply an editing key to the open comment; does nothing if none is open.
+
+        Args:
+            key (EditKey): Backspace deletes the last character, Enter saves,
+                Escape drops the draft and keeps the old comment.
+        """
+        if self._edit is None:
+            return
+        if key is EditKey.BACKSPACE:
+            self._edit = self._edit._replace(text=self._edit.text[:-1])
+        elif key is EditKey.ENTER:
+            self.commit()
+        else:
+            self._edit = None
+
+    def commit(self) -> None:
+        """Save the open comment to the board and close it; no-op if none is open."""
+        if self._edit is None:
+            return
+        # Reason: type_text only lets valid characters in, up to the limit, so
+        # set_comment can't refuse the draft.
+        self._board.set_comment(self._edit.key, self._edit.text)
+        self._edit = None
+
     def view(self) -> InteractionView:
         """
         Describe the pointer state for drawing.
 
         Returns:
-            InteractionView: Hovered player, dragged item and open menu.
+            InteractionView: Hovered player, dragged item, open menu and the
+                comment being typed.
         """
         dragged = None
         hovered = None
@@ -205,7 +292,7 @@ class Interaction:
                 MenuItem(label, box)
                 for (label, _), box in zip(MENU_ACTIONS, self._menu[1])
             )
-        return InteractionView(hovered, dragged, menu)
+        return InteractionView(hovered, dragged, menu, self._edit)
 
     def _choose(self, pos: tuple[int, int]) -> None:
         """
@@ -219,7 +306,11 @@ class Interaction:
         for (_, action), box in zip(MENU_ACTIONS, boxes):
             if not box.contains(pos):
                 continue
-            if isinstance(action, Dugout):
+            if action is MenuCommand.COMMENT:
+                # Reason: the draft starts from the current comment, so an
+                # edit changes it rather than starting over.
+                self._edit = CommentEdit(key, self._board.comment_of(key))
+            elif isinstance(action, Dugout):
                 self._board.bench(key, action)
             else:
                 self._board.set_status(key, action)

@@ -59,6 +59,13 @@ renaming a setup keeps the team names saved inside it.
 - A name another file already has is refused (`<name> already exists`) and the box stays open: nothing is ever overwritten.
 - Windows device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) are refused.
 
+## Player comments
+
+Right-click a player on the pitch and pick **Comment** to tag them with up to 4 characters, such as `BLK`, `MB2` or `!?`.
+Type on the token: Backspace deletes, Enter or any click saves, Esc cancels. Saving an empty comment removes it.
+The comment shows on a small badge in the token's top-right corner, follows the player into the dugout boxes,
+and is kept in saved setups. Only printable ASCII characters are accepted.
+
 ## Dice
 
 The sandbox panel's **Dice** section has seven buttons: 1d6, 2d6, 1d8, 1d16, 1 block, 2 blocks and 3 blocks.

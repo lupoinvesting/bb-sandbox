@@ -34,6 +34,7 @@ Use Serena to search through the codebase. If you get any errors using Serena, r
 - [Pitch image & options](docs/pitch_sprites.md)
 - [Ball carrier](docs/plans/ball-moves.md)
 - [Editable names](docs/names.md)
+- [Player comments](docs/comments.md)
 
 ## 🧪 Testing & Reliability
 - **Always create Pytest unit tests for new features** (functions, classes, routes, etc).

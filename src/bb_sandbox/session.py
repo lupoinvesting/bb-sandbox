@@ -2,7 +2,7 @@
 the Options screen and the sandbox.
 
 Session never touches Pygame. Clicks come in as screen positions and typing as
-text and Key values; disk I/O only happens in the methods app calls explicitly
+text and EditKey values; disk I/O only happens in the methods app calls explicitly
 (rescan, import_team, load_setup, save_setup, save_roster, rename,
 load_settings, save_settings).
 """
@@ -20,7 +20,7 @@ from bb_sandbox.board import Board
 from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, Roll, roll_dice
 from bb_sandbox.images import list_images
-from bb_sandbox.interaction import Interaction
+from bb_sandbox.interaction import EditKey, Interaction
 from bb_sandbox.layout import Layout, MenuList
 from bb_sandbox.names import (
     CHARS_PROBLEM,
@@ -130,14 +130,6 @@ class RenameFile:
 FileRequest = (
     ImportRoster | LoadSetup | SaveSetup | SaveRoster | SaveSettings | RenameFile
 )
-
-
-class Key(Enum):
-    """The keys the name box reacts to; app maps Pygame key codes to these."""
-
-    BACKSPACE = "backspace"
-    ENTER = "enter"
-    ESCAPE = "escape"
 
 
 class NameView(NamedTuple):
@@ -362,34 +354,43 @@ class Session:
 
     def type_text(self, text: str) -> None:
         """
-        Type into the open name box; a dropped character becomes its problem.
+        Type into the open name box, else into a comment edit on the sandbox.
+
+        In the name box a dropped character becomes its problem.
 
         Args:
-            text (str): The typed characters. No-op when no box is open.
+            text (str): The typed characters. No-op when neither is open.
         """
         box = self._name_box
         if box is None:
+            if self._interaction is not None:
+                self._interaction.type_text(text)
             return
         box.text, ok = add_chars(box.text, text)
         box.problem = "" if ok else CHARS_PROBLEM
 
-    def key(self, key: Key) -> FileRequest | None:
+    def key(self, key: EditKey) -> FileRequest | None:
         """
-        Handle a key in the open name box. No disk I/O.
+        Handle a key in the open name box, else in a comment edit. No disk I/O.
 
         Args:
-            key (Key): The key pressed. No-op when no box is open.
+            key (EditKey): The key pressed. No-op when neither is open.
 
         Returns:
-            FileRequest | None: On Enter with a valid name, the save or rename
-                request; the box stays open until that request succeeds.
+            FileRequest | None: On Enter in the name box with a valid name, the
+                save or rename request; the box stays open until that request
+                succeeds. Always None for a comment edit.
         """
         box = self._name_box
         if box is None:
+            # Reason: the name box sits on top, so it takes the keys first;
+            # otherwise they belong to a comment edit, if one is open.
+            if self._interaction is not None:
+                self._interaction.edit_key(key)
             return None
-        if key is Key.ESCAPE:
+        if key is EditKey.ESCAPE:
             self._name_box = None
-        elif key is Key.BACKSPACE:
+        elif key is EditKey.BACKSPACE:
             box.text, box.problem = remove_char(box.text), ""
         else:
             name = box.text.strip()
@@ -509,12 +510,16 @@ class Session:
         Returns:
             FileRequest | None: Always None; Save opens the name box.
         """
+        # Reason: Save setup and Main menu first save an open comment, so it is
+        # in the file; a dice click leaves the edit open.
         if self._layout.save_button.contains(pos):
+            self._interaction.commit()
             path = new_setup_path(self._setups_dir, self._board, self._clock())
             self._open_name_box("Save setup as", path.stem, SaveSetup)
             return None
         index = self._layout.dice_button_at(pos)
         if self._layout.menu_button.contains(pos):
+            self._interaction.commit()
             self._screen, self._board, self._message = Screen.MENU, None, ""
             self._interaction = None
             self._last_roll = None

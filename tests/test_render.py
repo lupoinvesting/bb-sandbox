@@ -7,7 +7,7 @@ from bb_sandbox import render
 from bb_sandbox.board import BALL_START, Board
 from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, BlockFace, Roll
-from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
+from bb_sandbox.interaction import BALL, CommentEdit, Drag, InteractionView, MenuItem
 from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, Positional, Race, load_races
@@ -90,7 +90,9 @@ def test_sandbox_draws_tokens_in_dugouts(font):
     board = Board(_team(3), _team(1))
     board.bench(PlayerKey(Side.HOME, 1), Dugout.KO)
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, None, "")
+    render.draw_sandbox(
+        surface, layout, font, font, board, EMPTY_VIEW, NO_SPRITES, None, ""
+    )
 
     home_slot = layout.dugout_slot(Side.HOME, Dugout.RESERVE, 0)
     # Bottom-left corner of the token body, clear of the head bar and number.
@@ -114,7 +116,9 @@ def test_sandbox_draws_placed_token_on_its_square(font):
     board = Board(_team(1), _team(1))
     board.place(PlayerKey(Side.AWAY, 0), Square(5, 7))
     surface = pygame.Surface(layout.window_size)
-    render.draw_sandbox(surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, None, "")
+    render.draw_sandbox(
+        surface, layout, font, font, board, EMPTY_VIEW, NO_SPRITES, None, ""
+    )
     square = layout.square(5, 7)
     assert surface.get_at((square.x + 5, square.y + 27))[:3] == (
         render.TEAM_COLOURS[Side.AWAY]
@@ -216,7 +220,9 @@ def _sandbox(board, view=EMPTY_VIEW, player_sprites=NO_SPRITES):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
     font = pygame.font.Font(None, 20)
-    render.draw_sandbox(surface, layout, font, board, view, player_sprites, None, "")
+    render.draw_sandbox(
+        surface, layout, font, font, board, view, player_sprites, None, ""
+    )
     return surface, layout
 
 
@@ -339,7 +345,7 @@ def test_sandbox_draws_save_button_and_clipped_message(font):
     board = Board(_team(1), _team(1))
     message = "Saved " + "x" * 200
     render.draw_sandbox(
-        surface, layout, font, board, EMPTY_VIEW, NO_SPRITES, None, message
+        surface, layout, font, font, board, EMPTY_VIEW, NO_SPRITES, None, message
     )
     save = layout.save_button
     assert surface.get_at((save.x + 3, save.y + 3))[:3] == render.BUTTON_FILL
@@ -938,3 +944,50 @@ def test_a_long_name_shows_its_end(font):
     assert field_pixels("A" + tail) == field_pixels("B" + tail)
     # A short name starts at the left, so its first character shows.
     assert field_pixels("A") != field_pixels("B")
+
+
+def _top_right(box):
+    return box.x + box.width - 1, box.y
+
+
+@pytest.mark.parametrize("status", [Status.STANDING, Status.PRONE, Status.STUNNED])
+def test_comment_badge_stays_top_right_when_rotated(font, status):
+    board = Board(_team(1), _team(1))
+    key = PlayerKey(Side.HOME, 0)
+    board.place(key, Square(5, 7))
+    board.set_status(key, status)
+    board.set_comment(key, "BLK")
+    surface, layout = _sandbox(board)
+    square = layout.square(5, 7)
+    assert surface.get_at(_top_right(square))[:3] == render.BADGE_FILL
+    # The badge is small: the bottom-left of the square is not covered.
+    corner = (square.x + 1, square.y + square.height - 1)
+    assert surface.get_at(corner)[:3] != render.BADGE_FILL
+
+
+def test_no_badge_without_a_comment(font):
+    board = Board(_team(1), _team(1))
+    board.place(PlayerKey(Side.HOME, 0), Square(5, 7))
+    surface, layout = _sandbox(board)
+    assert surface.get_at(_top_right(layout.square(5, 7)))[:3] != render.BADGE_FILL
+
+
+def test_benched_player_shows_their_comment(font):
+    board = Board(_team(1), _team(1))
+    board.set_comment(PlayerKey(Side.AWAY, 0), "!?")
+    surface, layout = _sandbox(board)
+    slot = layout.dugout_slot(Side.AWAY, Dugout.RESERVE, 0)
+    assert surface.get_at(_top_right(slot))[:3] == render.BADGE_FILL
+
+
+def test_comment_being_typed_is_highlighted_with_the_hint(font):
+    board = Board(_team(1), _team(1))
+    key = PlayerKey(Side.HOME, 0)
+    board.place(key, Square(5, 7))
+    # An empty draft still shows the caret on a highlighted badge.
+    view = InteractionView(None, None, (), CommentEdit(key, ""))
+    surface, layout = _sandbox(board, view)
+    assert surface.get_at(_top_right(layout.square(5, 7)))[:3] == render.HIGHLIGHT
+    plain, _ = _sandbox(board)
+    assert _has_text(surface, layout.sandbox_message_line)
+    assert not _has_text(plain, layout.sandbox_message_line)

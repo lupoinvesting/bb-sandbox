@@ -6,13 +6,13 @@ from datetime import datetime
 import pytest
 
 from bb_sandbox.dice import DICE
+from bb_sandbox.interaction import EditKey
 from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE
 from bb_sandbox.session import (
     ImportRoster,
-    Key,
     LoadSetup,
     MenuView,
     NameView,
@@ -194,7 +194,7 @@ def test_sandbox_forwards_pointer_input(session):
     assert session.board.square_of(key) == Square(4, 4)
 
     session.right_click(_click(LAYOUT.square(4, 4)))
-    assert len(session.interaction.view().menu) == 6
+    assert len(session.interaction.view().menu) == 7
 
     session.press(_click(LAYOUT.menu_button))
     assert session.interaction is None
@@ -216,7 +216,7 @@ def _sandbox(session):
 def _save_setup(session):
     # Reason: Save opens the name box; Enter accepts the timestamped default.
     session.press(_click(LAYOUT.save_button))
-    request = session.key(Key.ENTER)
+    request = session.key(EditKey.ENTER)
     session.save_setup(request.name)
 
 
@@ -225,7 +225,7 @@ def test_save_button_opens_the_name_box_with_the_default(session, tmp_path):
     assert session.press(_click(LAYOUT.save_button)) is None
     default = "orcs-vs-orcs-20260101-000000"
     assert session.name_view == NameView("Save setup as", default, "")
-    assert session.key(Key.ENTER) == SaveSetup(default)
+    assert session.key(EditKey.ENTER) == SaveSetup(default)
     # The box stays open until the save succeeds.
     assert session.name_view is not None
     session.save_setup(default)
@@ -238,10 +238,10 @@ def test_typing_a_name_saves_under_it(session, tmp_path):
     _sandbox(session)
     session.press(_click(LAYOUT.save_button))
     for _ in range(len("orcs-vs-orcs-20260101-000000")):
-        session.key(Key.BACKSPACE)
+        session.key(EditKey.BACKSPACE)
     session.type_text("  My setupx")
-    session.key(Key.BACKSPACE)
-    request = session.key(Key.ENTER)
+    session.key(EditKey.BACKSPACE)
+    request = session.key(EditKey.ENTER)
     assert request == SaveSetup("My setup")
     session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
     session.save_setup(request.name)
@@ -264,20 +264,20 @@ def test_an_empty_or_reserved_name_keeps_the_box_open(session):
     _sandbox(session)
     session.press(_click(LAYOUT.save_button))
     while session.name_view.text:
-        session.key(Key.BACKSPACE)
-    session.key(Key.BACKSPACE)
+        session.key(EditKey.BACKSPACE)
+    session.key(EditKey.BACKSPACE)
     session.type_text("   ")
-    assert session.key(Key.ENTER) is None
+    assert session.key(EditKey.ENTER) is None
     assert session.name_view.problem == "Type a name"
     session.type_text("Aux")
-    assert session.key(Key.ENTER) is None
+    assert session.key(EditKey.ENTER) is None
     assert session.name_view.problem == "Aux is reserved"
 
 
 def test_escape_cancels_and_writes_nothing(session, tmp_path):
     _sandbox(session)
     session.press(_click(LAYOUT.save_button))
-    assert session.key(Key.ESCAPE) is None
+    assert session.key(EditKey.ESCAPE) is None
     assert session.name_view is None and session.message == ""
     assert not (tmp_path / "setups").exists()
 
@@ -308,7 +308,7 @@ def test_clicks_and_pointer_input_are_ignored_while_the_box_is_open(session):
 
 def test_keys_and_typing_without_a_box_do_nothing(session):
     session.type_text("abc")
-    for key in Key:
+    for key in EditKey:
         assert session.key(key) is None
     assert session.name_view is None and session.message == ""
 
@@ -354,7 +354,7 @@ def test_save_failure_becomes_message(session, tmp_path):
     assert "orcs-vs-orcs" in session.name_view.problem
     assert session.screen is Screen.SANDBOX
     # Without a box, the failure becomes the message.
-    session.key(Key.ESCAPE)
+    session.key(EditKey.ESCAPE)
     session.save_setup("direct")
     assert "direct" in session.message
 
@@ -438,7 +438,7 @@ def test_save_roster_button_opens_the_name_box(session):
     assert session.press(_click(LAYOUT.save_roster_button)) is None
     view = session.name_view
     assert view == NameView("Save roster as", "Human-20260101-000000", "")
-    assert session.key(Key.ENTER) == SaveRoster("Human-20260101-000000")
+    assert session.key(EditKey.ENTER) == SaveRoster("Human-20260101-000000")
     assert session.screen is Screen.BUILDER
 
 
@@ -497,15 +497,15 @@ def test_save_roster_without_builder_raises(session):
 def _rename(session, row, name):
     session.right_click(row)
     while session.name_view.text:
-        session.key(Key.BACKSPACE)
+        session.key(EditKey.BACKSPACE)
     session.type_text(name)
-    return session.key(Key.ENTER)
+    return session.key(EditKey.ENTER)
 
 
 def test_right_click_on_a_roster_opens_the_rename_box(session, tmp_path):
     session.right_click(_row(MenuList.AWAY_ROSTERS, 2))
     assert session.name_view == NameView("Rename roster", "orcs", "")
-    assert session.key(Key.ENTER) == RenameFile(tmp_path / "orcs.csv", "orcs")
+    assert session.key(EditKey.ENTER) == RenameFile(tmp_path / "orcs.csv", "orcs")
 
 
 def test_renaming_an_imported_roster_renames_its_team(session, tmp_path):
@@ -578,7 +578,7 @@ def test_a_roll_starts_no_drag_and_leaves_the_menu_and_message(session):
     session.press(_dice(0))
     session.move(_click(LAYOUT.square(8, 8)))
     view = session.interaction.view()
-    assert view.dragged is None and len(view.menu) == 6
+    assert view.dragged is None and len(view.menu) == 7
     assert session.message == message and session.last_roll.number == 1
 
 
@@ -721,3 +721,70 @@ def test_a_failed_settings_save_becomes_the_message_and_keeps_the_choice(tmp_pat
     session.save_settings()
     assert session.message.startswith("settings.json: ")
     assert session.pitch == "a.png"
+
+
+def _start_comment(session, text):
+    _sandbox(session)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
+    session.right_click(_click(LAYOUT.square(4, 4)))
+    session.press(_click(session.interaction.view().menu[-1].box))
+    session.type_text(text)
+
+
+def test_typing_reaches_the_comment_edit(session):
+    _start_comment(session, "BLK")
+    assert session.key(EditKey.ENTER) is None
+    assert session.board.comment_of(PlayerKey(Side.HOME, 0)) == "BLK"
+
+
+def test_save_setup_while_editing_saves_the_draft(session, tmp_path):
+    _start_comment(session, "MB2")
+    assert session.press(_click(LAYOUT.save_button)) is None
+    # Save commits the edit before the name box opens.
+    assert session.interaction.view().editing is None
+    default = "orcs-vs-orcs-20260101-000000"
+    assert session.key(EditKey.ENTER) == SaveSetup(default)
+    session.save_setup(default)
+    saved = tmp_path / "setups" / f"{default}.json"
+    assert '"comment": "MB2"' in saved.read_text()
+
+
+def test_the_open_name_box_takes_typing_before_a_comment(session):
+    _start_comment(session, "X")
+    session.press(_click(LAYOUT.save_button))
+    session.type_text("Z")
+    session.key(EditKey.BACKSPACE)
+    session.type_text("Q")
+    assert session.name_view.text == "orcs-vs-orcs-20260101-000000Q"
+    assert session.board.comment_of(PlayerKey(Side.HOME, 0)) == "X"
+    assert session.interaction.view().editing is None
+
+
+def test_escape_in_the_name_box_keeps_the_comment_and_saves_nothing(session, tmp_path):
+    _start_comment(session, "X")
+    session.press(_click(LAYOUT.save_button))
+    assert session.key(EditKey.ESCAPE) is None
+    assert session.name_view is None
+    assert session.board.comment_of(PlayerKey(Side.HOME, 0)) == "X"
+    assert not (tmp_path / "setups").exists()
+
+
+def test_dice_click_keeps_the_edit_open(session):
+    _start_comment(session, "X")
+    session.press(_dice(0))
+    assert session.interaction.view().editing.text == "X"
+    assert session.board.comment_of(PlayerKey(Side.HOME, 0)) == ""
+
+
+def test_main_menu_while_editing_saves_and_leaves(session):
+    _start_comment(session, "X")
+    board = session.board
+    session.press(_click(LAYOUT.menu_button))
+    assert session.screen is Screen.MENU
+    assert board.comment_of(PlayerKey(Side.HOME, 0)) == "X"
+
+
+def test_keys_on_the_main_menu_are_ignored(session):
+    session.type_text("A")
+    assert session.key(EditKey.ENTER) is None
+    assert session.screen is Screen.MENU

@@ -78,6 +78,16 @@ Design: [names.md](names.md).
 - [x] app: `TEXTINPUT` / `KEYDOWN` mapping, `_perform` (incl. `RenameFile`), the box drawn last, `set_repeat`
 - [x] README "Naming rosters and setups" section; status line in names.md
 
+## Phase 11: Player Comments
+Design: [comments.md](comments.md).
+- [x] board: `MAX_COMMENT_LENGTH`, `comment_char_ok`, `comment_of`, `set_comment` (kept apart from `_locations`)
+- [x] interaction: `MenuCommand.COMMENT` as the 7th menu item, `EditKey`, `CommentEdit`, `InteractionView.editing`; `type_text`, `edit_key`, `commit`; a press or right-click saves an open edit
+- [x] session: `type_text` and `key` route to the name box when it's open, else to the comment edit (`session.Key` merged into `EditKey`); Save setup and Main menu commit first, a dice click doesn't
+- [x] setups: optional `comment` per player, loaded through `Board.set_comment`
+- [x] app: `KEYS` now maps to `EditKey` for both the name box and comments, `COMMENT_FONT_SIZE` threaded through `_run_frames`
+- [x] render: top-right comment badge drawn after rotation, highlighted draft with caret, `COMMENT_HINT`; token, ball and drag drawing moved into `_draw_pieces`
+- [x] README "Player comments" section
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -102,6 +112,8 @@ Design: [names.md](names.md).
 - [x] `run()` is 59 lines after Phase 7, one under NASA rule 4's 60; move its frame loop into a helper with the next change to it.
 - [ ] The five dice PNGs are now in `sprites/dice/`, but `.gitignore`'s `sprites/` ignores that folder too, so they can't be committed until they are force-added or the folder is re-included.
 - [x] Move the block dice images from `src/bb_sandbox/sprites/dice/` to `sprites/dice/`, next to the player images; `DICE_SPRITES_DIR` is now relative to the folder the app is launched from.
+- [x] Phase 11 (comments) was built on `42d4b20`, before Phase 9 (ball carrier, `25c0383`). Both reshape `draw_sandbox`'s ball and drag drawing: on merge, move Phase 9's `_draw_dragged` and carried-ball check into `_draw_pieces`, and pass the comment to the dragged token. Done in the merge.
 - [ ] Now that the dice images are user files in `sprites/` too, decide whether a broken one should still stop the app or, like a broken player image, only be reported on the message line.
 - [ ] The pitch design lives in `docs/plans/pitch_sprites.md`, but Phase 8's "Design:" link and CLAUDE.md's Documentation list point to `docs/pitch_sprites.md`, which doesn't exist.
 - [ ] `build_layout` is 143 lines after Phase 8 (6 more for the Options button and rows); still to split (item above).
+- [x] Merging `worktree-player-tag` (Phase 11): main's HEAD `a1f0314` did not compile (it moved `case SaveSettings()` into `handle_event`, dropped key repeat and inlined `_run_frames` back into `run()`), so it was reverted first. The merge unified the name box's `session.Key` and the comments' `EditKey` into `EditKey`, and removed the duplicate `Session.type_text` and `_run_frames` that the auto-merge would have kept.

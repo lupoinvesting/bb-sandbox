@@ -4,6 +4,21 @@ from bb_sandbox.pitch import DUGOUT_CAPACITY, Dugout, PlayerKey, Side, Square, S
 from bb_sandbox.roster import Player, Team
 
 BALL_START = Square(13, 7)
+MAX_COMMENT_LENGTH = 4
+
+
+def comment_char_ok(char: str) -> bool:
+    """
+    Tell whether a character may appear in a player comment.
+
+    Args:
+        char (str): One character.
+
+    Returns:
+        bool: True for printable ASCII, space to '~'.
+    """
+    # Reason: the default Pygame font draws these without tofu boxes.
+    return " " <= char <= "~"
 
 
 class Board:
@@ -31,6 +46,9 @@ class Board:
             for index in range(len(team.players))
         }
         self._ball = BALL_START
+        # Reason: kept apart from _locations, so place, bench and set_status
+        # carry a comment along without knowing about it.
+        self._comments: dict[PlayerKey, str] = {}
 
     def _check(self, key: PlayerKey) -> None:
         """
@@ -228,6 +246,48 @@ class Board:
         if square is None:
             raise ValueError(f"{key} is off the pitch")
         self._locations[key] = (square, status)
+
+    def comment_of(self, key: PlayerKey) -> str:
+        """
+        Return a player's comment.
+
+        Args:
+            key (PlayerKey): The player.
+
+        Returns:
+            str: The comment, or '' for none.
+
+        Raises:
+            ValueError: If the key is unknown.
+        """
+        self._check(key)
+        return self._comments.get(key, "")
+
+    def set_comment(self, key: PlayerKey, text: str) -> None:
+        """
+        Set a player's comment; leading and trailing spaces are stripped.
+
+        Args:
+            key (PlayerKey): The player.
+            text (str): Up to MAX_COMMENT_LENGTH printable ASCII characters;
+                '' (or only spaces) removes the comment.
+
+        Raises:
+            ValueError: If the key is unknown, or the text is too long or has
+                a character comment_char_ok refuses.
+        """
+        self._check(key)
+        text = text.strip()
+        if len(text) > MAX_COMMENT_LENGTH:
+            raise ValueError(
+                f"comment {text!r} is over {MAX_COMMENT_LENGTH} characters"
+            )
+        if not all(comment_char_ok(char) for char in text):
+            raise ValueError(f"comment {text!r} has a character that isn't ASCII")
+        if text:
+            self._comments[key] = text
+        else:
+            self._comments.pop(key, None)
 
     def move_ball(self, square: Square) -> None:
         """

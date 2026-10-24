@@ -5,6 +5,7 @@ from pathlib import Path
 import pygame
 
 from bb_sandbox.dice import BlockFace
+from bb_sandbox.interaction import EditKey
 from bb_sandbox.layout import Layout, build_layout
 from bb_sandbox.races import RACES_FILE, load_races
 from bb_sandbox.render import (
@@ -25,7 +26,6 @@ from bb_sandbox.render import (
 from bb_sandbox.session import (
     FileRequest,
     ImportRoster,
-    Key,
     LoadSetup,
     RenameFile,
     SaveRoster,
@@ -40,6 +40,8 @@ FPS = 60
 FONT_SIZE = 20
 # Reason: numbers on the dice are drawn bigger than the rest of the text.
 DIE_FONT_SIZE = 40
+# Reason: player comments are drawn smaller, so 4 characters fit on a square.
+COMMENT_FONT_SIZE = 14
 ROSTERS_DIR = Path("rosters")
 SETUPS_DIR = Path("setups")
 PLAYER_SPRITES_DIR = Path("sprites")
@@ -47,14 +49,16 @@ PITCH_SPRITES_DIR = PLAYER_SPRITES_DIR / "pitch"
 SETTINGS_FILE = Path("settings.json")
 LEFT_BUTTON = 1
 RIGHT_BUTTON = 3
-# Reason: holding Backspace in the name box deletes repeatedly.
+# Reason: holding Backspace in the name box or a comment deletes repeatedly.
 KEY_REPEAT_DELAY_MS = 400
 KEY_REPEAT_INTERVAL_MS = 40
+# Reason: session and interaction never see Pygame, so the editing keys are
+# mapped here; any other key is ignored.
 KEYS = {
-    pygame.K_BACKSPACE: Key.BACKSPACE,
-    pygame.K_RETURN: Key.ENTER,
-    pygame.K_KP_ENTER: Key.ENTER,
-    pygame.K_ESCAPE: Key.ESCAPE,
+    pygame.K_BACKSPACE: EditKey.BACKSPACE,
+    pygame.K_RETURN: EditKey.ENTER,
+    pygame.K_KP_ENTER: EditKey.ENTER,
+    pygame.K_ESCAPE: EditKey.ESCAPE,
 }
 
 
@@ -126,6 +130,7 @@ def _draw(
     layout: Layout,
     font: pygame.font.Font,
     die_font: pygame.font.Font,
+    comment_font: pygame.font.Font,
     sprites: dict[BlockFace, pygame.Surface],
     player_sprites: PlayerSprites,
     pitch_sprite: PitchSprite,
@@ -137,8 +142,9 @@ def _draw(
     Args:
         surface (pygame.Surface): The window surface.
         layout (Layout): Screen geometry.
-        font (pygame.font.Font): Font for all text but the numbers on dice.
+        font (pygame.font.Font): Font for all text but dice numbers and comments.
         die_font (pygame.font.Font): Bigger font for the numbers on dice.
+        comment_font (pygame.font.Font): Smaller font for player comments.
         sprites (dict[BlockFace, pygame.Surface]): Block dice images, from
             load_block_sprites.
         player_sprites (PlayerSprites): Player images, from load_player_sprites.
@@ -151,7 +157,17 @@ def _draw(
     if session.screen is Screen.SANDBOX and session.interaction is not None:
         view = session.interaction.view()
         board, pitch = session.board, pitch_sprite.image
-        draw_sandbox(surface, layout, font, board, view, player_sprites, pitch, message)
+        draw_sandbox(
+            surface,
+            layout,
+            font,
+            comment_font,
+            board,
+            view,
+            player_sprites,
+            pitch,
+            message,
+        )
         draw_dice(surface, layout, font, die_font, session.last_roll, sprites)
     elif session.screen is Screen.RACES:
         draw_races(surface, layout, font, session.races, message)
@@ -203,6 +219,7 @@ def _run_frames(
     """
     font = pygame.font.Font(None, FONT_SIZE)
     die_font = pygame.font.Font(None, DIE_FONT_SIZE)
+    comment_font = pygame.font.Font(None, COMMENT_FONT_SIZE)
     # Reason: loaded once, after set_mode, because convert_alpha needs the
     # display mode. Like a broken races.csv, an image that exists but can't
     # be decoded stops the app with a SpriteError naming the file; only a
@@ -232,6 +249,7 @@ def _run_frames(
             layout,
             font,
             die_font,
+            comment_font,
             sprites,
             player_sprites,
             pitch_sprite,
@@ -283,7 +301,7 @@ def run(max_frames: int | None = None) -> int:
         screen = pygame.display.set_mode(layout.window_size)
         pygame.display.set_caption(WINDOW_TITLE)
         # Reason: typed text arrives as TEXTINPUT events, which pygame 2 sends
-        # by default; only the name box's keys need KEYDOWN repeats.
+        # by default; only the editing keys need KEYDOWN repeats.
         pygame.key.set_repeat(KEY_REPEAT_DELAY_MS, KEY_REPEAT_INTERVAL_MS)
         return _run_frames(screen, layout, session, max_frames)
     finally:
