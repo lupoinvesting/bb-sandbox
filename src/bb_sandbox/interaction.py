@@ -38,10 +38,13 @@ class Drag(NamedTuple):
     Attributes:
         item (PlayerKey | Ball): The dragged player, or BALL.
         box (Box): Its screen rectangle, following the cursor.
+        ball (Box | None): The ball carried by the dragged player, moved with
+            the token; None if they aren't on the ball's square.
     """
 
     item: PlayerKey | Ball
     box: Box
+    ball: Box | None = None
 
 
 class MenuItem(NamedTuple):
@@ -71,10 +74,11 @@ class InteractionView(NamedTuple):
 
 
 class _Grab(NamedTuple):
-    """A drag in progress: what was picked up, its box then, and the press point."""
+    """A drag in progress: what was picked up, its box and carried ball then, and the press point."""
 
     item: PlayerKey | Ball
     origin: Box
+    ball: Box | None
     press: tuple[int, int]
 
 
@@ -129,8 +133,8 @@ class Interaction:
         self._pos = pos
         if self._grab is None:
             return
-        item = self._grab.item
-        box = self._dragged_box()
+        item, carried = self._grab.item, self._grab.ball is not None
+        box = self._moved(self._grab.origin)
         self._grab = None
         centre = (box.x + box.width // 2, box.y + box.height // 2)
         square = self._layout.square_at(centre)
@@ -139,11 +143,14 @@ class Interaction:
                 self._board.move_ball(square)
         elif square is not None:
             # Reason: place() refuses an occupied square by returning False and
-            # changing nothing, which is exactly "the token goes back".
-            self._board.place(item, square)
+            # changing nothing, which is exactly "the token goes back"; a carried
+            # ball then goes back with it.
+            if self._board.place(item, square) and carried:
+                self._board.move_ball(square)
         else:
             # Reason: likewise bench() refuses a full box; the other team's
-            # boxes are not checked, so a drop there goes back too.
+            # boxes are not checked, so a drop there goes back too. A benched
+            # carrier leaves the ball loose on the square they came from.
             for dugout in Dugout:
                 if self._layout.dugout(item.side, dugout).contains(centre):
                     self._board.bench(item, dugout)
@@ -182,7 +189,12 @@ class Interaction:
         dragged = None
         hovered = None
         if self._grab is not None:
-            dragged = Drag(self._grab.item, self._dragged_box())
+            ball = self._grab.ball
+            dragged = Drag(
+                self._grab.item,
+                self._moved(self._grab.origin),
+                None if ball is None else self._moved(ball),
+            )
             if self._grab.item is not BALL:
                 hovered = self._grab.item
         elif self._pos is not None:
@@ -227,11 +239,13 @@ class Interaction:
         carried = self._board.player_at(ball) is not None
         ball_box = self._layout.ball_box(ball, carried)
         if ball_box.contains(pos):
-            return _Grab(BALL, ball_box, pos)
+            return _Grab(BALL, ball_box, None, pos)
         key = self._player_at(pos)
         if key is None:
             return None
-        return _Grab(key, self._box_of(key), pos)
+        # Reason: any player on the ball's square carries it, whatever their status.
+        carried_ball = ball_box if self._board.square_of(key) == ball else None
+        return _Grab(key, self._box_of(key), carried_ball, pos)
 
     def _player_at(self, pos: tuple[int, int]) -> PlayerKey | None:
         """
@@ -271,14 +285,17 @@ class Interaction:
         ordinal = self._board.dugout_players(key.side, dugout).index(key)
         return self._layout.dugout_slot(key.side, dugout, ordinal)
 
-    def _dragged_box(self) -> Box:
+    def _moved(self, origin: Box) -> Box:
         """
-        Return the dragged item's box: its origin moved by the cursor's travel.
+        Move a box picked up with the drag by the cursor's travel since the press.
+
+        Args:
+            origin (Box): Its place at grab time (the token's or the carried ball's).
 
         Returns:
             Box: The box under the cursor, keeping the grab offset.
         """
-        origin, press = self._grab.origin, self._grab.press
+        press = self._grab.press
         return origin._replace(
             x=origin.x + self._pos[0] - press[0],
             y=origin.y + self._pos[1] - press[1],

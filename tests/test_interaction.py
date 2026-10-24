@@ -146,17 +146,60 @@ def test_hover_finds_packed_dugout_slot(interaction, board):
     assert interaction.view().hovered is None
 
 
-def test_ball_drag_and_independence(interaction, board):
+def test_ball_drag(interaction, board):
     ball_box = LAYOUT.ball_box(BALL_START, carried=False)
     _drag(interaction, _centre(ball_box), _centre(_square(20, 3)))
     assert board.ball == Square(20, 3)
 
-    # A player on the ball's square keeps it clickable; the ball stays put when
-    # the carrier is dragged away.
+
+def test_ball_follows_carrier(interaction, board):
+    board.move_ball(Square(20, 3))
     board.place(HOME0, Square(20, 3))
-    _drag(interaction, _at(_square(20, 3)), _at(_square(22, 3)))
-    assert board.square_of(HOME0) == Square(22, 3)
+    corner = LAYOUT.ball_box(Square(20, 3), carried=True)
+    interaction.press(_at(_square(20, 3)))
+    interaction.move(_at(_square(22, 3)))
+    # Mid-drag the ball rides in the token's corner; the board is unchanged.
+    assert interaction.view().dragged.ball == corner._replace(x=corner.x + 64)
     assert board.ball == Square(20, 3)
+    interaction.release(_at(_square(22, 3)))
+    assert board.square_of(HOME0) == Square(22, 3)
+    assert board.ball == Square(22, 3)
+
+
+def test_non_carrier_drag_carries_no_ball(interaction, board):
+    board.place(HOME0, Square(5, 5))
+    interaction.press(_at(_square(5, 5)))
+    assert interaction.view().dragged.ball is None
+
+
+def test_prone_carrier_takes_the_ball(interaction, board):
+    board.place(HOME0, BALL_START)
+    board.set_status(HOME0, Status.PRONE)
+    _drag(
+        interaction, _at(_square(BALL_START.column, BALL_START.row)), _at(_square(3, 3))
+    )
+    assert board.ball == Square(3, 3)
+
+
+def test_benched_carrier_leaves_the_ball(interaction, board):
+    board.place(HOME0, BALL_START)
+    _drag(
+        interaction,
+        _at(_square(BALL_START.column, BALL_START.row)),
+        _at(_reserve(HOME0)),
+    )
+    assert board.dugout_of(HOME0) is Dugout.RESERVE
+    assert board.ball == BALL_START
+
+
+@pytest.mark.parametrize("target", ["occupied", "off_pitch"])
+def test_refused_carrier_drop_keeps_player_and_ball(interaction, board, target):
+    board.place(HOME0, BALL_START)
+    board.place(AWAY0, Square(3, 3))
+    end = _at(_square(3, 3)) if target == "occupied" else _at(LAYOUT.panel, 40, 40)
+    _drag(interaction, _at(_square(BALL_START.column, BALL_START.row)), end)
+    assert board.square_of(HOME0) == BALL_START
+    assert board.ball == BALL_START
 
 
 def test_carried_ball_is_picked_before_player(interaction, board):

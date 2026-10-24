@@ -62,6 +62,13 @@ Design: [pitch_sprites.md](pitch_sprites.md).
 - [ ] `sprites/pitch/.gitkeep` force-added; `settings.json` in `.gitignore`
 - [ ] README "Pitch image & options" section; status line in pitch_sprites.md
 
+## Phase 9: Ball Carrier
+Design: [plans/ball-moves.md](plans/ball-moves.md).
+- [x] interaction: `Drag.ball` and `_Grab.ball`; `_pick` records a carried ball; `_moved` shifts token and ball; `release` moves the ball with a placed carrier
+- [x] render: the carried ball is drawn on the dragged token (`_draw_dragged`) and hidden at its square
+- [x] tests: carrier drag, non-carrier, prone carrier, benched carrier, refused drops; render of the carried ball
+- [x] README "Moving the ball" section; design.md's "ball is independent" line points to the plan
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).

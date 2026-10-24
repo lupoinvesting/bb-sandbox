@@ -9,7 +9,7 @@ The doc has to follow CLAUDE.md (black-box modules, primitives first, wrapped de
 **Decisions confirmed with the user**
 - Right-click opens a **context menu**: Stand up / Prone / Stunned / Remove.
 - Files are picked from **in-app lists** of `rosters/*.csv` and `setups/*.json`. Save writes a timestamped file. No tkinter and no text input.
-- The **ball is independent**: it stays put when its carrier is dragged away.
+- ~~The **ball is independent**: it stays put when its carrier is dragged away.~~ Superseded: the ball now moves with its carrier, see [plans/ball-moves.md](plans/ball-moves.md).
 - The ruleset is **Blood Bowl Third Season (2025)**: MA 1–9, ST 1–8, AG 1+–6+, PA 1+–6+ or none, AV 3+–11+. These limits are unchanged from 2020.
 
 **My own defaults (the doc lists them so you can veto any)**
@@ -146,7 +146,7 @@ class Interaction:
     def __init__(self, board: Board, layout: Layout)
     def press(pos) / move(pos) / release(pos) / right_click(pos) -> None
     def view() -> InteractionView   # hovered: PlayerKey | None
-                                    # dragged: Drag(item: PlayerKey | BALL, box: Box) | None
+                                    # dragged: Drag(item: PlayerKey | BALL, box: Box, ball: Box | None) | None
                                     # menu: tuple[MenuItem(label, box), ...]
 # Implemented: `dragged` carries the token's moved Box rather than its centre, so
 # render needs no geometry of its own; the drop uses that box's centre.
@@ -223,7 +223,8 @@ Setup JSON:
   If none of these is there, nothing happens.
 - **Drag:** the token keeps its grab offset and follows the cursor. The board doesn't change until release, and the origin square is drawn empty.
 - **Release:** the token's centre decides:
-  - Over a pitch square, a player is placed with `place`. It is refused if another player is there, and the token goes back. The ball is moved with `move_ball`.
+  - Over a pitch square, a player is placed with `place`. It is refused if another player is there, and the token goes back. The ball is moved with `move_ball`; so is a ball carried by the placed player (any player on the ball's square).
+  - A carrier benched, or sent back, leaves the ball where it was.
   - A player over one of their own dugout boxes is benched there with `bench`. A full box refuses, and the token goes back.
   - Anywhere else, the token goes back.
   - A release with no drag in progress is ignored. So is a press during a drag.

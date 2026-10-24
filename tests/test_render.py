@@ -255,6 +255,19 @@ def test_ball_drawn_and_hidden_at_origin_while_dragged(font):
     assert surface.get_at((moved.x + 8, moved.y + 8))[:3] == render.BALL_FILL
 
 
+def test_carried_ball_drawn_with_dragged_carrier(font):
+    board = Board(_team(1), _team(1))
+    key = PlayerKey(Side.HOME, 0)
+    board.place(key, BALL_START)
+    layout = build_layout(32)
+    corner = layout.ball_box(BALL_START, carried=True)
+    token = layout.square(BALL_START.column, BALL_START.row)
+    drag = Drag(key, token._replace(y=token.y + 96), corner._replace(y=corner.y + 96))
+    surface, _ = _sandbox(board, InteractionView(None, drag, ()))
+    assert surface.get_at((corner.x + 8, corner.y + 8))[:3] != render.BALL_FILL
+    assert surface.get_at((drag.ball.x + 8, drag.ball.y + 8))[:3] == render.BALL_FILL
+
+
 def test_dragged_player_drawn_at_drag_box_not_origin(font):
     board = Board(_team(1), _team(1))
     key = PlayerKey(Side.AWAY, 0)

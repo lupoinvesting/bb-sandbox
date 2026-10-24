@@ -13,7 +13,7 @@ import pygame
 from bb_sandbox.board import Board
 from bb_sandbox.builder import TEAM_BUDGET, RosterBuilder
 from bb_sandbox.dice import DICE, BlockFace, Roll
-from bb_sandbox.interaction import BALL, InteractionView, MenuItem
+from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Status
 from bb_sandbox.races import Positional, Race
@@ -791,6 +791,32 @@ def _player_images(
     }
 
 
+def _draw_dragged(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    board: Board,
+    drag: Drag,
+    images: dict[PlayerKey, pygame.Surface | None],
+) -> None:
+    """
+    Draw the dragged ball, or the dragged token with any ball it carries on top.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        font (pygame.font.Font): Font for shirt numbers.
+        board (Board): Where the player's status is read from.
+        drag (Drag): The dragged item and its boxes.
+        images (dict[PlayerKey, pygame.Surface | None]): Each player's image, or None.
+    """
+    if drag.item is BALL:
+        _draw_ball(surface, drag.box)
+        return
+    key = drag.item
+    _draw_token(surface, font, drag.box, key, board.status_of(key), images[key])
+    if drag.ball is not None:
+        _draw_ball(surface, drag.ball)
+
+
 def draw_sandbox(
     surface: pygame.Surface,
     layout: Layout,
@@ -831,15 +857,12 @@ def draw_sandbox(
                     box = layout.dugout_slot(side, dugout, ordinal)
                     _draw_token(surface, font, box, key, image=images[key])
 
-    if dragged is not BALL:
+    # Reason: a dragged ball, or one riding with its carrier, leaves its square empty.
+    if dragged is not BALL and (view.dragged is None or view.dragged.ball is None):
         carried = board.player_at(board.ball) is not None
         _draw_ball(surface, layout.ball_box(board.ball, carried))
     if view.dragged is not None:
-        if view.dragged.item is BALL:
-            _draw_ball(surface, view.dragged.box)
-        else:
-            key, box = view.dragged.item, view.dragged.box
-            _draw_token(surface, font, box, key, board.status_of(key), images[key])
+        _draw_dragged(surface, font, board, view.dragged, images)
 
     _draw_panel(surface, layout, font, board, view.hovered)
     # Reason: file names in the message can be wider than the panel.

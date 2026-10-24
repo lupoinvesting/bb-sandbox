@@ -38,6 +38,11 @@ The main menu lists each roster as `name (Race)` and previews the picked team's 
 The teams come from [src/bb_sandbox/races.csv](src/bb_sandbox/races.csv), one row per positional in the roster CSV notation
 (from [bloodbowlbase.ru](https://bloodbowlbase.ru/bb2025/teams/), with errata applied).
 
+## Moving the ball
+
+Dragging the player on the ball's square takes the ball along: it rides in the token's corner and lands with them.
+Drag the ball's corner instead to move the ball alone. A carrier dropped into Reserve, KO or Injured leaves the ball on the square they came from.
+
 ## Saving setups
 
 In the sandbox, **Save setup** writes the board to `setups/<home>-vs-<away>-YYYYMMDD-HHMMSS.json`

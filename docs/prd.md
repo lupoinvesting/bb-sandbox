@@ -31,6 +31,7 @@
 ### 3.3. Player & Object Interaction
 
 * **Drag and Drop (Free Drag, Snap on Release):** Users can click and hold the left mouse button to pick up a player sprite or the ball. The dragged object moves smoothly with the cursor and only snaps to the center of a valid grid square upon releasing the left mouse button.
+* **Ball Carrier:** Dragging the player on the ball's square takes the ball along; dropped into a dugout box, the ball stays on the square. Dragging the ball itself still moves it alone. Design: [plans/ball-moves.md](plans/ball-moves.md).
 * **Context Menu / State Toggles:** Right-clicking a player sprite cycles or selects their current physical state:
 * **Prone:** Sprite image is rotated 90 degrees (flipped on its side).
 * **Stunned:** Sprite image is rotated 180 degrees (upside down).
@@ -132,3 +133,7 @@ Design: [pitch_sprites.md](pitch_sprites.md).
 * Add the Options screen, opened from the main menu, listing the pitch images in `sprites/pitch/`.
 * Draw the chosen image under the grid and lines, falling back to the drawn pitch.
 * Save the choice in `settings.json` and restore it on start.
+
+**Phase 9: Ball Carrier**
+
+* Dragging a ball carrier takes the ball along; benching them leaves it on the square.

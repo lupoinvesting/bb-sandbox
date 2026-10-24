@@ -32,6 +32,7 @@ Use Serena to search through the codebase. If you get any errors using Serena, r
 - [Dice roller](docs/dice.md)
 - [Player sprites](docs/sprites.md)
 - [Pitch image & options](docs/pitch_sprites.md)
+- [Ball carrier](docs/plans/ball-moves.md)
 
 ## 🧪 Testing & Reliability
 - **Always create Pytest unit tests for new features** (functions, classes, routes, etc).
