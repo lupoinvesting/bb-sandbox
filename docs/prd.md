@@ -76,6 +76,15 @@ Design: [dice.md](dice.md).
 
 Design: [sprites.md](sprites.md).
 
+### 3.8. Pitch Image & Options
+
+* **Options Screen:** An "Options" button on the main menu opens an Options screen. It lists "Drawn pitch" and every image in `sprites/pitch/`; a click picks one, and Back returns to the menu.
+* **Pitch Image:** The chosen image is stretched over the pitch in place of its fills. The grid, wide-zone lines and line of scrimmage are still drawn on top.
+* **Remembered Choice:** The choice is saved in `settings.json` and restored on the next start. Neither the images nor `settings.json` are committed.
+* **Fallback:** A chosen image that is missing or fails to load shows the drawn pitch and is reported on the message line; an invalid `settings.json` falls back to the drawn pitch. Neither stops the app. New images show up when the window regains focus.
+
+Design: [pitch_sprites.md](pitch_sprites.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -117,3 +126,9 @@ Design: [sprites.md](sprites.md).
 
 * Load per-side, per-position player images from `sprites/home` and `sprites/away`, falling back to the drawn token.
 * Draw them on the pitch, in the dugout boxes and while dragging, with a shirt-number badge.
+
+**Phase 8: Pitch Image & Options**
+
+* Add the Options screen, opened from the main menu, listing the pitch images in `sprites/pitch/`.
+* Draw the chosen image under the grid and lines, falling back to the drawn pitch.
+* Save the choice in `settings.json` and restore it on start.

@@ -51,6 +51,17 @@ Design: [sprites.md](sprites.md).
 - [x] `sprites/home/` and `sprites/away/` folders: `.gitkeep` files force-added, since `.gitignore` ignores `sprites/`
 - [x] README "Player sprites" section; design.md's "no image files" default points to sprites.md
 
+## Phase 8: Pitch Image & Options
+Design: [pitch_sprites.md](pitch_sprites.md).
+- [ ] images: new pygame-free module with `IMAGE_SUFFIXES` and `list_images`; render's `_image_files` switched to it
+- [ ] settings: new module with the pydantic `Settings` (version, bare-file-name `pitch`), `load_settings`, `save_settings`, `SettingsError`
+- [ ] layout: `options_button` (right of Start), `option_rows`, `option_row`, `option_row_at`
+- [ ] session: `Screen.OPTIONS`, `SaveSettings`, the pitch list (rescanned) and choice, `options_view`, `load_settings` / `save_settings`; `Session` takes `pitches_dir` and `settings_file`
+- [ ] render: `PitchSprite`, `load_pitch_sprite` (stretched to the pitch, problem on failure), `_draw_pitch(image)` under the grid and lines, `draw_options`, the main menu's Options button
+- [ ] app: `PITCH_SPRITES_DIR`, `SETTINGS_FILE`; load settings and the pitch sprite; reload on focus and when the choice changes; handle `SaveSettings`. Move the frame loop into `_run_frames`, which also closes the open `run()` length item below
+- [ ] `sprites/pitch/.gitkeep` force-added; `settings.json` in `.gitignore`
+- [ ] README "Pitch image & options" section; status line in pitch_sprites.md
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
