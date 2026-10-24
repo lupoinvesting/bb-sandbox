@@ -117,3 +117,5 @@ Design: [comments.md](comments.md).
 - [ ] The pitch design lives in `docs/plans/pitch_sprites.md`, but Phase 8's "Design:" link and CLAUDE.md's Documentation list point to `docs/pitch_sprites.md`, which doesn't exist.
 - [ ] `build_layout` is 143 lines after Phase 8 (6 more for the Options button and rows); still to split (item above).
 - [x] Merging `worktree-player-tag` (Phase 11): main's HEAD `a1f0314` did not compile (it moved `case SaveSettings()` into `handle_event`, dropped key repeat and inlined `_run_frames` back into `run()`), so it was reverted first. The merge unified the name box's `session.Key` and the comments' `EditKey` into `EditKey`, and removed the duplicate `Session.type_text` and `_run_frames` that the auto-merge would have kept.
+- [x] `scripts/crop_tiles.py`: save the 1st and 3rd top-row `width//4` squares of an image ([docs](crop_tiles.md)).
+- [x] `scripts/crop_tiles.py` folder mode: crop every raw image in a folder into `sprites/home/<name>` (1st square) and `sprites/away/<name>` (3rd square) ([docs](crop_tiles.md)).
