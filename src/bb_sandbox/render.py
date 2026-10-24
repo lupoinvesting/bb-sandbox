@@ -1,5 +1,6 @@
 """Draws the main menu, the race menu, the roster builder, the Options screen,
-the sandbox and the name box, and loads the block dice, player and pitch sprites.
+the sandbox, the Team setups screen and the name box, and loads the block dice,
+player and pitch sprites.
 
 The only module that calls Pygame draw.
 """
@@ -20,7 +21,14 @@ from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
-from bb_sandbox.session import MenuView, NameView, OptionsView, RosterEntry
+from bb_sandbox.session import (
+    MenuView,
+    NameView,
+    OptionsView,
+    RosterEntry,
+    TeamSetupList,
+    TeamSetupsView,
+)
 
 BACKGROUND = (30, 30, 34)
 PITCH_GREEN = (46, 125, 50)
@@ -84,8 +92,12 @@ MENU_CAPTIONS = {
     MenuList.AWAY_ROSTERS: "Away roster",
     MenuList.SETUPS: "Saved setups",
 }
-MENU_HINT = "Right-click a roster or setup to rename it"
+MENU_HINT = "Right-click a roster or setup to rename or delete it"
+TEAM_SETUPS_HINT = "Click a setup to deploy it, right-click to rename or delete it"
 NAME_HINT = "Enter: OK   Esc: cancel"
+DELETE_HINT = "Enter: OK   Esc: cancel   Del: delete"
+CONFIRM_HINT = "Enter: delete   Esc: cancel"
+NAME_CARET = "|"
 # Reason: the gap between a text line and the left or right edge of its box.
 TEXT_INSET = 8
 # Reason: the dice images sit with the player images, in sprites/ under the
@@ -504,11 +516,16 @@ def draw_name_box(
     """
     Draw the name box over whatever screen is showing.
 
+    The hint under the field says which keys work: CONFIRM_HINT while the box
+    asks whether to delete, DELETE_HINT in a rename box, else NAME_HINT. A
+    problem replaces it.
+
     Args:
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
-        view (NameView): The caption, the typed text and its problem.
+        view (NameView): The caption, the typed text, its problem and whether
+            the box can delete or is asking to.
     """
     box, field = layout.name_box, layout.name_field
     pygame.draw.rect(surface, PANEL_FILL, _rect(box))
@@ -516,7 +533,9 @@ def draw_name_box(
     _draw_label(surface, font, view.caption, box)
     pygame.draw.rect(surface, BACKGROUND, _rect(field))
     pygame.draw.rect(surface, BORDER, _rect(field), 1)
-    image = font.render(view.text + "|", True, TEXT)
+    # Reason: while the box asks, typing does nothing, so there is no caret.
+    caret = "" if view.confirming else NAME_CARET
+    image = font.render(view.text + caret, True, TEXT)
     # Reason: when the text is wider than the field it is right-aligned, so
     # the end being typed stays visible and the start is clipped.
     x = min(
@@ -528,6 +547,10 @@ def draw_name_box(
     hint_line = field._replace(y=field.y + field.height)
     if view.problem:
         _draw_label(surface, font, view.problem, hint_line, OVER_LIMIT)
+    elif view.confirming:
+        _draw_label(surface, font, CONFIRM_HINT, hint_line, TEXT_DIM)
+    elif view.deletable:
+        _draw_label(surface, font, DELETE_HINT, hint_line, TEXT_DIM)
     else:
         _draw_label(surface, font, NAME_HINT, hint_line, TEXT_DIM)
 
@@ -599,6 +622,77 @@ def draw_options(
             _draw_label(surface, font, "No images in sprites/pitch/", last)
     _draw_label(surface, font, message, layout.menu_message_line)
     _draw_button(surface, font, layout.back_button, "Back")
+
+
+def _draw_team_setup_list(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    side: Side,
+    setups: TeamSetupList,
+) -> None:
+    """
+    Draw one team's column on the Team setups screen: caption, setup names
+    and "+N more".
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        side (Side): The team, which picks the column.
+        setups (TeamSetupList): The team's name and visible setup names.
+    """
+    lines = list(setups.setups)
+    if setups.hidden:
+        lines.append(f"+{setups.hidden} more")
+    elif not lines:
+        lines.append("No team setups yet")
+    column = layout.team_setup_column(side)
+    # Reason: long team and setup names are clipped to the column instead of
+    # spilling into the other team's.
+    surface.set_clip(_rect(column))
+    _draw_label(surface, font, f"{side.value.capitalize()}: {setups.team}", column)
+    # Reason: a tiny square size can leave fewer rows than lines, even none.
+    for index, line in enumerate(lines[: layout.option_rows]):
+        _draw_label(surface, font, line, layout.team_setup_row(side, index))
+    surface.set_clip(None)
+
+
+def draw_team_setups(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    view: TeamSetupsView,
+    message: str,
+) -> None:
+    """
+    Draw the Team setups screen: Home's and Away's setups in the first two
+    columns, the message line (or the hint), Back, Save home and Save away.
+
+    A Save button is dimmed while its team can't save.
+
+    Args:
+        surface (pygame.Surface): Target surface, sized to layout.window_size.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        view (TeamSetupsView): Both teams' names and setup names.
+        message (str): Status message, '' for the hint.
+    """
+    surface.fill(BACKGROUND)
+    for column in layout.menu_columns:
+        pygame.draw.rect(surface, PANEL_FILL, _rect(column))
+        pygame.draw.rect(surface, BORDER, _rect(column), 2)
+    _draw_team_setup_list(surface, layout, font, Side.HOME, view.home)
+    _draw_team_setup_list(surface, layout, font, Side.AWAY, view.away)
+    if message:
+        _draw_label(surface, font, message, layout.menu_message_line)
+    else:
+        line = layout.menu_message_line
+        _draw_label(surface, font, TEAM_SETUPS_HINT, line, TEXT_DIM)
+    _draw_button(surface, font, layout.back_button, "Back")
+    home, away = layout.save_home_button, layout.save_away_button
+    _draw_button(surface, font, home, "Save home", view.home.can_save)
+    _draw_button(surface, font, away, "Save away", view.away.can_save)
 
 
 def _positional_texts(hired: int, positional: Positional) -> tuple[str, ...]:
@@ -1044,6 +1138,7 @@ def draw_sandbox(
     _draw_label(surface, font, message, layout.sandbox_message_line)
     surface.set_clip(None)
     _draw_button(surface, font, layout.save_button, "Save setup")
+    _draw_button(surface, font, layout.team_setups_button, "Team setups")
     _draw_button(surface, font, layout.menu_button, "Main menu")
     _draw_context_menu(surface, font, view.menu)
 

@@ -19,18 +19,23 @@ from bb_sandbox.render import (
     draw_options,
     draw_races,
     draw_sandbox,
+    draw_team_setups,
     load_block_sprites,
     load_pitch_sprite,
     load_player_sprites,
 )
 from bb_sandbox.session import (
+    DeleteFile,
+    DeployTeamSetup,
     FileRequest,
     ImportRoster,
     LoadSetup,
+    OpenTeamSetups,
     RenameFile,
     SaveRoster,
     SaveSettings,
     SaveSetup,
+    SaveTeamSetup,
     Screen,
     Session,
 )
@@ -59,6 +64,7 @@ KEYS = {
     pygame.K_RETURN: EditKey.ENTER,
     pygame.K_KP_ENTER: EditKey.ENTER,
     pygame.K_ESCAPE: EditKey.ESCAPE,
+    pygame.K_DELETE: EditKey.DELETE,
 }
 
 
@@ -91,6 +97,17 @@ def _perform(session: Session, request: FileRequest | None) -> None:
             session.rescan()
         case SaveSettings():
             session.save_settings()
+        case OpenTeamSetups():
+            session.open_team_setups()
+        case DeployTeamSetup(side=side, path=path):
+            session.deploy_team_setup(side, path)
+        case SaveTeamSetup(side=side, name=name):
+            session.save_team_setup(side, name)
+            session.rescan()
+        case DeleteFile(path=path):
+            session.delete(path)
+            # Reason: the deleted file leaves its list right away.
+            session.rescan()
 
 
 def handle_event(session: Session, event: pygame.event.Event) -> bool:
@@ -169,6 +186,9 @@ def _draw(
             message,
         )
         draw_dice(surface, layout, font, die_font, session.last_roll, sprites)
+    elif session.screen is Screen.TEAM_SETUPS:
+        view = session.team_setups_view()
+        draw_team_setups(surface, layout, font, view, message)
     elif session.screen is Screen.RACES:
         draw_races(surface, layout, font, session.races, message)
     elif session.screen is Screen.OPTIONS:

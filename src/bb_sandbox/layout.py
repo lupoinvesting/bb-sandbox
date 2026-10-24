@@ -108,8 +108,12 @@ class Layout:
             Injured, then away Reserve, KO, Injured.
         panel (Box): Right-side player information panel.
         menu_button (Box): Sandbox "Main menu" button at the bottom of the panel.
-        save_button (Box): Sandbox "Save setup" button just above menu_button.
-        sandbox_message_line (Box): Sandbox status message line above save_button.
+        save_button (Box): Sandbox "Save setup" button, the left half of the
+            row just above menu_button.
+        team_setups_button (Box): Sandbox "Team setups" button, the right
+            half of save_button's row.
+        sandbox_message_line (Box): Sandbox status message line above
+            save_button's row.
         dice_area (Box): Sandbox dice section: the panel's full width, from its
             "Dice" caption row down to sandbox_message_line.
         dice_buttons (tuple[Box, ...]): One button per DICE entry, row by row
@@ -129,11 +133,16 @@ class Layout:
         options_button (Box): Main menu "Options" button, right of
             start_button.
         option_rows (int): How many rows fit in the Options screen's column,
-            menu_columns[0], below its caption.
-        back_button (Box): Race menu, Options screen and builder "Back"
-            button, where new_roster_button is.
+            menu_columns[0], below its caption; each Team setups list has as
+            many.
+        back_button (Box): Race menu, Options screen, builder and Team setups
+            screen "Back" button, where new_roster_button is.
         save_roster_button (Box): Builder "Save roster" button, where
             start_button is.
+        save_home_button (Box): Team setups screen "Save home" button, where
+            start_button is.
+        save_away_button (Box): Team setups screen "Save away" button, where
+            options_button is.
         positional_table (Box): Builder table of positionals: the first two
             menu columns merged, starting with a caption row and a
             column-title row.
@@ -156,6 +165,7 @@ class Layout:
     panel: Box
     menu_button: Box
     save_button: Box
+    team_setups_button: Box
     sandbox_message_line: Box
     dice_area: Box
     dice_buttons: tuple[Box, ...]
@@ -170,6 +180,8 @@ class Layout:
     option_rows: int
     back_button: Box
     save_roster_button: Box
+    save_home_button: Box
+    save_away_button: Box
     positional_table: Box
     positional_titles: Box
     roster_list: Box
@@ -480,6 +492,61 @@ class Layout:
             return index
         return None
 
+    def team_setup_column(self, side: Side) -> Box:
+        """
+        Return the Team setups screen's column for one team, caption row included.
+
+        Args:
+            side (Side): Which team.
+
+        Returns:
+            Box: The first menu column for Home, the second for Away.
+        """
+        return self.menu_columns[0 if side is Side.HOME else 1]
+
+    def team_setup_row(self, side: Side, index: int) -> Box:
+        """
+        Return one row of a team's list on the Team setups screen, below its caption.
+
+        Args:
+            side (Side): Which team.
+            index (int): Zero-based row, 0..option_rows-1.
+
+        Returns:
+            Box: The row's screen rectangle.
+
+        Raises:
+            ValueError: If index is outside 0..option_rows-1.
+        """
+        if not 0 <= index < self.option_rows:
+            raise ValueError(
+                f"Team setup row {index} is outside 0..{self.option_rows - 1}"
+            )
+        column = self.team_setup_column(side)
+        return column._replace(
+            y=column.y + (index + 1) * self.square_size, height=self.square_size
+        )
+
+    def team_setup_row_at(self, pos: tuple[int, int]) -> tuple[Side, int] | None:
+        """
+        Find the Team setups row under a point (inverse of team_setup_row).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            tuple[Side, int] | None: The team and row, or None off the rows.
+                The row may hold no setup if the team has fewer.
+        """
+        for side in Side:
+            column = self.team_setup_column(side)
+            if not column.contains(pos):
+                continue
+            index = (pos[1] - column.y) // self.square_size - 1
+            if 0 <= index < self.option_rows:
+                return side, index
+        return None
+
     def race_cell(self, index: int) -> Box:
         """
         Return one cell of the race menu.
@@ -640,6 +707,40 @@ def _split_dugouts(area: Box, square_size: int) -> tuple[Box, Box, Box]:
     return reserve, ko, injured
 
 
+def _panel_buttons(panel: Box, square_size: int) -> tuple[Box, Box, Box, Box]:
+    """
+    Stack the sandbox panel's bottom rows upwards, BUTTON_INSET apart.
+
+    From the bottom: Main menu, then Save setup and Team setups sharing a row,
+    then the message line.
+
+    Args:
+        panel (Box): The right-side panel.
+        square_size (int): Side of one grid square; each row is this high.
+
+    Returns:
+        tuple[Box, Box, Box, Box]: menu_button, save_button,
+            team_setups_button and sandbox_message_line.
+    """
+    menu_button = Box(
+        panel.x + BUTTON_INSET,
+        panel.y + panel.height - BUTTON_INSET - square_size,
+        panel.width - 2 * BUTTON_INSET,
+        square_size,
+    )
+    # Reason: the two buttons split the row's width with a gap between them;
+    # the right one ends where menu_button does.
+    half = (menu_button.width - BUTTON_INSET) // 2
+    save_button = menu_button._replace(
+        y=menu_button.y - BUTTON_INSET - square_size, width=half
+    )
+    team_setups_button = save_button._replace(
+        x=menu_button.x + menu_button.width - half
+    )
+    message_line = menu_button._replace(y=save_button.y - BUTTON_INSET - square_size)
+    return menu_button, save_button, team_setups_button, message_line
+
+
 def _dice_region(
     panel: Box, message_line: Box, square_size: int
 ) -> tuple[Box, tuple[Box, ...], Box, tuple[Box, ...]]:
@@ -769,15 +870,8 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
 
     panel_x = pitch.x + pitch.width + MARGIN
     panel = Box(panel_x, pitch.y, PANEL_WIDTH, reserve_y + reserve_height - pitch.y)
-    menu_button = Box(
-        panel.x + BUTTON_INSET,
-        panel.y + panel.height - BUTTON_INSET - square_size,
-        panel.width - 2 * BUTTON_INSET,
-        square_size,
-    )
-    save_button = menu_button._replace(y=menu_button.y - BUTTON_INSET - square_size)
-    sandbox_message_line = save_button._replace(
-        y=save_button.y - BUTTON_INSET - square_size
+    menu_button, save_button, team_setups_button, sandbox_message_line = _panel_buttons(
+        panel, square_size
     )
     dice_area, dice_buttons, dice_result_line, die_boxes = _dice_region(
         panel, sandbox_message_line, square_size
@@ -811,6 +905,9 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     new_roster_button = start_button._replace(
         x=start_button.x - MARGIN - START_BUTTON_WIDTH
     )
+    options_button = start_button._replace(
+        x=start_button.x + START_BUTTON_WIDTH + MARGIN
+    )
 
     # Builder: the positional table spans the first two menu columns and the
     # roster list takes the third.
@@ -833,6 +930,7 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         panel=panel,
         menu_button=menu_button,
         save_button=save_button,
+        team_setups_button=team_setups_button,
         sandbox_message_line=sandbox_message_line,
         dice_area=dice_area,
         dice_buttons=dice_buttons,
@@ -845,14 +943,14 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         start_button=start_button,
         menu_message_line=menu_message_line,
         new_roster_button=new_roster_button,
-        options_button=start_button._replace(
-            x=start_button.x + START_BUTTON_WIDTH + MARGIN
-        ),
+        options_button=options_button,
         # Reason: the first row holds the caption; there is no team preview
         # to leave room for.
         option_rows=max(0, column_height // square_size - 1),
         back_button=new_roster_button,
         save_roster_button=start_button,
+        save_home_button=start_button,
+        save_away_button=options_button,
         positional_table=positional_table,
         positional_titles=positional_titles,
         roster_list=right,

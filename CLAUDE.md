@@ -36,6 +36,7 @@ Use Serena to search through the codebase. If you get any errors using Serena, r
 - [Editable names](docs/names.md)
 - [Player comments](docs/comments.md)
 - [Crop tiles script](docs/crop_tiles.md)
+- [Team setups](docs/team_setups.md)
 
 ## 🧪 Testing & Reliability
 - **Always create Pytest unit tests for new features** (functions, classes, routes, etc).

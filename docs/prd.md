@@ -106,6 +106,23 @@ Design: [names.md](names.md).
 
 Design: [comments.md](comments.md).
 
+### 3.11. Team Setups
+
+* **Per Roster:** Each roster keeps its own named team setups: the square each of its players stands on. They are JSON files in `rosters/<roster>/`, so copying a file there adds a setup. They are not committed.
+* **Team Setups Screen:** The sandbox's **Team setups** button opens a screen that lists the Home team's and the Away team's setups. **Back** returns to the pitch.
+* **Saving:** **Save home** and **Save away** save where that team's players stand on the pitch, under a name typed in the name box (§3.9). Dugout boxes, statuses and comments are not saved.
+* **Deploying:** Clicking a setup deploys it onto its team and returns to the pitch.
+  * The setup's players go to their squares, standing; the team's other players on the pitch go to Reserve.
+  * KO and Injured players stay in their boxes.
+  * The other team and the ball don't move, so a square the other team holds stays empty.
+  * A setup works on either side: on Away it is mirrored across the line of scrimmage.
+* **Rename & Delete:** Right-clicking a team setup opens the rename box.
+  * In any rename box, **Del** asks to delete the file instead, and Enter confirms. So rosters and saved setups can be deleted from the main menu too.
+  * Renaming a roster renames its team setups folder.
+  * Deleting a roster deletes its team setups, and unpicks it as Home or Away.
+
+Design: [team_setups.md](team_setups.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -169,3 +186,9 @@ Design: [comments.md](comments.md).
 * Add the Comment menu item, sharing the name box's keyboard input: typing, Backspace, Enter and Esc.
 * Store comments on the board and in setup files.
 * Draw the comment badge, the highlighted draft and the editing hint.
+
+**Phase 12: Team Setups**
+
+* Build the team setups module: capture a team's positions, deploy them (mirrored for Away) and store them in `rosters/<roster>/`.
+* Add the Team setups screen, opened from the sandbox, to deploy, save and rename team setups.
+* Delete team setups, saved setups and rosters with Del in the rename box, after a confirmation.

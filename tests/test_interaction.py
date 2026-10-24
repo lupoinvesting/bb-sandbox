@@ -377,6 +377,16 @@ def test_right_click_while_editing_saves_then_opens_the_menu(interaction, board)
 def test_keys_without_an_edit_do_nothing(interaction, board):
     interaction.type_text("A")
     interaction.edit_key(EditKey.ENTER)
+    interaction.edit_key(EditKey.DELETE)
     interaction.commit()
     assert interaction.view().editing is None
     assert board.comment_of(HOME0) == ""
+
+
+def test_delete_leaves_an_open_edit_and_its_draft_alone(interaction, board):
+    board.set_comment(HOME0, "BLK")
+    _open_comment(interaction, board)
+    interaction.type_text("X")
+    interaction.edit_key(EditKey.DELETE)
+    assert interaction.view().editing == CommentEdit(HOME0, "BLKX")
+    assert board.comment_of(HOME0) == "BLK"

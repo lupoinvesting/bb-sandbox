@@ -6,10 +6,12 @@ from bb_sandbox.names import (
     MAX_NAME_LENGTH,
     FileNameError,
     add_chars,
+    delete_file,
     free_path,
     name_problem,
     remove_char,
     rename_file,
+    rename_folder,
 )
 
 
@@ -91,3 +93,49 @@ def test_rename_file_never_overwrites(tmp_path):
 def test_rename_file_of_a_missing_file_raises(tmp_path):
     with pytest.raises(FileNameError, match="missing.csv"):
         rename_file(tmp_path / "missing.csv", "new")
+
+
+def test_rename_folder_moves_the_folder_and_its_files(tmp_path):
+    old = tmp_path / "orcs"
+    old.mkdir()
+    (old / "Cage.json").write_text("data")
+    new = rename_folder(old, "Reavers")
+    assert new == tmp_path / "Reavers" and not old.exists()
+    assert (new / "Cage.json").read_text() == "data"
+
+
+def test_rename_folder_allows_a_case_only_rename(tmp_path):
+    (tmp_path / "orcs").mkdir()
+    rename_folder(tmp_path / "orcs", "Orcs")
+    assert [p.name for p in tmp_path.iterdir()] == ["Orcs"]
+
+
+def test_rename_folder_never_overwrites(tmp_path):
+    for name in ("orcs", "Reavers"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / f"{name}.json").write_text(name)
+    with pytest.raises(FileNameError, match="Folder Reavers already exists"):
+        rename_folder(tmp_path / "orcs", "Reavers")
+    assert (tmp_path / "orcs" / "orcs.json").read_text() == "orcs"
+    assert [p.name for p in (tmp_path / "Reavers").iterdir()] == ["Reavers.json"]
+
+
+def test_rename_folder_refuses_an_invalid_name_or_a_missing_folder(tmp_path):
+    (tmp_path / "orcs").mkdir()
+    with pytest.raises(FileNameError, match="Names use"):
+        rename_folder(tmp_path / "orcs", "../x")
+    with pytest.raises(FileNameError, match="Couldn't rename missing"):
+        rename_folder(tmp_path / "missing", "new")
+    assert (tmp_path / "orcs").is_dir()
+
+
+def test_delete_file_deletes_only_that_file(tmp_path):
+    for name in ("a.json", "b.json"):
+        (tmp_path / name).write_text("{}")
+    delete_file(tmp_path / "a.json")
+    assert [p.name for p in tmp_path.iterdir()] == ["b.json"]
+
+
+def test_delete_file_of_a_missing_file_raises(tmp_path):
+    with pytest.raises(FileNameError, match="Couldn't delete missing.json: "):
+        delete_file(tmp_path / "missing.json")

@@ -1,10 +1,11 @@
 """Screen flow: the main menu, roster imports, the roster builder, saved setups,
-the Options screen and the sandbox.
+the Options screen, the sandbox and its Team setups screen.
 
 Session never touches Pygame. Clicks come in as screen positions and typing as
 text and EditKey values; disk I/O only happens in the methods app calls explicitly
-(rescan, import_team, load_setup, save_setup, save_roster, rename,
-load_settings, save_settings).
+(rescan, import_team, load_setup, save_setup, save_roster, rename, delete,
+load_settings, save_settings, open_team_setups, deploy_team_setup,
+save_team_setup).
 """
 
 import random
@@ -26,10 +27,12 @@ from bb_sandbox.names import (
     CHARS_PROBLEM,
     FileNameError,
     add_chars,
+    delete_file,
     free_path,
     name_problem,
     remove_char,
     rename_file,
+    rename_folder,
 )
 from bb_sandbox.pitch import Side
 from bb_sandbox.races import Race
@@ -49,8 +52,25 @@ from bb_sandbox.settings import Settings, SettingsError
 from bb_sandbox.settings import load_settings as read_settings
 from bb_sandbox.settings import save_settings as write_settings
 from bb_sandbox.setups import save_setup as write_setup
+from bb_sandbox.team_setups import (
+    TeamSetupError,
+    capture,
+    delete_team_setups,
+    deploy,
+    list_team_setups,
+    load_team_setup,
+    new_team_setup_path,
+    team_setups_folder,
+)
+from bb_sandbox.team_setups import save_team_setup as write_team_setup
 
 LIST_SIDES = {MenuList.HOME_ROSTERS: Side.HOME, MenuList.AWAY_ROSTERS: Side.AWAY}
+# Reason: what a main menu list's rename box says, and what Del asks there.
+RENAME_CAPTIONS = {
+    MenuList.HOME_ROSTERS: ("Rename roster", "Delete roster and its team setups?"),
+    MenuList.AWAY_ROSTERS: ("Rename roster", "Delete roster and its team setups?"),
+    MenuList.SETUPS: ("Rename setup", "Delete setup?"),
+}
 
 
 class Screen(Enum):
@@ -60,6 +80,7 @@ class Screen(Enum):
     RACES = "races"
     BUILDER = "builder"
     OPTIONS = "options"
+    TEAM_SETUPS = "team_setups"
     SANDBOX = "sandbox"
 
 
@@ -127,8 +148,59 @@ class RenameFile:
     name: str
 
 
+@dataclass(frozen=True)
+class OpenTeamSetups:
+    """A request from press() to list both teams' setups and show them."""
+
+
+@dataclass(frozen=True)
+class DeployTeamSetup:
+    """A request from press() to deploy a team setup onto one team.
+
+    Attributes:
+        side (Side): The team to deploy it on.
+        path (Path): The team setup JSON file.
+    """
+
+    side: Side
+    path: Path
+
+
+@dataclass(frozen=True)
+class SaveTeamSetup:
+    """A request from key() to save one team's positions to a new team setup.
+
+    Attributes:
+        side (Side): The team whose positions are saved.
+        name (str): The file name without suffix.
+    """
+
+    side: Side
+    name: str
+
+
+@dataclass(frozen=True)
+class DeleteFile:
+    """A request from key() to delete a roster, setup or team setup file.
+
+    Attributes:
+        path (Path): The file to delete.
+    """
+
+    path: Path
+
+
 FileRequest = (
-    ImportRoster | LoadSetup | SaveSetup | SaveRoster | SaveSettings | RenameFile
+    ImportRoster
+    | LoadSetup
+    | SaveSetup
+    | SaveRoster
+    | SaveSettings
+    | RenameFile
+    | OpenTeamSetups
+    | DeployTeamSetup
+    | SaveTeamSetup
+    | DeleteFile
 )
 
 
@@ -136,14 +208,20 @@ class NameView(NamedTuple):
     """What the open name box shows.
 
     Attributes:
-        caption (str): What the name is for, e.g. "Save setup as".
-        text (str): The name typed so far.
+        caption (str): What the name is for, e.g. "Save setup as"; while the
+            box asks, the question, e.g. "Delete setup?".
+        text (str): The name typed so far; while the box asks, the file's name.
         problem (str): Why the name can't be used, or '' to show the hint.
+        deletable (bool): True for a rename box, where Del asks to delete
+            the file.
+        confirming (bool): True while the box asks whether to delete the file.
     """
 
     caption: str
     text: str
     problem: str
+    deletable: bool = False
+    confirming: bool = False
 
 
 @dataclass
@@ -151,17 +229,24 @@ class _NameBox:
     """The open name box's state.
 
     Attributes:
-        caption (str): What the name is for.
+        caption (str): What the name is for, or the question while the box asks.
         text (str): The name typed so far.
         problem (str): Why the name can't be used, or ''.
         request (Callable[[str], FileRequest]): Turns the stripped name into
             the request key() returns on Enter.
+        prefilled (str): The text the box opened with; Del shows it again.
+        delete (tuple[str, DeleteFile] | None): What Del asks, and the request
+            Enter then returns; None for the Save boxes, which ignore Del.
+        confirming (bool): True while the box asks whether to delete the file.
     """
 
     caption: str
     text: str
     problem: str
     request: Callable[[str], FileRequest]
+    prefilled: str
+    delete: tuple[str, DeleteFile] | None = None
+    confirming: bool = False
 
 
 class RosterEntry(NamedTuple):
@@ -212,6 +297,35 @@ class OptionsView(NamedTuple):
     selected: str | None
 
 
+class TeamSetupList(NamedTuple):
+    """One team's column on the Team setups screen.
+
+    Attributes:
+        team (str): The team's name, for the caption.
+        setups (tuple[str, ...]): Visible team setup names, top to bottom.
+        hidden (int): Setups that didn't fit (drawn as "+N more").
+        can_save (bool): True when the team has a player on the pitch and a
+            name that can have team setups; False dims its Save button.
+    """
+
+    team: str
+    setups: tuple[str, ...]
+    hidden: int
+    can_save: bool
+
+
+class TeamSetupsView(NamedTuple):
+    """What the Team setups screen shows.
+
+    Attributes:
+        home (TeamSetupList): The Home team's column.
+        away (TeamSetupList): The Away team's column.
+    """
+
+    home: TeamSetupList
+    away: TeamSetupList
+
+
 def _race_or_none(path: Path) -> str | None:
     """
     Read a roster's race for the menu list.
@@ -231,7 +345,8 @@ def _race_or_none(path: Path) -> str | None:
 
 
 class Session:
-    """Owns the screen, imported teams, roster draft, sandbox board, input and dice."""
+    """Owns the screen, imported teams, roster draft, sandbox board, input, dice
+    and the listed files."""
 
     def __init__(
         self,
@@ -277,6 +392,7 @@ class Session:
         self._pitches: tuple[Path, ...] = ()
         self._pitch: str | None = None
         self._teams: dict[Side, Team | None] = {Side.HOME: None, Side.AWAY: None}
+        self._team_setups: dict[Side, tuple[Path, ...]] = {side: () for side in Side}
         self._screen = Screen.MENU
         self._builder: RosterBuilder | None = None
         self._board: Board | None = None
@@ -305,17 +421,19 @@ class Session:
 
     @property
     def board(self) -> Board | None:
-        """Board | None: The sandbox board; None off the sandbox screen."""
+        """Board | None: The sandbox board; None off the sandbox and Team
+        setups screens."""
         return self._board
 
     @property
     def interaction(self) -> Interaction | None:
-        """Interaction | None: Sandbox pointer input; None on the main menu."""
+        """Interaction | None: Sandbox pointer input; None off the sandbox screen."""
         return self._interaction
 
     @property
     def last_roll(self) -> Roll | None:
-        """Roll | None: The last dice roll; None off the sandbox or before a roll."""
+        """Roll | None: The last dice roll; None before a roll, and off the
+        sandbox and Team setups screens."""
         return self._last_roll
 
     @property
@@ -332,10 +450,17 @@ class Session:
     def name_view(self) -> NameView | None:
         """NameView | None: The open name box; None when no box is open."""
         box = self._name_box
-        return None if box is None else NameView(box.caption, box.text, box.problem)
+        if box is None:
+            return None
+        deletable = box.delete is not None
+        return NameView(box.caption, box.text, box.problem, deletable, box.confirming)
 
     def _open_name_box(
-        self, caption: str, default: str, request: Callable[[str], FileRequest]
+        self,
+        caption: str,
+        default: str,
+        request: Callable[[str], FileRequest],
+        delete: tuple[str, DeleteFile] | None = None,
     ) -> None:
         """
         Open the name box prefilled with a default name.
@@ -346,17 +471,33 @@ class Session:
                 past MAX_NAME_LENGTH are dropped.
             request (Callable[[str], FileRequest]): Builds key()'s request
                 from the typed name.
+            delete (tuple[str, DeleteFile] | None): For a rename box, what Del
+                asks and the request Enter then returns; None ignores Del.
         """
         # Reason: hand-made file names can hold characters the box doesn't
         # allow, so the box text keeps its invariant from the start.
         text, ok = add_chars("", default)
-        self._name_box = _NameBox(caption, text, "" if ok else CHARS_PROBLEM, request)
+        problem = "" if ok else CHARS_PROBLEM
+        self._name_box = _NameBox(caption, text, problem, request, text, delete)
+
+    def _open_rename(self, path: Path, caption: str, question: str) -> None:
+        """
+        Open the rename box for a file, where Del asks to delete it instead.
+
+        Args:
+            path (Path): The roster, setup or team setup file.
+            caption (str): The box's caption, e.g. "Rename roster".
+            question (str): What Del asks, e.g. "Delete setup?".
+        """
+        delete = (question, DeleteFile(path))
+        self._open_name_box(caption, path.stem, partial(RenameFile, path), delete)
 
     def type_text(self, text: str) -> None:
         """
         Type into the open name box, else into a comment edit on the sandbox.
 
-        In the name box a dropped character becomes its problem.
+        In the name box a dropped character becomes its problem. While the box
+        asks whether to delete a file, typing does nothing.
 
         Args:
             text (str): The typed characters. No-op when neither is open.
@@ -366,6 +507,8 @@ class Session:
             if self._interaction is not None:
                 self._interaction.type_text(text)
             return
+        if box.confirming:
+            return
         box.text, ok = add_chars(box.text, text)
         box.problem = "" if ok else CHARS_PROBLEM
 
@@ -373,13 +516,17 @@ class Session:
         """
         Handle a key in the open name box, else in a comment edit. No disk I/O.
 
+        In a rename box, Del asks to delete the file instead. While the box
+        asks, Enter deletes, Esc closes the box and other keys do nothing.
+
         Args:
             key (EditKey): The key pressed. No-op when neither is open.
 
         Returns:
             FileRequest | None: On Enter in the name box with a valid name, the
-                save or rename request; the box stays open until that request
-                succeeds. Always None for a comment edit.
+                save or rename request, or DeleteFile while the box asks; the
+                box stays open until that request succeeds. Always None for a
+                comment edit.
         """
         box = self._name_box
         if box is None:
@@ -390,6 +537,15 @@ class Session:
             return None
         if key is EditKey.ESCAPE:
             self._name_box = None
+        elif box.confirming:
+            if key is EditKey.ENTER:
+                return box.delete[1]
+        elif key is EditKey.DELETE:
+            # Reason: the Save boxes have no file yet, so they have nothing to
+            # delete. Asking shows the file's name again, without the edits.
+            if box.delete is not None:
+                box.caption, box.text, box.problem = box.delete[0], box.prefilled, ""
+                box.confirming = True
         elif key is EditKey.BACKSPACE:
             box.text, box.problem = remove_char(box.text), ""
         else:
@@ -472,6 +628,77 @@ class Session:
             selected=self._pitch,
         )
 
+    def team_setups_view(self) -> TeamSetupsView:
+        """
+        Describe the Team setups screen for drawing.
+
+        Returns:
+            TeamSetupsView: Each team's name, visible setup names, hidden
+                count and whether it can save.
+
+        Raises:
+            ValueError: If no sandbox is open.
+        """
+        if self._board is None:
+            raise ValueError("No sandbox board to show team setups for")
+        return TeamSetupsView(
+            self._team_setup_list(Side.HOME), self._team_setup_list(Side.AWAY)
+        )
+
+    def _team_setup_list(self, side: Side) -> TeamSetupList:
+        """
+        Describe one team's column on the Team setups screen.
+
+        Args:
+            side (Side): The team.
+
+        Returns:
+            TeamSetupList: Its name, visible setup names, hidden count and
+                whether it can save.
+        """
+        files = self._team_setups[side]
+        shown = files[: self._visible_count(files, self._layout.option_rows)]
+        return TeamSetupList(
+            team=self._board.team(side).name,
+            setups=tuple(path.stem for path in shown),
+            hidden=len(files) - len(shown),
+            can_save=not self._save_problem(side),
+        )
+
+    def _save_problem(self, side: Side) -> str:
+        """
+        Tell why one team can't save a team setup now. Needs a board.
+
+        Args:
+            side (Side): The team.
+
+        Returns:
+            str: '' if it can, else the message for the user: its name can't
+                have team setups, or none of its players is on the pitch.
+        """
+        team = self._board.team(side).name
+        problem = name_problem(team)
+        if problem:
+            return f"{team}: {problem}"
+        if not capture(self._board, side):
+            return f"No {side.value} player on the pitch"
+        return ""
+
+    def _team_folder(self, side: Side) -> Path | None:
+        """
+        Find the team setups folder of the board's team on one side.
+
+        Args:
+            side (Side): The team.
+
+        Returns:
+            Path | None: The folder named after the team's roster; None with
+                no board, or when the name can't have team setups.
+        """
+        if self._board is None:
+            return None
+        return team_setups_folder(self._rosters_dir, self._board.team(side).name)
+
     def press(self, pos: tuple[int, int]) -> FileRequest | None:
         """
         Handle a left click. Does no disk I/O; file work is returned as a request.
@@ -483,13 +710,16 @@ class Session:
 
         Returns:
             FileRequest | None: The file action to perform for a roster or
-                setup row on the menu, or SaveSettings for a new pitch on the
-                Options screen.
+                setup row on the menu, SaveSettings for a new pitch on the
+                Options screen, OpenTeamSetups for the sandbox's Team setups
+                button, or DeployTeamSetup for a row on that screen.
         """
         if self._name_box is not None:
             return None
         if self._screen is Screen.SANDBOX:
             return self._press_sandbox(pos)
+        if self._screen is Screen.TEAM_SETUPS:
+            return self._press_team_setups(pos)
         if self._screen is Screen.RACES:
             self._press_races(pos)
             return None
@@ -501,22 +731,27 @@ class Session:
 
     def _press_sandbox(self, pos: tuple[int, int]) -> FileRequest | None:
         """
-        Handle a sandbox click: Save setup, Main menu, a dice button, or
-        pointer input.
+        Handle a sandbox click: Save setup, Team setups, Main menu, a dice
+        button, or pointer input.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
-            FileRequest | None: Always None; Save opens the name box.
+            FileRequest | None: OpenTeamSetups for the Team setups button,
+                else None; Save opens the name box.
         """
-        # Reason: Save setup and Main menu first save an open comment, so it is
-        # in the file; a dice click leaves the edit open.
+        # Reason: Save setup, Team setups and Main menu first save an open
+        # comment, so it is in the file and outlives the pointer input; a dice
+        # click leaves the edit open.
         if self._layout.save_button.contains(pos):
             self._interaction.commit()
             path = new_setup_path(self._setups_dir, self._board, self._clock())
             self._open_name_box("Save setup as", path.stem, SaveSetup)
             return None
+        if self._layout.team_setups_button.contains(pos):
+            self._interaction.commit()
+            return OpenTeamSetups()
         index = self._layout.dice_button_at(pos)
         if self._layout.menu_button.contains(pos):
             self._interaction.commit()
@@ -532,6 +767,75 @@ class Session:
         else:
             self._interaction.press(pos)
         return None
+
+    def _press_team_setups(self, pos: tuple[int, int]) -> FileRequest | None:
+        """
+        Handle a Team setups click: Back, Save home, Save away, or a setup row.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            FileRequest | None: DeployTeamSetup for a setup row, else None;
+                the Save buttons open the name box.
+        """
+        if self._layout.back_button.contains(pos):
+            self._return_to_sandbox("")
+            return None
+        if self._layout.save_home_button.contains(pos):
+            self._open_save_team_setup(Side.HOME)
+            return None
+        if self._layout.save_away_button.contains(pos):
+            self._open_save_team_setup(Side.AWAY)
+            return None
+        hit = self._team_setup_at(pos)
+        return None if hit is None else DeployTeamSetup(*hit)
+
+    def _team_setup_at(self, pos: tuple[int, int]) -> tuple[Side, Path] | None:
+        """
+        Find the team setup file listed at a Team setups screen position.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            tuple[Side, Path] | None: The team and the file, or None for the
+                captions, the "+N more" line, empty rows and anything else.
+        """
+        hit = self._layout.team_setup_row_at(pos)
+        if hit is None:
+            return None
+        side, index = hit
+        files = self._team_setups[side]
+        # Reason: rows past the visible names are the "+N more" line or empty.
+        if index >= self._visible_count(files, self._layout.option_rows):
+            return None
+        return side, files[index]
+
+    def _open_save_team_setup(self, side: Side) -> None:
+        """
+        Open the name box to save one team's positions, or explain why it can't.
+
+        Args:
+            side (Side): The team to save.
+        """
+        problem = self._save_problem(side)
+        if problem:
+            self._message = problem
+            return
+        path = new_team_setup_path(self._team_folder(side), self._clock())
+        caption = f"Save {side.value} setup as"
+        self._open_name_box(caption, path.stem, partial(SaveTeamSetup, side))
+
+    def _return_to_sandbox(self, message: str) -> None:
+        """
+        Show the sandbox's board again with fresh pointer input; the roll stays.
+
+        Args:
+            message (str): The status message to show.
+        """
+        self._interaction = Interaction(self._board, self._layout)
+        self._screen, self._message = Screen.SANDBOX, message
 
     def _press_races(self, pos: tuple[int, int]) -> None:
         """
@@ -716,7 +1020,8 @@ class Session:
 
     def right_click(self, pos: tuple[int, int]) -> None:
         """
-        Handle a right click: rename a file on the main menu, or sandbox input.
+        Handle a right click: rename or delete a file on the main menu or the
+        Team setups screen, or sandbox input.
 
         Ignored while the name box is open.
 
@@ -729,19 +1034,23 @@ class Session:
             hit = self._menu_file_at(pos)
             if hit is not None:
                 which, path = hit
-                caption = (
-                    "Rename setup" if which is MenuList.SETUPS else "Rename roster"
-                )
-                self._open_name_box(caption, path.stem, partial(RenameFile, path))
+                caption, question = RENAME_CAPTIONS[which]
+                self._open_rename(path, caption, question)
+        elif self._screen is Screen.TEAM_SETUPS:
+            hit = self._team_setup_at(pos)
+            if hit is not None:
+                self._open_rename(hit[1], "Rename team setup", "Delete team setup?")
         elif self._interaction is not None:
             self._interaction.right_click(pos)
 
     def rescan(self) -> None:
         """
-        Re-list the roster, setup and pitch image files, reading each roster's race.
+        Re-list the roster, setup, pitch image and team setup files, reading
+        each roster's race.
 
         A chosen pitch whose file has gone stays chosen, so it is used again
-        when the file comes back.
+        when the file comes back. The team setups listed are the board's
+        teams'; with no board, none are.
         """
         self._rosters = list_rosters(self._rosters_dir)
         self._roster_entries = tuple(
@@ -749,6 +1058,13 @@ class Session:
         )
         self._setups = list_setups(self._setups_dir)
         self._pitches = list_images(self._pitches_dir)
+        self._list_team_setups()
+
+    def _list_team_setups(self) -> None:
+        """List both teams' setup files; a team without a folder lists none."""
+        for side in Side:
+            folder = self._team_folder(side)
+            self._team_setups[side] = () if folder is None else list_team_setups(folder)
 
     def load_settings(self) -> None:
         """
@@ -859,17 +1175,154 @@ class Session:
         self._screen, self._builder = Screen.MENU, None
         self._message = f"Saved {name}"
 
-    def rename(self, path: Path, name: str) -> None:
+    def open_team_setups(self) -> None:
         """
-        Rename a roster or setup file; never overwrites one.
+        List both teams' setups, then show the Team setups screen.
 
-        An imported team named after the old roster file takes the new name.
-        On success the name box closes; call rescan() to list the file under
-        its new name. A failure becomes the name box's problem, or the message
-        if no box is open.
+        The pointer input is dropped; going back to the sandbox starts it fresh.
+
+        Raises:
+            ValueError: If no sandbox is open.
+        """
+        if self._board is None:
+            raise ValueError("No sandbox board to show team setups for")
+        self._list_team_setups()
+        self._interaction = None
+        self._screen, self._message = Screen.TEAM_SETUPS, ""
+
+    def deploy_team_setup(self, side: Side, path: Path) -> None:
+        """
+        Deploy a team setup onto one team, then show the sandbox again.
+
+        A file that can't be loaded stays on the Team setups screen as the
+        message.
 
         Args:
-            path (Path): The roster CSV or setup JSON file.
+            side (Side): The team to deploy it on.
+            path (Path): The team setup JSON file.
+
+        Raises:
+            ValueError: If no sandbox is open.
+        """
+        if self._board is None:
+            raise ValueError("No sandbox board to deploy on")
+        try:
+            setup = load_team_setup(path)
+        except TeamSetupError as error:
+            self._message = str(error)
+            return
+        missed = deploy(self._board, side, setup)
+        # Reason: the count comes first because the panel's message line
+        # clips at about 32 characters.
+        if missed:
+            self._return_to_sandbox(f"{missed} not placed from {path.stem}")
+        else:
+            self._return_to_sandbox(f"Deployed {path.stem}")
+
+    def save_team_setup(self, side: Side, name: str) -> None:
+        """
+        Save where one team's players stand as a new team setup of its roster;
+        never overwrites one.
+
+        On success the name box closes and the message says so. A failure
+        becomes the name box's problem, or the message if no box is open.
+
+        Args:
+            side (Side): The team whose positions are saved.
+            name (str): The file name without suffix.
+
+        Raises:
+            ValueError: If no sandbox is open.
+        """
+        if self._board is None:
+            raise ValueError("No sandbox board to save a team setup from")
+        # Reason: checked again because this can be called without the button.
+        problem = self._save_problem(side)
+        if problem:
+            self._report(problem)
+            return
+        try:
+            path = free_path(self._team_folder(side), name, ".json")
+            write_team_setup(capture(self._board, side), path)
+        except (FileNameError, TeamSetupError) as error:
+            self._report(str(error))
+            return
+        self._name_box = None
+        self._message = f"Saved {name}"
+
+    def delete(self, path: Path) -> None:
+        """
+        Delete a roster, setup or team setup file for good.
+
+        Deleting a roster also deletes its team setups and unpicks it as Home
+        or Away. On success the name box closes; call rescan() to drop the
+        file from the lists. A file that can't be deleted becomes the name
+        box's problem, or the message if no box is open.
+
+        Args:
+            path (Path): The file to delete.
+        """
+        try:
+            delete_file(path)
+        except FileNameError as error:
+            self._report(str(error))
+            return
+        self._name_box = None
+        self._message = f"Deleted {path.stem}"
+        if path not in self._rosters:
+            return
+        for side, team in self._teams.items():
+            if team is not None and team.name == path.stem:
+                self._teams[side] = None
+        folder = team_setups_folder(self._rosters_dir, path.stem)
+        if folder is None:
+            return
+        try:
+            delete_team_setups(folder)
+        except TeamSetupError as error:
+            self._message = f"Deleted {path.stem}, but {error}"
+
+    def _move_team_setups(self, old: Path, new: Path) -> str:
+        """
+        Rename a renamed roster's team setups folder after it. If the folder
+        can't be renamed, the roster is renamed back.
+
+        Args:
+            old (Path): The roster's CSV file before the rename.
+            new (Path): The roster's CSV file now.
+
+        Returns:
+            str: '' on success or when the roster has no folder, else why the
+                folder couldn't follow.
+        """
+        folder = team_setups_folder(self._rosters_dir, old.stem)
+        if folder is None or not folder.is_dir():
+            return ""
+        try:
+            rename_folder(folder, new.stem)
+            return ""
+        except FileNameError as error:
+            problem = str(error)
+        # Reason: a roster finds its team setups by name, so when the folder
+        # can't follow the rename, the roster goes back to its old name.
+        try:
+            rename_file(new, old.stem)
+        except FileNameError as error:
+            return f"{problem}; {error}"
+        return problem
+
+    def rename(self, path: Path, name: str) -> None:
+        """
+        Rename a roster, setup or team setup file; never overwrites one.
+
+        An imported team named after the old roster file takes the new name,
+        and so does the roster's team setups folder; if the folder can't, the
+        roster keeps its old name. On success the name box closes; call
+        rescan() to list the file under its new name. A failure becomes the
+        name box's problem, or the message if no box is open.
+
+        Args:
+            path (Path): The roster CSV, setup JSON or team setup JSON file.
             name (str): The new file name without suffix.
         """
         try:
@@ -877,6 +1330,11 @@ class Session:
         except FileNameError as error:
             self._report(str(error))
             return
+        if path in self._rosters:
+            problem = self._move_team_setups(path, new)
+            if problem:
+                self._report(problem)
+                return
         # Reason: load_team names a team after its file, so the imported team
         # follows the rename and still matches its menu row. Setups keep the
         # team names stored inside them.

@@ -12,6 +12,7 @@ from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, RaceError, load_races
 from bb_sandbox.render import (
     BACKGROUND,
+    BUTTON_DISABLED,
     BUTTON_FILL,
     HIGHLIGHT,
     PANEL_FILL,
@@ -455,3 +456,93 @@ def test_text_and_keys_on_the_main_menu_are_ignored(in_tmp):
     assert handle_event(session, pygame.event.Event(pygame.TEXTINPUT, text="a"))
     assert handle_event(session, _key(pygame.K_RETURN))
     assert session.screen is Screen.MENU and session.message == ""
+
+
+CAGE = '{"version": 1, "players": [{"number": 1, "square": {"column": 1, "row": 1}}]}'
+
+
+def _cage(in_tmp):
+    folder = in_tmp / "rosters" / "orcs"
+    folder.mkdir()
+    (folder / "Cage.json").write_text(CAGE)
+    return folder / "Cage.json"
+
+
+def test_handle_event_saves_and_deploys_a_team_setup(in_tmp):
+    layout, session = _sandbox(in_tmp)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(12, 7))
+    assert handle_event(session, _click(layout.team_setups_button))
+    assert session.screen is Screen.TEAM_SETUPS
+    # Saving rescans, so the new file is listed without a focus event.
+    assert handle_event(session, _click(layout.save_home_button))
+    assert handle_event(session, _key(pygame.K_RETURN))
+    [saved] = (in_tmp / "rosters" / "orcs").iterdir()
+    assert session.team_setups_view().away.setups == (saved.stem,)
+    # Deployed on Away, the setup lands mirrored.
+    assert handle_event(session, _click(layout.team_setup_row(Side.AWAY, 0)))
+    assert session.screen is Screen.SANDBOX
+    assert session.board.square_of(PlayerKey(Side.AWAY, 0)) == Square(13, 7)
+    assert session.message == f"Deployed {saved.stem}"
+
+
+def test_a_focus_event_lists_a_copied_team_setup(in_tmp):
+    layout, session = _sandbox(in_tmp)
+    handle_event(session, _click(layout.team_setups_button))
+    _cage(in_tmp)
+    assert session.team_setups_view().home.setups == ()
+    assert handle_event(session, pygame.event.Event(pygame.WINDOWFOCUSGAINED))
+    assert session.team_setups_view().home.setups == ("Cage",)
+
+
+def test_right_click_del_and_return_delete_a_team_setup(in_tmp):
+    layout, session = _sandbox(in_tmp)
+    cage = _cage(in_tmp)
+    handle_event(session, _click(layout.team_setups_button))
+    assert handle_event(session, _click(layout.team_setup_row(Side.HOME, 0), 3))
+    assert handle_event(session, _key(pygame.K_DELETE))
+    assert session.name_view.confirming
+    assert handle_event(session, _key(pygame.K_RETURN))
+    assert not cage.exists() and session.message == "Deleted Cage"
+    # Deleting rescans, so the file is gone from both lists.
+    assert session.team_setups_view().home.setups == ()
+
+
+def test_del_on_the_main_menu_deletes_a_roster_and_its_team_setups(in_tmp):
+    layout, session = _sandbox(in_tmp)
+    cage = _cage(in_tmp)
+    handle_event(session, _click(layout.menu_button))
+    assert handle_event(session, _click(layout.menu_row(MenuList.HOME_ROSTERS, 0), 3))
+    assert handle_event(session, _key(pygame.K_DELETE))
+    assert handle_event(session, _key(pygame.K_RETURN))
+    assert not cage.parent.exists() and not (in_tmp / "rosters" / "orcs.csv").exists()
+    menu = session.menu_view()
+    assert menu.rosters == () and menu.home is None and menu.away is None
+
+
+def test_delete_in_a_comment_edit_changes_nothing(in_tmp):
+    layout, session = _sandbox(in_tmp)
+    key = PlayerKey(Side.HOME, 0)
+    session.board.place(key, Square(4, 4))
+    session.board.set_comment(key, "BLK")
+    handle_event(session, _click(layout.square(4, 4), button=3))
+    handle_event(session, _click(session.interaction.view().menu[-1].box))
+    handle_event(session, _text("X"))
+    assert handle_event(session, _key(pygame.K_DELETE))
+    assert session.interaction.view().editing.text == "BLKX"
+    assert session.board.comment_of(key) == "BLK"
+
+
+def test_draw_shows_the_team_setups_screen(in_tmp, frame):
+    layout, draw = frame
+    _, session = _sandbox(in_tmp)
+    handle_event(session, _click(layout.team_setups_button))
+    save = layout.save_home_button
+    corner = (save.x + 3, save.y + 3)
+    # Nobody is on the pitch, so Save home is dimmed.
+    assert draw(session).get_at(corner)[:3] == BUTTON_DISABLED
+    session.board.place(PlayerKey(Side.HOME, 0), Square(1, 1))
+    assert draw(session).get_at(corner)[:3] == BUTTON_FILL
+    # The name box is drawn over the screen.
+    handle_event(session, _click(save))
+    box = layout.name_box
+    assert draw(session).get_at((box.x + 3, box.y + box.height - 3))[:3] == PANEL_FILL

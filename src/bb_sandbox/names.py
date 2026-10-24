@@ -1,6 +1,7 @@
 """Roster and setup names: what may be typed, and disk-safe paths for them.
 
-No Pygame. The only disk I/O is in free_path (an exists check) and rename_file.
+No Pygame. The only disk I/O is in free_path (an exists check), rename_file,
+rename_folder and delete_file.
 """
 
 import re
@@ -108,6 +109,37 @@ def free_path(folder: Path, name: str, suffix: str) -> Path:
     return path
 
 
+def _rename(path: Path, name: str, suffix: str, taken: str) -> Path:
+    """
+    Rename a file or folder in place, keeping its folder; never overwrites.
+
+    Args:
+        path (Path): The file or folder to rename.
+        name (str): The new name without suffix.
+        suffix (str): The suffix to keep, e.g. ".csv"; '' for a folder.
+        taken (str): The problem to raise when the new name is taken.
+
+    Returns:
+        Path: The renamed file or folder.
+
+    Raises:
+        FileNameError: If the name is invalid, something else has it, or the
+            rename fails.
+    """
+    _check(name)
+    target = path.with_name(f"{name}{suffix}")
+    # Reason: on Windows a case-only rename finds "itself" at the target, which
+    # is fine; anything else there must not be overwritten.
+    if target.exists() and not (path.exists() and path.samefile(target)):
+        raise FileNameError(taken)
+    try:
+        # Reason: Path.rename refuses an existing target on Windows, so a file
+        # or folder created since the check isn't overwritten either.
+        return path.rename(target)
+    except OSError as error:
+        raise FileNameError(f"Couldn't rename {path.name}: {error.strerror}") from error
+
+
 def rename_file(path: Path, name: str) -> Path:
     """
     Rename a file in place, keeping its folder and suffix; never overwrites.
@@ -123,15 +155,38 @@ def rename_file(path: Path, name: str) -> Path:
         FileNameError: If the name is invalid, another file has it, or the
             rename fails.
     """
-    _check(name)
-    target = path.with_name(f"{name}{path.suffix}")
-    # Reason: on Windows a case-only rename finds "itself" at the target, which
-    # is fine; any other file there must not be overwritten.
-    if target.exists() and not (path.exists() and path.samefile(target)):
-        raise FileNameError(f"{name} already exists")
+    return _rename(path, name, path.suffix, f"{name} already exists")
+
+
+def rename_folder(folder: Path, name: str) -> Path:
+    """
+    Rename a folder in place, with the same checks as rename_file.
+
+    Args:
+        folder (Path): The folder to rename.
+        name (str): The new name.
+
+    Returns:
+        Path: The renamed folder.
+
+    Raises:
+        FileNameError: If the name is invalid, something else has it
+            ("Folder <name> already exists"), or the rename fails.
+    """
+    return _rename(folder, name, "", f"Folder {name} already exists")
+
+
+def delete_file(path: Path) -> None:
+    """
+    Delete a file for good; it doesn't go to the recycle bin.
+
+    Args:
+        path (Path): The file to delete.
+
+    Raises:
+        FileNameError: If the file can't be deleted, e.g. it is missing.
+    """
     try:
-        # Reason: Path.rename refuses an existing target on Windows, so a file
-        # created since the check isn't overwritten either.
-        return path.rename(target)
+        path.unlink()
     except OSError as error:
-        raise FileNameError(f"Couldn't rename {path.name}: {error.strerror}") from error
+        raise FileNameError(f"Couldn't delete {path.name}: {error.strerror}") from error

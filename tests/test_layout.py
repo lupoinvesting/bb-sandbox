@@ -306,6 +306,80 @@ def test_save_button_and_message_line_stack_above_menu_button():
         assert panel.contains((box.x + box.width - 1, box.y + box.height - 1))
 
 
+def test_save_setup_and_team_setups_split_the_old_save_row():
+    layout = build_layout(32)
+    save, team = layout.save_button, layout.team_setups_button
+    assert save == Box(872, 560, 108, 32) and team == Box(988, 560, 108, 32)
+    # The message line keeps the panel's inner width, above the split row.
+    assert layout.sandbox_message_line == Box(872, 520, 224, 32)
+    assert layout.menu_button == Box(872, 600, 224, 32)
+
+
+@pytest.mark.parametrize("size", [32, 8])
+def test_the_split_row_halves_sit_in_the_panel_without_overlap(size):
+    layout = build_layout(size)
+    save, team, menu = (
+        layout.save_button,
+        layout.team_setups_button,
+        layout.menu_button,
+    )
+    for box in (save, team):
+        assert _inside(layout.panel, box)
+        assert box.y == menu.y - 8 - size and box.height == size
+    assert save.x == menu.x and team.x + team.width == menu.x + menu.width
+    assert save.x + save.width < team.x and save.width == team.width
+
+
+def test_save_home_and_away_sit_where_start_and_options_are():
+    layout = build_layout(32)
+    assert layout.save_home_button == layout.start_button
+    assert layout.save_away_button == layout.options_button
+    assert layout.back_button == layout.new_roster_button
+
+
+def test_team_setup_rows_fill_the_first_two_columns_below_the_caption():
+    layout = build_layout(32)
+    home, away, _ = layout.menu_columns
+    assert layout.option_rows == 15
+    assert layout.team_setup_column(Side.HOME) == home
+    assert layout.team_setup_column(Side.AWAY) == away
+    assert layout.team_setup_row(Side.HOME, 0) == Box(
+        home.x, home.y + 32, home.width, 32
+    )
+    last = layout.team_setup_row(Side.AWAY, layout.option_rows - 1)
+    assert last.x == away.x and last.y + last.height <= away.y + away.height
+    assert last.y + last.height <= layout.menu_message_line.y
+
+
+def test_team_setup_row_at_inverts_team_setup_row_for_both_sides():
+    layout = build_layout(32)
+    for side in Side:
+        for index in range(layout.option_rows):
+            row = layout.team_setup_row(side, index)
+            corner = (row.x + row.width - 1, row.y + row.height - 1)
+            assert layout.team_setup_row_at(row[:2]) == (side, index)
+            assert layout.team_setup_row_at(corner) == (side, index)
+
+
+def test_team_setup_row_at_misses_captions_the_third_column_and_outside():
+    layout = build_layout(32)
+    home, away, third = layout.menu_columns
+    for column in (home, away):
+        assert layout.team_setup_row_at((column.x + 5, column.y + 5)) is None
+    gap = (home.x + home.width + 2, home.y + 40)
+    misses = (gap, (third.x + 5, third.y + 40), layout.start_button[:2], (1, 1))
+    for pos in misses:
+        assert layout.team_setup_row_at(pos) is None
+
+
+@pytest.mark.parametrize("offset", [-1, 0])
+def test_team_setup_row_out_of_range_raises(offset):
+    layout = build_layout(32)
+    index = offset if offset < 0 else layout.option_rows
+    with pytest.raises(ValueError):
+        layout.team_setup_row(Side.HOME, index)
+
+
 RACE_CELLS = RACE_ROWS * len(MenuList)
 
 

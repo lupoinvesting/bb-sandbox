@@ -49,15 +49,41 @@ In the sandbox, **Save setup** asks for a name (default `<home>-vs-<away>-YYYYMM
 (squares, Prone/Stunned status, Reserve/KO/Injured boxes, the ball, and both full rosters).
 The main menu's **Saved setups** list loads one straight into the sandbox.
 
+## Team setups
+
+A team setup is one roster's formation: the square each of its players stands on. Each roster keeps its own named team setups,
+one JSON file each in `rosters/<roster>/`. To add one made elsewhere, copy its file there; the list picks it up when the window regains focus.
+
+In the sandbox, **Team setups** opens a screen that lists the Home team's setups on the left and the Away team's in the middle.
+
+- **Click** a setup to deploy it onto that team and go back to the pitch. Its players go to their squares, standing, and the team's other
+  players on the pitch go to Reserve. KO and Injured players stay in their boxes and their squares stay empty.
+  The other team, the ball and the comments don't move, so a square the other team holds stays empty too.
+  The message reads `Deployed <name>`, or `<n> not placed from <name>` when some players couldn't be placed.
+- **Save home** and **Save away** save where that team's players stand on the pitch (default name `setup-YYYYMMDD-HHMMSS`).
+  Dugout boxes, Prone/Stunned and comments aren't saved. The button is dimmed while none of that team's players is on the pitch.
+- A setup works on either side: it is stored as if the team played Home, and mirrored across the line of scrimmage on Away.
+- **Right-click** a setup to rename or delete it (see below). **Back** returns to the pitch; the last dice roll stays.
+
+Players are matched by shirt number, so a file copied from another roster puts this roster's numbers on its squares.
+A roster whose name uses other characters than those allowed in names (e.g. a hand-made `orcs.v2.csv`) can't have team setups.
+A file lists each player's number (1–16) and square (column 0–25, row 0–14, in Home orientation, where column 12 is on the line of scrimmage):
+
+```json
+{"version": 1, "players": [{"number": 1, "square": {"column": 12, "row": 7}}]}
+```
+
 ## Naming rosters and setups
 
-Saving a roster or a setup opens a name box with the default name filled in. Type to change it, **Enter** saves, **Esc** cancels.
-**Right-click** a roster or a saved setup on the main menu to rename its file the same way. Renaming a roster renames the team;
-renaming a setup keeps the team names saved inside it.
+Saving a roster, a setup or a team setup opens a name box with the default name filled in. Type to change it, **Enter** saves, **Esc** cancels.
+**Right-click** a roster or a saved setup on the main menu, or a team setup, to rename its file the same way.
+Renaming a roster renames the team and its team setups folder; renaming a setup keeps the team names saved inside it.
 
 - Names use letters, digits, spaces, `-` and `_`, up to 64 characters. Other characters are dropped as you type.
 - A name another file already has is refused (`<name> already exists`) and the box stays open: nothing is ever overwritten.
 - Windows device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) are refused.
+- **Del** in a rename box asks to delete the file instead: **Enter** deletes it, **Esc** cancels. Deleting is permanent (no recycle bin).
+  Deleting a roster also deletes its team setups and unpicks it as Home or Away.
 
 ## Player comments
 

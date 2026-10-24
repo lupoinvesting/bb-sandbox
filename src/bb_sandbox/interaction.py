@@ -29,11 +29,13 @@ class MenuCommand(Enum):
 
 
 class EditKey(Enum):
-    """The keys a comment edit reacts to; app maps Pygame keys onto these."""
+    """The keys the name box and a comment edit react to; app maps Pygame keys
+    onto these. A comment edit ignores DELETE."""
 
     BACKSPACE = "backspace"
     ENTER = "enter"
     ESCAPE = "escape"
+    DELETE = "delete"
 
 
 # Reason: a Status changes the player's state on the pitch; a Dugout sends them
@@ -245,7 +247,8 @@ class Interaction:
 
         Args:
             key (EditKey): Backspace deletes the last character, Enter saves,
-                Escape drops the draft and keeps the old comment.
+                Escape drops the draft and keeps the old comment; Delete does
+                nothing.
         """
         if self._edit is None:
             return
@@ -253,7 +256,7 @@ class Interaction:
             self._edit = self._edit._replace(text=self._edit.text[:-1])
         elif key is EditKey.ENTER:
             self.commit()
-        else:
+        elif key is EditKey.ESCAPE:
             self._edit = None
 
     def commit(self) -> None:

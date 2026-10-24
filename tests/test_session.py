@@ -8,23 +8,31 @@ import pytest
 from bb_sandbox.dice import DICE
 from bb_sandbox.interaction import EditKey
 from bb_sandbox.layout import MenuList, build_layout
+from bb_sandbox.names import FileNameError, rename_file
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE
 from bb_sandbox.session import (
+    DeleteFile,
+    DeployTeamSetup,
     ImportRoster,
     LoadSetup,
     MenuView,
     NameView,
+    OpenTeamSetups,
     OptionsView,
     RenameFile,
     RosterEntry,
     SaveRoster,
     SaveSettings,
     SaveSetup,
+    SaveTeamSetup,
     Screen,
     Session,
+    TeamSetupList,
+    TeamSetupsView,
 )
+from bb_sandbox.team_setups import TeamSetupError, load_team_setup, save_team_setup
 
 CSV = (
     "race,Orc\nname,position,MA,ST,AG,PA,AV,skills\n"
@@ -504,7 +512,7 @@ def _rename(session, row, name):
 
 def test_right_click_on_a_roster_opens_the_rename_box(session, tmp_path):
     session.right_click(_row(MenuList.AWAY_ROSTERS, 2))
-    assert session.name_view == NameView("Rename roster", "orcs", "")
+    assert session.name_view == NameView("Rename roster", "orcs", "", deletable=True)
     assert session.key(EditKey.ENTER) == RenameFile(tmp_path / "orcs.csv", "orcs")
 
 
@@ -788,3 +796,377 @@ def test_keys_on_the_main_menu_are_ignored(session):
     session.type_text("A")
     assert session.key(EditKey.ENTER) is None
     assert session.screen is Screen.MENU
+
+
+def _team_setup_file(tmp_path, name, setup, team="orcs"):
+    path = tmp_path / team / f"{name}.json"
+    save_team_setup(setup, path)
+    return path
+
+
+def _team_setups(session):
+    _sandbox(session)
+    assert session.press(_click(LAYOUT.team_setups_button)) == OpenTeamSetups()
+    session.open_team_setups()
+
+
+def _setup_row(side, index):
+    return _click(LAYOUT.team_setup_row(side, index))
+
+
+def test_team_setups_opens_with_both_teams_lists(session, tmp_path):
+    _team_setup_file(tmp_path, "Cage", {0: Square(12, 7)})
+    _sandbox(session)
+    board = session.board
+    session.press(_click(LAYOUT.team_setups_button))
+    # Nothing changes until app performs the request.
+    assert session.screen is Screen.SANDBOX
+    session.open_team_setups()
+    assert session.screen is Screen.TEAM_SETUPS and session.board is board
+    assert session.interaction is None and session.message == ""
+    # A mirror match lists the same roster's files in both columns.
+    orcs = TeamSetupList("orcs", ("Cage",), 0, False)
+    assert session.team_setups_view() == TeamSetupsView(orcs, orcs)
+
+
+def test_a_setup_row_deploys_it_and_returns_with_the_message(session, tmp_path):
+    path = _team_setup_file(tmp_path, "Cage", {0: Square(12, 7)})
+    _team_setups(session)
+    request = session.press(_setup_row(Side.AWAY, 0))
+    assert request == DeployTeamSetup(Side.AWAY, path)
+    session.deploy_team_setup(request.side, request.path)
+    assert session.screen is Screen.SANDBOX and session.message == "Deployed Cage"
+    # Away gets the setup mirrored; Home doesn't move.
+    assert session.board.square_of(PlayerKey(Side.AWAY, 0)) == Square(13, 7)
+    assert session.board.square_of(PlayerKey(Side.HOME, 0)) is None
+    assert session.interaction.view().menu == ()
+
+
+def test_deploy_counts_the_players_it_didnt_place(session, tmp_path):
+    # Reason: the rosters have one player, so #2 is past the end of them.
+    path = _team_setup_file(tmp_path, "Cage", {0: Square(1, 1), 1: Square(2, 2)})
+    _team_setups(session)
+    session.deploy_team_setup(Side.HOME, path)
+    assert session.message == "1 not placed from Cage"
+    assert session.board.square_of(PlayerKey(Side.HOME, 0)) == Square(1, 1)
+
+
+def test_save_home_writes_the_team_setup_into_the_rosters_folder(session, tmp_path):
+    _team_setups(session)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(12, 7))
+    assert session.team_setups_view().home.can_save
+    assert not session.team_setups_view().away.can_save
+    assert session.press(_click(LAYOUT.save_home_button)) is None
+    default = "setup-20260101-000000"
+    assert session.name_view == NameView("Save home setup as", default, "")
+    assert session.key(EditKey.ENTER) == SaveTeamSetup(Side.HOME, default)
+    session.save_team_setup(Side.HOME, default)
+    path = tmp_path / "orcs" / f"{default}.json"
+    assert load_team_setup(path) == {0: Square(12, 7)}
+    assert session.message == f"Saved {default}" and session.name_view is None
+    assert session.screen is Screen.TEAM_SETUPS
+    session.rescan()
+    assert session.team_setups_view().away.setups == (default,)
+
+
+def test_save_away_stores_the_squares_as_if_home(session, tmp_path):
+    _team_setups(session)
+    session.board.place(PlayerKey(Side.AWAY, 0), Square(13, 2))
+    session.press(_click(LAYOUT.save_away_button))
+    assert session.name_view.caption == "Save away setup as"
+    request = session.key(EditKey.ENTER)
+    session.save_team_setup(request.side, request.name)
+    saved = tmp_path / "orcs" / f"{request.name}.json"
+    assert load_team_setup(saved) == {0: Square(12, 2)}
+
+
+def test_back_keeps_the_board_and_the_roll_and_closes_the_menu(session):
+    _sandbox(session)
+    board = session.board
+    session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
+    session.press(_dice(0))
+    roll = session.last_roll
+    session.right_click(_click(LAYOUT.square(4, 4)))
+    session.press(_click(LAYOUT.team_setups_button))
+    session.open_team_setups()
+    assert session.last_roll == roll
+    assert session.press(_click(LAYOUT.back_button)) is None
+    assert session.screen is Screen.SANDBOX and session.board is board
+    assert session.last_roll == roll and session.message == ""
+    assert session.interaction.view().menu == ()
+    assert board.square_of(PlayerKey(Side.HOME, 0)) == Square(4, 4)
+
+
+def test_team_setups_saves_an_open_comment_first(session):
+    _start_comment(session, "MB2")
+    assert session.press(_click(LAYOUT.team_setups_button)) == OpenTeamSetups()
+    assert session.board.comment_of(PlayerKey(Side.HOME, 0)) == "MB2"
+
+
+def test_rescan_lists_a_copied_team_setup(session, tmp_path):
+    _team_setups(session)
+    _team_setup_file(tmp_path, "Copied", {0: Square(3, 3)})
+    assert session.team_setups_view().home.setups == ()
+    session.rescan()
+    assert session.team_setups_view().home.setups == ("Copied",)
+
+
+def test_the_more_row_captions_and_empty_rows_deploy_nothing(session, tmp_path):
+    for index in range(LAYOUT.option_rows + 1):
+        _team_setup_file(tmp_path, f"s{index:02}", {0: Square(1, 1)})
+    _team_setups(session)
+    home = session.team_setups_view().home
+    assert len(home.setups) == LAYOUT.option_rows - 1 and home.hidden == 2
+    assert session.press(_setup_row(Side.HOME, LAYOUT.option_rows - 1)) is None
+    caption = LAYOUT.team_setup_column(Side.AWAY)
+    assert session.press(_click(caption)) is None
+    assert session.press(_click(LAYOUT.menu_columns[2])) is None
+    assert session.screen is Screen.TEAM_SETUPS
+
+
+def test_an_empty_row_deploys_nothing(session):
+    _team_setups(session)
+    assert session.press(_setup_row(Side.HOME, 0)) is None
+    session.right_click(_setup_row(Side.HOME, 0))
+    assert session.name_view is None
+
+
+def test_a_bad_team_setup_stays_on_the_screen_with_the_message(session, tmp_path):
+    (tmp_path / "orcs").mkdir()
+    (tmp_path / "orcs" / "bad.json").write_text('{"version": 2}')
+    _team_setups(session)
+    request = session.press(_setup_row(Side.HOME, 0))
+    session.deploy_team_setup(request.side, request.path)
+    assert session.screen is Screen.TEAM_SETUPS
+    assert session.message.startswith("bad.json: ")
+
+
+def test_save_with_nobody_on_the_pitch_explains_and_opens_no_box(session, tmp_path):
+    _team_setups(session)
+    assert session.press(_click(LAYOUT.save_away_button)) is None
+    assert session.name_view is None
+    assert session.message == "No away player on the pitch"
+    session.save_team_setup(Side.HOME, "direct")
+    assert session.message == "No home player on the pitch"
+    assert not (tmp_path / "orcs").exists()
+
+
+def test_a_taken_team_setup_name_keeps_the_box_open(session, tmp_path):
+    _team_setups(session)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(12, 7))
+    for _ in range(2):
+        session.press(_click(LAYOUT.save_home_button))
+        request = session.key(EditKey.ENTER)
+        session.save_team_setup(request.side, request.name)
+    assert session.name_view.problem == "setup-20260101-000000 already exists"
+    assert len(list((tmp_path / "orcs").iterdir())) == 1
+
+
+def test_a_team_name_that_cant_be_a_folder_has_no_team_setups(tmp_path):
+    for name in ("orcs", "orcs.v2"):
+        (tmp_path / f"{name}.csv").write_text(CSV)
+    (tmp_path / "orcs.v2").mkdir()
+    (tmp_path / "orcs.v2" / "Cage.json").write_text("{}")
+    session = Session(
+        LAYOUT, tmp_path, tmp_path / "setups", RACES, clock=_clock, **_files(tmp_path)
+    )
+    session.rescan()
+    for which, row in ((MenuList.HOME_ROSTERS, 1), (MenuList.AWAY_ROSTERS, 0)):
+        request = session.press(_row(which, row))
+        session.import_team(request.side, request.path)
+    session.press(_click(LAYOUT.start_button))
+    session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
+    session.press(_click(LAYOUT.team_setups_button))
+    session.open_team_setups()
+    assert session.team_setups_view().home == TeamSetupList("orcs.v2", (), 0, False)
+    session.press(_click(LAYOUT.save_home_button))
+    assert session.name_view is None
+    assert session.message == "orcs.v2: Names use letters, digits, spaces, - and _"
+
+
+def test_team_setups_without_a_board_raise(session, tmp_path):
+    path = _team_setup_file(tmp_path, "Cage", {0: Square(1, 1)})
+    for call in (
+        session.open_team_setups,
+        session.team_setups_view,
+        lambda: session.deploy_team_setup(Side.HOME, path),
+        lambda: session.save_team_setup(Side.HOME, "x"),
+    ):
+        with pytest.raises(ValueError):
+            call()
+
+
+def test_a_team_setup_renames_from_the_screen(session, tmp_path):
+    path = _team_setup_file(tmp_path, "Cage", {0: Square(1, 1)})
+    _team_setups(session)
+    session.right_click(_setup_row(Side.AWAY, 0))
+    view = session.name_view
+    assert view == NameView("Rename team setup", "Cage", "", deletable=True)
+    session.key(EditKey.ESCAPE)
+    request = _rename(session, _setup_row(Side.AWAY, 0), "KO D")
+    assert request == RenameFile(path, "KO D")
+    session.rename(request.path, request.name)
+    assert session.message == "Renamed Cage to KO D"
+    session.rescan()
+    assert session.team_setups_view().home.setups == ("KO D",)
+
+
+def test_del_then_enter_deletes_a_team_setup(session, tmp_path):
+    path = _team_setup_file(tmp_path, "Cage", {0: Square(1, 1)})
+    _team_setups(session)
+    session.right_click(_setup_row(Side.HOME, 0))
+    assert session.key(EditKey.DELETE) is None
+    assert session.name_view == NameView(
+        "Delete team setup?", "Cage", "", deletable=True, confirming=True
+    )
+    request = session.key(EditKey.ENTER)
+    assert request == DeleteFile(path)
+    # The box stays open until the delete succeeds.
+    assert session.name_view is not None and path.is_file()
+    session.delete(request.path)
+    assert not path.exists() and session.name_view is None
+    assert session.message == "Deleted Cage"
+    session.rescan()
+    assert session.team_setups_view().home.setups == ()
+
+
+def test_while_asking_typing_backspace_and_del_do_nothing(session, tmp_path):
+    session.right_click(_row(MenuList.HOME_ROSTERS, 1))
+    session.type_text("/x")
+    assert session.name_view.problem
+    session.key(EditKey.DELETE)
+    # Asking shows the file's name again and clears the problem.
+    asking = NameView("Delete roster and its team setups?", "humans", "", True, True)
+    assert session.name_view == asking
+    session.type_text("abc")
+    for key in (EditKey.BACKSPACE, EditKey.DELETE):
+        assert session.key(key) is None
+    assert session.name_view == asking
+    assert session.key(EditKey.ENTER) == DeleteFile(tmp_path / "humans.csv")
+
+
+def test_escape_while_asking_closes_the_box_and_deletes_nothing(session, tmp_path):
+    session.right_click(_row(MenuList.HOME_ROSTERS, 2))
+    session.key(EditKey.DELETE)
+    assert session.key(EditKey.ESCAPE) is None
+    assert session.name_view is None
+    assert (tmp_path / "orcs.csv").is_file()
+
+
+def test_del_does_nothing_in_a_save_box(session):
+    _sandbox(session)
+    session.press(_click(LAYOUT.save_button))
+    before = session.name_view
+    assert session.key(EditKey.DELETE) is None
+    assert session.name_view == before and not before.deletable
+
+
+def test_deleting_a_saved_setup_from_the_menu(session):
+    _sandbox(session)
+    _save_setup(session)
+    session.press(_click(LAYOUT.menu_button))
+    session.rescan()
+    session.right_click(_row(MenuList.SETUPS, 0))
+    session.key(EditKey.DELETE)
+    assert session.name_view.caption == "Delete setup?"
+    session.delete(session.key(EditKey.ENTER).path)
+    session.rescan()
+    assert session.menu_view().setups == ()
+    assert session.message == "Deleted orcs-vs-orcs-20260101-000000"
+
+
+def test_deleting_a_roster_removes_its_team_setups_and_unpicks_it(session, tmp_path):
+    _team_setup_file(tmp_path, "Cage", {0: Square(1, 1)})
+    (tmp_path / "humans").mkdir()
+    _import_both(session)
+    session.right_click(_row(MenuList.AWAY_ROSTERS, 2))
+    session.key(EditKey.DELETE)
+    session.delete(session.key(EditKey.ENTER).path)
+    assert not (tmp_path / "orcs.csv").exists()
+    assert not (tmp_path / "orcs").exists()
+    assert (tmp_path / "humans").is_dir()
+    assert session.message == "Deleted orcs" and session.name_view is None
+    session.rescan()
+    menu = session.menu_view()
+    assert menu.home is None and menu.away is None
+    assert [entry.name for entry in menu.rosters] == ["broken", "humans"]
+
+
+def test_a_roster_whose_team_setups_cant_go_is_still_deleted(
+    session, tmp_path, monkeypatch
+):
+    def refuse(folder):
+        raise TeamSetupError("Couldn't delete Cage.json: Access is denied")
+
+    monkeypatch.setattr("bb_sandbox.session.delete_team_setups", refuse)
+    session.delete(tmp_path / "orcs.csv")
+    assert not (tmp_path / "orcs.csv").exists()
+    assert session.message == (
+        "Deleted orcs, but Couldn't delete Cage.json: Access is denied"
+    )
+
+
+def test_a_file_that_cant_be_deleted_keeps_the_box_open(session, tmp_path):
+    session.right_click(_row(MenuList.HOME_ROSTERS, 2))
+    session.key(EditKey.DELETE)
+    (tmp_path / "orcs.csv").unlink()
+    session.delete(session.key(EditKey.ENTER).path)
+    assert session.name_view.problem.startswith("Couldn't delete orcs.csv: ")
+    assert session.name_view.confirming and session.message == ""
+
+
+def test_renaming_a_roster_renames_its_team_setups_folder(session, tmp_path):
+    _team_setup_file(tmp_path, "Cage", {0: Square(1, 1)})
+    request = _rename(session, _row(MenuList.HOME_ROSTERS, 2), "Reavers")
+    session.rename(request.path, request.name)
+    assert (tmp_path / "Reavers.csv").is_file()
+    assert (tmp_path / "Reavers" / "Cage.json").is_file()
+    assert not (tmp_path / "orcs").exists()
+    assert session.message == "Renamed orcs to Reavers"
+
+
+def test_a_taken_folder_name_rolls_the_roster_rename_back(session, tmp_path):
+    _team_setup_file(tmp_path, "Cage", {0: Square(1, 1)})
+    (tmp_path / "Reavers").mkdir()
+    _import_both(session)
+    request = _rename(session, _row(MenuList.HOME_ROSTERS, 2), "Reavers")
+    session.rename(request.path, request.name)
+    assert session.name_view.problem == "Folder Reavers already exists"
+    assert (tmp_path / "orcs.csv").is_file()
+    assert not (tmp_path / "Reavers.csv").exists()
+    assert (tmp_path / "orcs" / "Cage.json").is_file()
+    # The rename didn't happen, so the message and the imported team stay.
+    assert session.message == "Loaded orcs as away"
+    assert session.menu_view().home.name == "orcs"
+
+
+def test_a_failed_roll_back_reports_both_problems(session, tmp_path, monkeypatch):
+    _team_setup_file(tmp_path, "Cage", {0: Square(1, 1)})
+    (tmp_path / "Reavers").mkdir()
+    names = []
+
+    def rename_once(path, name):
+        names.append(name)
+        if len(names) > 1:
+            raise FileNameError(f"Couldn't rename {path.name}: Access is denied")
+        return rename_file(path, name)
+
+    monkeypatch.setattr("bb_sandbox.session.rename_file", rename_once)
+    session.rename(tmp_path / "orcs.csv", "Reavers")
+    assert names == ["Reavers", "orcs"]
+    assert session.message == (
+        "Folder Reavers already exists; Couldn't rename Reavers.csv: Access is denied"
+    )
+
+
+def test_deleting_a_roster_whose_name_cant_be_a_folder_keeps_that_folder(tmp_path):
+    (tmp_path / "orcs.v2.csv").write_text(CSV)
+    (tmp_path / "orcs.v2").mkdir()
+    (tmp_path / "orcs.v2" / "Cage.json").write_text("{}")
+    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
+    session.rescan()
+    session.delete(tmp_path / "orcs.v2.csv")
+    assert session.message == "Deleted orcs.v2"
+    assert not (tmp_path / "orcs.v2.csv").exists()
+    # The app never uses a folder with that name, so it doesn't touch it.
+    assert (tmp_path / "orcs.v2" / "Cage.json").is_file()

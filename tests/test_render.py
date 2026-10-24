@@ -12,7 +12,14 @@ from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, Positional, Race, load_races
 from bb_sandbox.roster import Player, Team
-from bb_sandbox.session import MenuView, NameView, OptionsView, RosterEntry
+from bb_sandbox.session import (
+    MenuView,
+    NameView,
+    OptionsView,
+    RosterEntry,
+    TeamSetupList,
+    TeamSetupsView,
+)
 
 EMPTY_VIEW = InteractionView(None, None, ())
 NO_SPRITES = render.PlayerSprites()
@@ -991,3 +998,132 @@ def test_comment_being_typed_is_highlighted_with_the_hint(font):
     plain, _ = _sandbox(board)
     assert _has_text(surface, layout.sandbox_message_line)
     assert not _has_text(plain, layout.sandbox_message_line)
+
+
+def test_sandbox_draws_the_team_setups_button_beside_save_setup(font):
+    surface, layout = _sandbox(Board(_team(1), _team(1)))
+    save, team = layout.save_button, layout.team_setups_button
+    assert surface.get_at((team.x + 3, team.y + 3))[:3] == render.BUTTON_FILL
+    assert render.TEXT in _colours(surface, team)
+    gap = (save.x + save.width + 2, save.y + 3)
+    assert surface.get_at(gap)[:3] == render.PANEL_FILL
+
+
+def _draw_team_setups(font, home, away, message=""):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    view = TeamSetupsView(home, away)
+    render.draw_team_setups(surface, layout, font, view, message)
+    return surface, layout
+
+
+def _inner(column):
+    # Reason: _has_text skips 4 px on the left and right, but not the
+    # column's 2 px border at its top and bottom.
+    return column._replace(y=column.y + 3, height=column.height - 6)
+
+
+def test_team_setups_draws_both_lists_the_buttons_and_the_hint(font):
+    home = TeamSetupList("Reavers", ("Cage", "Kick-off defence"), 0, True)
+    away = TeamSetupList("Orcland", (), 0, True)
+    surface, layout = _draw_team_setups(font, home, away)
+    for side in Side:
+        caption = layout.team_setup_column(side)._replace(height=32)
+        assert _has_text(surface, _inner(caption))
+    assert _has_text(surface, layout.team_setup_row(Side.HOME, 1))
+    assert not _has_text(surface, layout.team_setup_row(Side.HOME, 2))
+    # The empty list says so in its first row.
+    assert _has_text(surface, layout.team_setup_row(Side.AWAY, 0))
+    assert not _has_text(surface, layout.team_setup_row(Side.AWAY, 1))
+    assert not _has_text(surface, _inner(layout.menu_columns[2]))
+    assert render.TEXT_DIM in _colours(surface, layout.menu_message_line)
+    for button in (
+        layout.back_button,
+        layout.save_home_button,
+        layout.save_away_button,
+    ):
+        assert surface.get_at((button.x + 3, button.y + 3))[:3] == render.BUTTON_FILL
+
+
+def test_team_setups_draws_more_and_the_message_replaces_the_hint(font):
+    some = TeamSetupList("Reavers", ("Cage",), 3, True)
+    surface, layout = _draw_team_setups(font, some, some, "Saved Cage")
+    assert _has_text(surface, layout.team_setup_row(Side.HOME, 1))
+    assert not _has_text(surface, layout.team_setup_row(Side.HOME, 2))
+    line = _colours(surface, layout.menu_message_line)
+    assert render.TEXT in line and render.TEXT_DIM not in line
+
+
+def test_team_setups_dims_the_save_button_of_a_team_that_cant_save(font):
+    home = TeamSetupList("Reavers", (), 0, False)
+    away = TeamSetupList("Orcland", (), 0, True)
+    surface, layout = _draw_team_setups(font, home, away)
+    home_save, away_save = layout.save_home_button, layout.save_away_button
+    assert surface.get_at((home_save.x + 3, home_save.y + 3))[:3] == (
+        render.BUTTON_DISABLED
+    )
+    assert surface.get_at((away_save.x + 3, away_save.y + 3))[:3] == render.BUTTON_FILL
+
+
+def test_long_team_setup_names_stay_in_their_column(font):
+    long = TeamSetupList("R" * 64, ("W" * 64,), 0, True)
+    surface, layout = _draw_team_setups(font, long, long)
+    column = layout.team_setup_column(Side.HOME)
+    gap = Box(column.x + column.width, column.y, 16, 2 * 32)
+    assert _colours(surface, gap) == {render.BACKGROUND}
+
+
+def test_team_setups_with_no_rows_draws_only_the_captions(font):
+    # Reason: at square size 1 only the caption fits, so "+N more" has no row.
+    layout = build_layout(1)
+    assert layout.option_rows == 0
+    surface = pygame.Surface(layout.window_size)
+    hidden = TeamSetupList("Reavers", (), 4, True)
+    view = TeamSetupsView(hidden, hidden)
+    render.draw_team_setups(surface, layout, font, view, "")
+
+
+HINTS = ("NAME_HINT", "DELETE_HINT", "CONFIRM_HINT")
+
+
+@pytest.mark.parametrize(
+    "view, hint",
+    [
+        (NameView("Save setup as", "a", ""), "NAME_HINT"),
+        (NameView("Rename roster", "a", "", deletable=True), "DELETE_HINT"),
+        (NameView("Delete setup?", "a", "", True, confirming=True), "CONFIRM_HINT"),
+    ],
+)
+def test_the_name_box_hint_says_which_keys_work(font, monkeypatch, view, hint):
+    # Reason: with the other two hints blanked, dim text in the hint line
+    # can only be the expected one.
+    for other in HINTS:
+        if other != hint:
+            monkeypatch.setattr(render, other, "")
+    surface, layout = _menu_surface(font)
+    render.draw_name_box(surface, layout, font, view)
+    assert render.TEXT_DIM in _colours(surface, _hint_line(layout))
+    monkeypatch.setattr(render, hint, "")
+    render.draw_name_box(surface, layout, font, view)
+    assert render.TEXT_DIM not in _colours(surface, _hint_line(layout))
+
+
+def test_a_problem_replaces_the_confirm_hint(font):
+    surface, layout = _menu_surface(font)
+    view = NameView("Delete setup?", "a", "Couldn't delete a.json: x", True, True)
+    render.draw_name_box(surface, layout, font, view)
+    hint = _colours(surface, _hint_line(layout))
+    assert render.OVER_LIMIT in hint and render.TEXT_DIM not in hint
+
+
+def test_the_field_has_no_caret_while_the_box_asks(font):
+    def field_colours(view):
+        surface, layout = _menu_surface(font)
+        render.draw_name_box(surface, layout, font, view)
+        return _colours(surface, layout.name_field)
+
+    # Reason: the thin caret is anti-aliased, so compare with an empty field.
+    empty = {render.BACKGROUND, render.BORDER}
+    assert field_colours(NameView("Rename roster", "", "", True)) != empty
+    asking = NameView("Delete roster and its team setups?", "", "", True, True)
+    assert field_colours(asking) == empty

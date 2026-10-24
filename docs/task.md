@@ -88,6 +88,17 @@ Design: [comments.md](comments.md).
 - [x] render: top-right comment badge drawn after rotation, highlighted draft with caret, `COMMENT_HINT`; token, ball and drag drawing moved into `_draw_pieces`
 - [x] README "Player comments" section
 
+## Phase 12: Team Setups
+Design: [team_setups.md](team_setups.md).
+- [x] names: `rename_file`'s checks in a shared `_rename`; `rename_folder`, `delete_file`
+- [x] team_setups: new module with `TeamSetup`, `TeamSetupError`, `capture`, `deploy` (mirrored for Away; KO and Injured stay), `team_setups_folder`, `list_team_setups`, `new_team_setup_path`, `save_team_setup`, `load_team_setup`, `delete_team_setups`
+- [x] interaction: `EditKey.DELETE`, which a comment edit ignores
+- [x] layout: `_panel_buttons` (Save setup and Team setups share a row), `save_home_button`, `save_away_button`, `team_setup_row`, `team_setup_row_at`, plus `team_setup_column`
+- [x] session: `Screen.TEAM_SETUPS`, `OpenTeamSetups` / `DeployTeamSetup` / `SaveTeamSetup` / `DeleteFile`, `TeamSetupList` / `TeamSetupsView`, `open_team_setups`, `deploy_team_setup`, `save_team_setup`, `delete`; Del and the confirmation in the name box; a roster rename moves its folder; `rescan` lists the team setups
+- [x] render: `draw_team_setups`, the Team setups button, `DELETE_HINT` / `CONFIRM_HINT` in the name box, the new `MENU_HINT`
+- [x] app: `K_DELETE`, the four new requests in `_perform`, the TEAM_SETUPS branch of `_draw`
+- [x] README "Team setups" section and Del in "Naming rosters and setups"; status line in team_setups.md
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -119,3 +130,6 @@ Design: [comments.md](comments.md).
 - [x] Merging `worktree-player-tag` (Phase 11): main's HEAD `a1f0314` did not compile (it moved `case SaveSettings()` into `handle_event`, dropped key repeat and inlined `_run_frames` back into `run()`), so it was reverted first. The merge unified the name box's `session.Key` and the comments' `EditKey` into `EditKey`, and removed the duplicate `Session.type_text` and `_run_frames` that the auto-merge would have kept.
 - [x] `scripts/crop_tiles.py`: save the 1st and 3rd top-row `width//4` squares of an image ([docs](crop_tiles.md)).
 - [x] `scripts/crop_tiles.py` folder mode: crop every raw image in a folder into `sprites/home/<name>` (1st square) and `sprites/away/<name>` (3rd square) ([docs](crop_tiles.md)).
+- [x] Phase 12: `test_right_click_on_a_roster_opens_the_rename_box` needed `deletable=True`, since rename boxes now offer Del (the design expected no existing test to change).
+- [ ] `session.py` is about 1,345 lines after Phase 12 (the design estimated +150; it grew by about 450, mostly docstrings). Consider moving the name box (`_NameBox`, `type_text`, `key`) into its own module.
+- [ ] `app._run_frames` (61 lines) and `render._draw_pieces` (63) are over NASA rule 4's 60 (both were before Phase 12); split them with their next change.
