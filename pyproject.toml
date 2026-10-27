@@ -22,6 +22,20 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "black>=26.10.1",
+    "mypy>=2.4.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "ruff>=0.17.3",
 ]
+
+[tool.ruff.lint]
+# Reason: SIM118 reads Board.keys() as dict.keys(), but it's a method that
+# returns a tuple, so its "fix" would break the code.
+ignore = ["SIM118"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Reason: immutable NamedTuples are safe as default arguments.
+extend-immutable-calls = ["bb_sandbox.pitch.Square", "bb_sandbox.render.PitchSprite"]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]

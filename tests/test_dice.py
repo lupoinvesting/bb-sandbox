@@ -60,7 +60,7 @@ def test_a_seeded_rng_reaches_every_face_and_both_ends():
     blocks = {roll_dice(DICE[4], n, rng).faces[0] for n in range(200)}
     d16 = {roll_dice(DICE[3], n, rng).faces[0] for n in range(200)}
     assert blocks == set(BlockFace)
-    assert {min(D16), max(D16)} <= d16 and d16 <= set(D16)
+    assert {min(D16), max(D16)} <= d16 <= set(D16)
 
 
 def test_the_same_seed_rolls_the_same_faces():

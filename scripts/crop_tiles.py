@@ -18,7 +18,7 @@ from pathlib import Path
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
-import pygame  # noqa: E402  (must follow the env var above)
+import pygame  # must follow the env var above
 
 TILES_ACROSS = 4
 # (output suffix, square index from the left, 0-based)
@@ -158,8 +158,8 @@ def main(argv: list[str] | None = None) -> int:
             paths, errors = [], [str(error)]
     for path in paths:
         print(path)
-    for error in errors:
-        print(f"crop_tiles: {error}", file=sys.stderr)
+    for message in errors:
+        print(f"crop_tiles: {message}", file=sys.stderr)
     return 1 if errors else 0
 
 

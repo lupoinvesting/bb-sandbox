@@ -1,5 +1,7 @@
 """Tests for bb_sandbox.layout."""
 
+from itertools import pairwise
+
 import pytest
 
 from bb_sandbox.dice import DICE, MAX_DICE
@@ -157,7 +159,7 @@ def test_menu_fits_in_window():
     assert start.y + start.height <= height and start.x + start.width <= width
     columns = layout.menu_columns
     assert len(columns) == len(MenuList)
-    for left, right in zip(columns, columns[1:]):
+    for left, right in pairwise(columns):
         assert left.x + left.width < right.x
     assert columns[-1].x + columns[-1].width <= width
 
@@ -299,7 +301,7 @@ def test_save_button_and_message_line_stack_above_menu_button():
     layout = build_layout(32)
     panel = layout.panel
     stack = (layout.sandbox_message_line, layout.save_button, layout.menu_button)
-    for upper, lower in zip(stack, stack[1:]):
+    for upper, lower in pairwise(stack):
         assert upper.y + upper.height < lower.y
     for box in stack:
         assert panel.contains(box[:2])

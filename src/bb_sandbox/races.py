@@ -10,6 +10,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from bb_sandbox._files import first_error
 from bb_sandbox.roster import MAX_TEAM_SIZE, Profile
 
 RACES_FILE = Path(__file__).with_name("races.csv")
@@ -82,21 +83,6 @@ class Race(BaseModel):
     ]
 
 
-def _first_error(error: ValidationError) -> str:
-    """
-    Format the first pydantic error as `field: message`.
-
-    Args:
-        error (ValidationError): The validation failure.
-
-    Returns:
-        str: A short, human-readable description.
-    """
-    first = error.errors()[0]
-    field = ".".join(str(part) for part in first["loc"])
-    return f"{field}: {first['msg']}"
-
-
 def _parse_row(header: list[str], row: list[str], where: str) -> tuple[str, Positional]:
     """
     Validate one data row.
@@ -121,7 +107,7 @@ def _parse_row(header: list[str], row: list[str], where: str) -> tuple[str, Posi
     try:
         return race, Positional(**cells)
     except ValidationError as error:
-        raise RaceError(f"{where}: {_first_error(error)}") from error
+        raise RaceError(f"{where}: {first_error(error)}") from error
 
 
 def _read_by_race(path: Path) -> dict[str, list[Positional]]:

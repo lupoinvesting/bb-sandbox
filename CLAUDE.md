@@ -12,13 +12,15 @@ uv add --dev <package>          # Add dev dependency (e.g. pytest, pytest-cov, b
 uv run bb-sandbox               # Launch the Pygame sandbox (entry point bb_sandbox:main)
 uv run pytest --cov             # Run tests
 uv run black src tests          # Format
+uv run ruff check src tests scripts   # Lint (config in pyproject.toml)
+uv run mypy src scripts         # Type check (pydantic plugin; known backlog in docs/task.md)
 ```
 
 **Python version**: pinned to 3.13 (`.python-version`, `requires-python = ">=3.13,<3.14"`).
 Pygame 2.6.1 has no wheels for 3.14+, and this machine's default Python is 3.15, so do not raise the pin until Pygame ships newer wheels.
 Commit `pyproject.toml`, `uv.lock` and `.python-version`.
 
-**Scaffolding** (Phase 1, not done yet): `uv init --package --python 3.13`, set the `<3.14` cap in `pyproject.toml`, then `uv add pygame pydantic`. Code lives in `src/bb_sandbox/`.
+**Scaffolding** (Phase 1, done): `uv init --package --python 3.13`, the `<3.14` cap in `pyproject.toml`, then `uv add pygame pydantic`. Code lives in `src/bb_sandbox/`.
 
 ## Understanding codebase
 Read the PRD ([prompt.md](prompt.md)) before referencing the code base. It is gitignored, so it exists only locally.
@@ -32,11 +34,12 @@ Use Serena to search through the codebase. If you get any errors using Serena, r
 - [Dice roller](docs/dice.md)
 - [Player sprites](docs/sprites.md)
 - [Pitch image & options](docs/pitch_sprites.md)
-- [Ball carrier](docs/plans/ball-moves.md)
+- [Ball carrier](docs/ball-moves.md)
 - [Editable names](docs/names.md)
 - [Player comments](docs/comments.md)
 - [Crop tiles script](docs/crop_tiles.md)
 - [Team setups](docs/team_setups.md)
+- [Pitch annotations](docs/annotations.md)
 
 ## 🧪 Testing & Reliability
 - **Always create Pytest unit tests for new features** (functions, classes, routes, etc).

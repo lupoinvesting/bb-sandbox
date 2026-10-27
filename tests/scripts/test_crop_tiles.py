@@ -73,7 +73,7 @@ def test_out_folder_is_created(tmp_path):
 def test_width_not_divisible_by_four_is_floored(tmp_path):
     source = _make_image(tmp_path / "odd.png", 403, 200)
 
-    first, third = crop_tiles.crop_tiles(source)
+    _, third = crop_tiles.crop_tiles(source)
 
     assert pygame.image.load(third).get_size() == (100, 100)
     # The third square starts at x 200, the start of the third colour band.

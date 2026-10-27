@@ -16,7 +16,7 @@ from bb_sandbox.board import Board
 from bb_sandbox.builder import TEAM_BUDGET, RosterBuilder
 from bb_sandbox.dice import DICE, BlockFace, Roll
 from bb_sandbox.images import list_images
-from bb_sandbox.interaction import BALL, Drag, InteractionView, MenuItem
+from bb_sandbox.interaction import BALL, InteractionView, MenuItem
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Status
 from bb_sandbox.races import Positional, Race

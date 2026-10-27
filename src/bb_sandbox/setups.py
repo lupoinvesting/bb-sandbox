@@ -4,13 +4,13 @@ The only module (with roster and races) that touches pydantic; callers only see
 Board and SetupFileError.
 """
 
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from bb_sandbox._files import first_error, write_atomic
 from bb_sandbox.board import Board
 from bb_sandbox.pitch import (
     PITCH_COLUMNS,
@@ -23,7 +23,7 @@ from bb_sandbox.pitch import (
 )
 from bb_sandbox.roster import MAX_TEAM_SIZE, UNSAFE_NAME_CHARS, Player, Team
 
-VERSION = 1
+VERSION: Final = 1
 
 
 class SetupFileError(Exception):
@@ -77,21 +77,6 @@ class _SetupData(_Frozen):
     away: _TeamData
 
 
-def _first_error(error: ValidationError) -> str:
-    """
-    Format the first pydantic error as `field: message`.
-
-    Args:
-        error (ValidationError): The validation failure.
-
-    Returns:
-        str: A short, human-readable description.
-    """
-    first = error.errors()[0]
-    field = ".".join(str(part) for part in first["loc"])
-    return f"{field}: {first['msg']}"
-
-
 def _team_data(board: Board, side: Side) -> _TeamData:
     """
     Capture one team's roster and positions.
@@ -137,16 +122,9 @@ def save_setup(board: Board, path: Path) -> None:
         home=_team_data(board, Side.HOME),
         away=_team_data(board, Side.AWAY),
     )
-    temp = path.with_name(path.name + ".tmp")
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with temp.open("w", encoding="utf-8") as handle:
-            handle.write(data.model_dump_json(indent=2))
-        # Reason: replacing in one step means a failed save never leaves a
-        # half-written file in place of a good one.
-        os.replace(temp, path)
+        write_atomic(path, data.model_dump_json(indent=2))
     except OSError as error:
-        temp.unlink(missing_ok=True)
         raise SetupFileError(f"{path.name}: {error}") from error
 
 
@@ -210,7 +188,7 @@ def load_setup(path: Path) -> Board:
     except (OSError, UnicodeDecodeError) as error:
         raise SetupFileError(f"{path.name}: {error}") from error
     except ValidationError as error:
-        raise SetupFileError(f"{path.name}: {_first_error(error)}") from error
+        raise SetupFileError(f"{path.name}: {first_error(error)}") from error
 
     teams = {
         side: Team(

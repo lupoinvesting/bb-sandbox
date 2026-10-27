@@ -5,13 +5,15 @@ only see Profile, Player, Team and RosterError.
 """
 
 import csv
-import os
+import io
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, TextIO
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from bb_sandbox._files import first_error, write_atomic
 
 MAX_TEAM_SIZE = 16
 COLUMNS = ("name", "position", "ma", "st", "ag", "pa", "av", "skills")
@@ -118,21 +120,6 @@ class Team(BaseModel):
     ]
 
 
-def _first_error(error: ValidationError) -> str:
-    """
-    Format the first pydantic error as `field: message`.
-
-    Args:
-        error (ValidationError): The validation failure.
-
-    Returns:
-        str: A short, human-readable description.
-    """
-    first = error.errors()[0]
-    field = ".".join(str(part) for part in first["loc"])
-    return f"{field}: {first['msg']}"
-
-
 def _open_roster(path: Path) -> TextIO:
     """
     Open a roster CSV for reading.
@@ -213,7 +200,7 @@ def _read_team_rows(path: Path) -> tuple[str, list[Player]]:
                 players.append(Player(**dict(zip(header, row))))
             except ValidationError as error:
                 raise RosterError(
-                    f"{path.name} line {reader.line_num}: {_first_error(error)}"
+                    f"{path.name} line {reader.line_num}: {first_error(error)}"
                 ) from error
     return race, players
 
@@ -323,20 +310,14 @@ def save_team(team: Team, path: Path) -> None:
     Raises:
         RosterError: If the file can't be written.
     """
-    temp = path.with_name(path.name + ".tmp")
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow((RACE_KEY, team.race))
+    writer.writerow(HEADER)
+    writer.writerows(_player_row(player) for player in team.players)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # Reason: newline="" is required by csv, which writes its own line endings.
-        with temp.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.writer(handle)
-            writer.writerow((RACE_KEY, team.race))
-            writer.writerow(HEADER)
-            writer.writerows(_player_row(player) for player in team.players)
-        # Reason: replacing in one step means a failed save never leaves a
-        # half-written file in place of a good one.
-        os.replace(temp, path)
+        write_atomic(path, buffer.getvalue())
     except OSError as error:
-        temp.unlink(missing_ok=True)
         raise RosterError(f"{path.name}: {error}") from error
 
 

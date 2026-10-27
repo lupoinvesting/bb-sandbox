@@ -46,11 +46,11 @@ from bb_sandbox.roster import (
     read_race,
     save_team,
 )
-from bb_sandbox.setups import SetupFileError, list_setups, new_setup_path
-from bb_sandbox.setups import load_setup as read_setup
 from bb_sandbox.settings import Settings, SettingsError
 from bb_sandbox.settings import load_settings as read_settings
 from bb_sandbox.settings import save_settings as write_settings
+from bb_sandbox.setups import SetupFileError, list_setups, new_setup_path
+from bb_sandbox.setups import load_setup as read_setup
 from bb_sandbox.setups import save_setup as write_setup
 from bb_sandbox.team_setups import (
     TeamSetupError,

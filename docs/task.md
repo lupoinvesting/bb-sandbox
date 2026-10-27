@@ -99,17 +99,26 @@ Design: [team_setups.md](team_setups.md).
 - [x] app: `K_DELETE`, the four new requests in `_perform`, the TEAM_SETUPS branch of `_draw`
 - [x] README "Team setups" section and Del in "Naming rosters and setups"; status line in team_setups.md
 
+## Phase 13: Pitch Annotations
+Design: [annotations.md](annotations.md).
+- [ ] annotations: new module with `Arrow`, `Marks`, `toggle_arrow`, `toggle_circle`, `arrow_polygon`
+- [ ] interaction: injected `clock`, `DOUBLE_CLICK_SECONDS`, `mark_press`, `mark_release`, `clear_marks`, `InteractionView.marks` (with the preview arrow)
+- [ ] session: `right_click(pos, ctrl)` (plain → marks, Ctrl → player menu in the sandbox), `right_release`, `clear_marks` first in `_press_sandbox`; update the existing menu tests
+- [ ] render: `MARK_COLOUR`, `_draw_marks` on a pitch-sized `SRCALPHA` overlay after the pieces; headless screenshot check
+- [ ] app: Ctrl from `pygame.key.get_mods()` on a RIGHT press, `session.right_release` on a RIGHT release
+- [ ] README "Marking the pitch" section and "Ctrl + right-click" for the player menu; status line in annotations.md
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
 - [x] Highlight the Endzones (columns 0 and 25) in their own colour.
 - [x] Create `pitch.py` and move `PITCH_COLUMNS`/`PITCH_ROWS` into it (first Phase 2 step of `docs/design.md`).
 - [x] Add `rosters/example.csv` as the format reference and a roster for manual testing.
-- [ ] No linter or type checker enforces NASA rule 10 ("warnings are errors"); only black is configured.
+- [x] No linter or type checker enforces NASA rule 10 ("warnings are errors"); only black is configured. Added `ruff` (clean) and `mypy` with the pydantic plugin (backlog below).
 - [ ] `docs/architecture.md`, a deliverable of `docs/design.md`, was never created; the design currently lives in `docs/design.md`.
 - [ ] CLAUDE.md names `prompt.md` as the PRD, but the PRD is `docs/prd.md`.
 - [x] Two saves of the same teams (or two rosters of the same race) within one second get the same timestamped name, so the second replaces the first. Fixed by Phase 10: a save never overwrites; the box shows `<name> already exists`.
-- [ ] `setups/` is not in `.gitignore`; decide whether saved setups belong in the repo.
+- [x] `setups/` is not in `.gitignore`; decide whether saved setups belong in the repo. It is ignored now.
 - [x] Race (CSV metadata line) and position (column) on rosters, shown on the main menu (race in the list, team preview below it).
 - [ ] Show position and race in the sandbox hover panel.
 - [ ] The team preview shrinks every menu list to 7 rows, including Saved setups, which has no preview; give SETUPS its own row count if saves pile up.
@@ -117,15 +126,15 @@ Design: [team_setups.md](team_setups.md).
 - [ ] `build_layout` is 137 lines (108 before Phase 5), over NASA rule 4's 60; split it, e.g. into pitch, panel and menu regions.
 - [ ] Builder rows clip long skill lists at about 250px, so Big Guys lose most of theirs (Rotspawn's need 841px); show the full list for the positional under the cursor.
 - [ ] `rosters/example.csv` uses Second Season Human stats (Catcher ST 2/PA 5+, Thrower PA 2+, Blitzer without Tackle, Ogre Loner (4+)) and gives its Halfling no PA. These differ from the Third Season race database.
-- [ ] Add the five block dice PNGs to `sprites/dice/` (names in the README). The folder doesn't exist until then, so every block face shows its name.
+- [x] Add the five block dice PNGs to `sprites/dice/` (names in the README). The folder doesn't exist until then, so every block face shows its name.
 - [x] `sprites/home/sprite-names.txt` and `sprites/away/sprite-names.txt` list `default.png` and the 125 position file names (force-added; a position shared by races is listed under its first race).
 - [ ] Phase 7: add a test that the two `sprite-names.txt` lists match `races.csv`.
 - [x] `run()` is 59 lines after Phase 7, one under NASA rule 4's 60; move its frame loop into a helper with the next change to it.
-- [ ] The five dice PNGs are now in `sprites/dice/`, but `.gitignore`'s `sprites/` ignores that folder too, so they can't be committed until they are force-added or the folder is re-included.
+- [x] The five dice PNGs are now in `sprites/dice/`, but `.gitignore`'s `sprites/` ignores that folder too, so they can't be committed until they are force-added or the folder is re-included. `.gitignore` now uses `sprites/*` + `!sprites/dice/` (and `rosters/*` + `!rosters/example.csv`); the old `*sprites/dice/` line lacked the `!`.
 - [x] Move the block dice images from `src/bb_sandbox/sprites/dice/` to `sprites/dice/`, next to the player images; `DICE_SPRITES_DIR` is now relative to the folder the app is launched from.
 - [x] Phase 11 (comments) was built on `42d4b20`, before Phase 9 (ball carrier, `25c0383`). Both reshape `draw_sandbox`'s ball and drag drawing: on merge, move Phase 9's `_draw_dragged` and carried-ball check into `_draw_pieces`, and pass the comment to the dragged token. Done in the merge.
 - [ ] Now that the dice images are user files in `sprites/` too, decide whether a broken one should still stop the app or, like a broken player image, only be reported on the message line.
-- [ ] The pitch design lives in `docs/plans/pitch_sprites.md`, but Phase 8's "Design:" link and CLAUDE.md's Documentation list point to `docs/pitch_sprites.md`, which doesn't exist.
+- [x] The pitch design lives in `docs/plans/pitch_sprites.md`, but Phase 8's "Design:" link and CLAUDE.md's Documentation list point to `docs/pitch_sprites.md`, which doesn't exist.
 - [ ] `build_layout` is 143 lines after Phase 8 (6 more for the Options button and rows); still to split (item above).
 - [x] Merging `worktree-player-tag` (Phase 11): main's HEAD `a1f0314` did not compile (it moved `case SaveSettings()` into `handle_event`, dropped key repeat and inlined `_run_frames` back into `run()`), so it was reverted first. The merge unified the name box's `session.Key` and the comments' `EditKey` into `EditKey`, and removed the duplicate `Session.type_text` and `_run_frames` that the auto-merge would have kept.
 - [x] `scripts/crop_tiles.py`: save the 1st and 3rd top-row `width//4` squares of an image ([docs](crop_tiles.md)).
@@ -133,3 +142,9 @@ Design: [team_setups.md](team_setups.md).
 - [x] Phase 12: `test_right_click_on_a_roster_opens_the_rename_box` needed `deletable=True`, since rename boxes now offer Del (the design expected no existing test to change).
 - [ ] `session.py` is about 1,345 lines after Phase 12 (the design estimated +150; it grew by about 450, mostly docstrings). Consider moving the name box (`_NameBox`, `type_text`, `key`) into its own module.
 - [ ] `app._run_frames` (61 lines) and `render._draw_pieces` (63) are over NASA rule 4's 60 (both were before Phase 12); split them with their next change.
+- [x] `/sc:analyze` follow-up: the four file modules shared copies of `_first_error` and the temp-file + `os.replace` write; both now live in `bb_sandbox/_files.py` (`first_error`, `write_atomic`). A temp file that can't be removed no longer hides the write's own error, and JSON files are written with `
+` line endings on every platform.
+- [ ] `mypy src scripts` reports 36 errors, all `X | None` fields (`Session._board`/`_interaction`/`_builder`, `Interaction._grab`/`_menu`/`_pos`) that the current screen guarantees are set; none is a real bug. Narrow them (asserts or per-screen state) so mypy can run clean.
+- [ ] `names.free_path` checks `exists()` and the save then `os.replace`s, so a file created between the two is overwritten; "never overwrites" holds only for this app's own saves.
+- [ ] A team loaded from a saved setup keeps its stored name, so Save team setup creates `rosters/<name>/` even when no such roster exists, or attaches to an unrelated roster that now has that name.
+- [ ] `session.py` (1,346 lines) and `render.py` (1,412) each cover every screen; consider splitting them per screen with `Session` as a router.

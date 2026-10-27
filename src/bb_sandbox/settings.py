@@ -3,13 +3,14 @@
 Callers only see Settings and SettingsError; pydantic stays inside.
 """
 
-import os
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-SETTINGS_VERSION = 1
+from bb_sandbox._files import first_error, write_atomic
+
+SETTINGS_VERSION: Final = 1
 
 
 class SettingsError(Exception):
@@ -73,11 +74,7 @@ def load_settings(path: Path) -> Settings:
     except (OSError, UnicodeDecodeError) as error:
         raise SettingsError(f"{path.name}: {error}") from error
     except ValidationError as error:
-        first = error.errors()[0]
-        field = ".".join(str(part) for part in first["loc"])
-        # Reason: a JSON syntax error has no field, so its message stands alone.
-        where = f"{field}: " if field else ""
-        raise SettingsError(f"{path.name}: {where}{first['msg']}") from error
+        raise SettingsError(f"{path.name}: {first_error(error)}") from error
 
 
 def save_settings(path: Path, settings: Settings) -> None:
@@ -92,13 +89,7 @@ def save_settings(path: Path, settings: Settings) -> None:
         SettingsError: If the file can't be written; the message starts with
             the file name.
     """
-    temp = path.with_name(path.name + ".tmp")
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
-        # Reason: replacing in one step means a failed save never leaves a
-        # half-written file in place of a good one.
-        os.replace(temp, path)
+        write_atomic(path, settings.model_dump_json(indent=2))
     except OSError as error:
-        temp.unlink(missing_ok=True)
         raise SettingsError(f"{path.name}: {error}") from error

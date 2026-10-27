@@ -32,7 +32,7 @@
 
 * **Drag and Drop (Free Drag, Snap on Release):** Users can click and hold the left mouse button to pick up a player sprite or the ball. The dragged object moves smoothly with the cursor and only snaps to the center of a valid grid square upon releasing the left mouse button.
 * **Ball Carrier:** Dragging the player on the ball's square takes the ball along; dropped into a dugout box, the ball stays on the square. Dragging the ball itself still moves it alone. Design: [plans/ball-moves.md](plans/ball-moves.md).
-* **Context Menu / State Toggles:** Right-clicking a player sprite cycles or selects their current physical state:
+* **Context Menu / State Toggles:** Ctrl + right-clicking a player sprite (a plain right-click on the pitch draws marks, §3.12) cycles or selects their current physical state:
 * **Prone:** Sprite image is rotated 90 degrees (flipped on its side).
 * **Stunned:** Sprite image is rotated 180 degrees (upside down).
 * **Reserve / KO / Injured:** Player is removed from the active pitch and placed into that box of their team's bottom area.
@@ -123,6 +123,16 @@ Design: [comments.md](comments.md).
 
 Design: [team_setups.md](team_setups.md).
 
+### 3.12. Pitch Annotations
+
+* **Arrows:** Right-dragging from one pitch square to another draws a translucent arrow from square centre to square centre, as on chess.com. A preview follows the cursor while the button is held. Drawing the same arrow again removes it.
+* **Rings:** Double right-clicking a player on the pitch draws a ring around them; doing it again removes the ring.
+* **Clearing:** Any left click on the sandbox clears every mark, then does what it did before (drag, menu pick, button, dice roll).
+* **Pitch Only:** Marks start and end on pitch squares and are drawn clipped to the pitch. They never change the board and are not saved.
+* **Player Menu:** The player menu (§3.3) moves to Ctrl + right-click. Right-click renaming on the main menu and the Team setups screen is unchanged.
+
+Design: [annotations.md](annotations.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -192,3 +202,9 @@ Design: [team_setups.md](team_setups.md).
 * Build the team setups module: capture a team's positions, deploy them (mirrored for Away) and store them in `rosters/<roster>/`.
 * Add the Team setups screen, opened from the sandbox, to deploy, save and rename team setups.
 * Delete team setups, saved setups and rosters with Del in the rename box, after a confirmation.
+
+**Phase 13: Pitch Annotations**
+
+* Build the annotations module: arrows, rings, their toggles and the arrow polygon.
+* Draw arrows with a right-drag and rings with a double right-click; clear them with any left click.
+* Move the player menu to Ctrl + right-click.
