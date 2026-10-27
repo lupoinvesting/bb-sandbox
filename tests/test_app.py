@@ -6,6 +6,7 @@ import pygame
 import pytest
 
 from bb_sandbox import app
+from bb_sandbox.annotations import Arrow
 from bb_sandbox.app import _draw, handle_event, run
 from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
@@ -45,6 +46,22 @@ def _click(box, button=1):
     return pygame.event.Event(
         pygame.MOUSEBUTTONDOWN, button=button, pos=(box.x + 2, box.y + 2)
     )
+
+
+@pytest.fixture
+def no_mods():
+    # Reason: a right press reads Ctrl from pygame.key.get_mods(), which needs
+    # Pygame initialised, as run() does; the test starts with no keys held.
+    pygame.init()
+    pygame.key.set_mods(pygame.KMOD_NONE)
+    yield
+    pygame.quit()
+
+
+@pytest.fixture
+def ctrl_held(no_mods):
+    # Reason: the player menu opens on Ctrl + right-click.
+    pygame.key.set_mods(pygame.KMOD_LCTRL)
 
 
 def _key(key):
@@ -92,14 +109,14 @@ def test_handle_event_drives_menu_to_sandbox(in_tmp):
     assert session.screen is Screen.SANDBOX
 
 
-def test_handle_event_ignores_right_click_and_reports_quit(in_tmp):
+def test_handle_event_ignores_right_click_and_reports_quit(in_tmp, no_mods):
     session = Session(build_layout(), in_tmp, in_tmp, RACES, **_files(in_tmp))
     assert handle_event(session, _click(build_layout().start_button, button=3))
     assert session.message == ""
     assert not handle_event(session, pygame.event.Event(pygame.QUIT))
 
 
-def test_handle_event_drives_drag_and_context_menu(in_tmp):
+def test_handle_event_drives_drag_and_context_menu(in_tmp, ctrl_held):
     rosters = in_tmp / "rosters"
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
@@ -379,7 +396,7 @@ def test_draw_falls_back_to_the_pitch_sprite_problem(in_tmp, frame):
     )
 
 
-def test_typed_keys_rename_a_roster_and_rescan(in_tmp):
+def test_typed_keys_rename_a_roster_and_rescan(in_tmp, no_mods):
     rosters = in_tmp / "rosters"
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
@@ -420,7 +437,7 @@ def test_draw_shows_the_name_box_last(in_tmp, frame):
     assert draw(session).get_at(corner)[:3] == PANEL_FILL
 
 
-def test_handle_event_types_a_comment(in_tmp):
+def test_handle_event_types_a_comment(in_tmp, ctrl_held):
     rosters = in_tmp / "rosters"
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
@@ -494,7 +511,7 @@ def test_a_focus_event_lists_a_copied_team_setup(in_tmp):
     assert session.team_setups_view().home.setups == ("Cage",)
 
 
-def test_right_click_del_and_return_delete_a_team_setup(in_tmp):
+def test_right_click_del_and_return_delete_a_team_setup(in_tmp, no_mods):
     layout, session = _sandbox(in_tmp)
     cage = _cage(in_tmp)
     handle_event(session, _click(layout.team_setups_button))
@@ -507,7 +524,7 @@ def test_right_click_del_and_return_delete_a_team_setup(in_tmp):
     assert session.team_setups_view().home.setups == ()
 
 
-def test_del_on_the_main_menu_deletes_a_roster_and_its_team_setups(in_tmp):
+def test_del_on_the_main_menu_deletes_a_roster_and_its_team_setups(in_tmp, no_mods):
     layout, session = _sandbox(in_tmp)
     cage = _cage(in_tmp)
     handle_event(session, _click(layout.menu_button))
@@ -519,7 +536,7 @@ def test_del_on_the_main_menu_deletes_a_roster_and_its_team_setups(in_tmp):
     assert menu.rosters == () and menu.home is None and menu.away is None
 
 
-def test_delete_in_a_comment_edit_changes_nothing(in_tmp):
+def test_delete_in_a_comment_edit_changes_nothing(in_tmp, ctrl_held):
     layout, session = _sandbox(in_tmp)
     key = PlayerKey(Side.HOME, 0)
     session.board.place(key, Square(4, 4))
@@ -546,3 +563,25 @@ def test_draw_shows_the_team_setups_screen(in_tmp, frame):
     handle_event(session, _click(save))
     box = layout.name_box
     assert draw(session).get_at((box.x + 3, box.y + box.height - 3))[:3] == PANEL_FILL
+
+
+def _right(event_type, box):
+    centre = (box.x + box.width // 2, box.y + box.height // 2)
+    return pygame.event.Event(event_type, button=3, pos=centre)
+
+
+def test_right_down_and_up_on_two_squares_draw_an_arrow(in_tmp, no_mods):
+    layout, session = _sandbox(in_tmp)
+    assert handle_event(session, _right(pygame.MOUSEBUTTONDOWN, layout.square(2, 2)))
+    assert handle_event(session, _right(pygame.MOUSEBUTTONUP, layout.square(5, 3)))
+    arrow = Arrow(Square(2, 2), Square(5, 3))
+    assert session.interaction.view().marks.arrows == (arrow,)
+    assert session.interaction.view().menu == ()
+
+
+def test_ctrl_right_press_opens_the_player_menu(in_tmp, ctrl_held):
+    layout, session = _sandbox(in_tmp)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
+    handle_event(session, _right(pygame.MOUSEBUTTONDOWN, layout.square(4, 4)))
+    assert len(session.interaction.view().menu) == 7
+    assert session.interaction.view().marks.arrows == ()

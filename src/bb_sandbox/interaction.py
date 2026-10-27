@@ -1,16 +1,23 @@
-"""Pointer input on the sandbox: drag and drop, hover, the right-click menu and
-editing a player's comment.
+"""Pointer input on the sandbox: drag and drop, hover, the right-click menu,
+editing a player's comment and pitch marks.
 
 Interaction turns screen positions into Board commands. It never touches Pygame;
 render draws whatever view() describes.
 """
 
+import time
+from collections.abc import Callable
 from enum import Enum
 from typing import NamedTuple
 
+from bb_sandbox.annotations import Arrow, Marks, toggle_arrow, toggle_circle
 from bb_sandbox.board import MAX_COMMENT_LENGTH, Board, comment_char_ok
 from bb_sandbox.layout import Box, Layout
-from bb_sandbox.pitch import Dugout, PlayerKey, Status
+from bb_sandbox.pitch import Dugout, PlayerKey, Square, Status
+
+# Reason: Pygame 2.6.1's mouse events carry no click count, so double clicks
+# are timed here, from the first click's release to the second's.
+DOUBLE_CLICK_SECONDS = 0.4
 
 
 class Ball(Enum):
@@ -98,12 +105,15 @@ class InteractionView(NamedTuple):
         dragged (Drag | None): The item being dragged; its origin is drawn empty.
         menu (tuple[MenuItem, ...]): The open context menu, or () if closed.
         editing (CommentEdit | None): The comment being typed, or None.
+        marks (Marks): The pitch marks, plus the preview arrow while the right
+            button is held over another pitch square.
     """
 
     hovered: PlayerKey | None
     dragged: Drag | None
     menu: tuple[MenuItem, ...]
     editing: CommentEdit | None = None
+    marks: Marks = Marks()
 
 
 class _Grab(NamedTuple):
@@ -121,13 +131,20 @@ class Interaction:
     The board only changes on release, menu picks or a comment commit.
     """
 
-    def __init__(self, board: Board, layout: Layout) -> None:
+    def __init__(
+        self,
+        board: Board,
+        layout: Layout,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         """
-        Start with nothing dragged, hovered, open or being edited.
+        Start with nothing dragged, hovered, open, being edited or marked.
 
         Args:
             board (Board): The board to change.
             layout (Layout): Screen geometry for hit tests.
+            clock (Callable[[], float]): Seconds, for timing double clicks;
+                tests pass a fake one.
         """
         self._board = board
         self._layout = layout
@@ -135,6 +152,10 @@ class Interaction:
         self._grab: _Grab | None = None
         self._menu: tuple[PlayerKey, tuple[Box, ...]] | None = None
         self._edit: CommentEdit | None = None
+        self._clock = clock
+        self._marks = Marks()
+        self._mark_start: Square | None = None
+        self._last_click: tuple[Square, float] | None = None
 
     def press(self, pos: tuple[int, int]) -> None:
         """
@@ -223,6 +244,61 @@ class Interaction:
         boxes = self._layout.context_menu(anchor, len(MENU_ACTIONS))
         self._menu = (key, boxes)
 
+    def mark_press(self, pos: tuple[int, int]) -> None:
+        """
+        Start a mark: remember the pitch square under the cursor.
+
+        An open comment is saved and any open menu closes first. Ignored during
+        a left drag; off the pitch there is no start, so the release draws nothing.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+        """
+        self._pos = pos
+        if self._grab is not None:
+            return
+        self.commit()
+        self._menu = None
+        self._mark_start = self._layout.square_at(pos)
+
+    def mark_release(self, pos: tuple[int, int]) -> None:
+        """
+        Finish a mark: an arrow to another square, or a click on the start
+        square; two clicks on the same player within DOUBLE_CLICK_SECONDS
+        toggle a ring.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+        """
+        self._pos = pos
+        start, self._mark_start = self._mark_start, None
+        square = self._layout.square_at(pos)
+        if start is None or square is None:
+            return
+        if square != start:
+            self._marks = toggle_arrow(self._marks, Arrow(start, square))
+            return
+        now = self._clock()
+        last = self._last_click
+        if (
+            last is not None
+            and last[0] == square
+            and now - last[1] <= DOUBLE_CLICK_SECONDS
+            and self._board.player_at(square) is not None
+        ):
+            self._marks = toggle_circle(self._marks, square)
+            # Reason: the next click starts a new pair, so a triple click
+            # toggles the ring only once.
+            self._last_click = None
+        else:
+            self._last_click = (square, now)
+
+    def clear_marks(self) -> None:
+        """Remove every mark and forget a mark in progress and the last click."""
+        self._marks = Marks()
+        self._mark_start = None
+        self._last_click = None
+
     def type_text(self, text: str) -> None:
         """
         Add typed characters to the open comment; does nothing if none is open.
@@ -273,8 +349,8 @@ class Interaction:
         Describe the pointer state for drawing.
 
         Returns:
-            InteractionView: Hovered player, dragged item, open menu and the
-                comment being typed.
+            InteractionView: Hovered player, dragged item, open menu, the
+                comment being typed and the marks.
         """
         dragged = None
         hovered = None
@@ -295,7 +371,24 @@ class Interaction:
                 MenuItem(label, box)
                 for (label, _), box in zip(MENU_ACTIONS, self._menu[1])
             )
-        return InteractionView(hovered, dragged, menu, self._edit)
+        return InteractionView(hovered, dragged, menu, self._edit, self._shown_marks())
+
+    def _shown_marks(self) -> Marks:
+        """
+        Return the marks with the preview arrow added while one is being drawn.
+
+        Returns:
+            Marks: The marks to draw.
+        """
+        if self._mark_start is None or self._pos is None:
+            return self._marks
+        square = self._layout.square_at(self._pos)
+        if square is None or square == self._mark_start:
+            return self._marks
+        preview = Arrow(self._mark_start, square)
+        if preview in self._marks.arrows:
+            return self._marks
+        return self._marks._replace(arrows=self._marks.arrows + (preview,))
 
     def _choose(self, pos: tuple[int, int]) -> None:
         """

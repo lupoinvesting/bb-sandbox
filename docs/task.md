@@ -101,12 +101,12 @@ Design: [team_setups.md](team_setups.md).
 
 ## Phase 13: Pitch Annotations
 Design: [annotations.md](annotations.md).
-- [ ] annotations: new module with `Arrow`, `Marks`, `toggle_arrow`, `toggle_circle`, `arrow_polygon`
-- [ ] interaction: injected `clock`, `DOUBLE_CLICK_SECONDS`, `mark_press`, `mark_release`, `clear_marks`, `InteractionView.marks` (with the preview arrow)
-- [ ] session: `right_click(pos, ctrl)` (plain → marks, Ctrl → player menu in the sandbox), `right_release`, `clear_marks` first in `_press_sandbox`; update the existing menu tests
-- [ ] render: `MARK_COLOUR`, `_draw_marks` on a pitch-sized `SRCALPHA` overlay after the pieces; headless screenshot check
-- [ ] app: Ctrl from `pygame.key.get_mods()` on a RIGHT press, `session.right_release` on a RIGHT release
-- [ ] README "Marking the pitch" section and "Ctrl + right-click" for the player menu; status line in annotations.md
+- [x] annotations: new module with `Arrow`, `Marks`, `toggle_arrow`, `toggle_circle`, `arrow_polygon`
+- [x] interaction: injected `clock`, `DOUBLE_CLICK_SECONDS`, `mark_press`, `mark_release`, `clear_marks`, `InteractionView.marks` (with the preview arrow)
+- [x] session: `right_click(pos, ctrl)` (plain → marks, Ctrl → player menu in the sandbox), `right_release`, `clear_marks` first in `_press_sandbox`; update the existing menu tests
+- [x] render: `MARK_COLOUR`, `_draw_marks` on a pitch-sized `SRCALPHA` overlay after the pieces; headless screenshot check
+- [x] app: Ctrl from `pygame.key.get_mods()` on a RIGHT press, `session.right_release` on a RIGHT release
+- [x] README "Marking the pitch" section and "Ctrl + right-click" for the player menu; status line in annotations.md
 
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
@@ -144,7 +144,8 @@ Design: [annotations.md](annotations.md).
 - [ ] `app._run_frames` (61 lines) and `render._draw_pieces` (63) are over NASA rule 4's 60 (both were before Phase 12); split them with their next change.
 - [x] `/sc:analyze` follow-up: the four file modules shared copies of `_first_error` and the temp-file + `os.replace` write; both now live in `bb_sandbox/_files.py` (`first_error`, `write_atomic`). A temp file that can't be removed no longer hides the write's own error, and JSON files are written with `
 ` line endings on every platform.
-- [ ] `mypy src scripts` reports 36 errors, all `X | None` fields (`Session._board`/`_interaction`/`_builder`, `Interaction._grab`/`_menu`/`_pos`) that the current screen guarantees are set; none is a real bug. Narrow them (asserts or per-screen state) so mypy can run clean.
+- [ ] `mypy src scripts` reports 37 errors (36 + `clear_marks` in Phase 13's `_press_sandbox`), all `X | None` fields (`Session._board`/`_interaction`/`_builder`, `Interaction._grab`/`_menu`/`_pos`) that the current screen guarantees are set; none is a real bug. Narrow them (asserts or per-screen state) so mypy can run clean.
 - [ ] `names.free_path` checks `exists()` and the save then `os.replace`s, so a file created between the two is overwritten; "never overwrites" holds only for this app's own saves.
 - [ ] A team loaded from a saved setup keeps its stored name, so Save team setup creates `rosters/<name>/` even when no such roster exists, or attaches to an unrelated roster that now has that name.
 - [ ] `session.py` (1,346 lines) and `render.py` (1,412) each cover every screen; consider splitting them per screen with `Session` as a router.
+- [ ] `docs/comments.md` still says the player menu opens on a plain right-click; since Phase 13 it is Ctrl + right-click.

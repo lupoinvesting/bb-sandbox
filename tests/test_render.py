@@ -4,6 +4,7 @@ import pygame
 import pytest
 
 from bb_sandbox import render
+from bb_sandbox.annotations import Arrow, Marks
 from bb_sandbox.board import BALL_START, Board
 from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, BlockFace, Roll
@@ -1127,3 +1128,48 @@ def test_the_field_has_no_caret_while_the_box_asks(font):
     assert field_colours(NameView("Rename roster", "", "", True)) != empty
     asking = NameView("Delete roster and its team setups?", "", "", True, True)
     assert field_colours(asking) == empty
+
+
+def _marked(board, marks):
+    return _sandbox(board, EMPTY_VIEW._replace(marks=marks))
+
+
+def _changed(before, after, box):
+    return [
+        (x, y)
+        for x in range(box.x, box.x + box.width)
+        for y in range(box.y, box.y + box.height)
+        if before.get_at((x, y)) != after.get_at((x, y))
+    ]
+
+
+def test_arrow_and_ring_change_pixels_inside_the_pitch(font):
+    board = Board(_team(1), _team(1))
+    plain, layout = _sandbox(board)
+    arrow = Arrow(Square(2, 2), Square(6, 2))
+    arrowed, _ = _marked(board, Marks(arrows=(arrow,)))
+    middle = _center_of(layout.square(4, 2))
+    assert arrowed.get_at(middle) != plain.get_at(middle)
+    ringed, _ = _marked(board, Marks(circles=(Square(10, 7),)))
+    box = layout.square(10, 7)
+    edge = (box.x + 2, box.y + box.height // 2)
+    assert ringed.get_at(edge) != plain.get_at(edge)
+    # The ring leaves the square's centre alone.
+    assert ringed.get_at(_center_of(box)) == plain.get_at(_center_of(box))
+
+
+def test_ring_on_a_corner_square_stays_inside_the_pitch(font):
+    board = Board(_team(1), _team(1))
+    plain, layout = _sandbox(board)
+    ringed, _ = _marked(board, Marks(circles=(Square(0, 0), Square(25, 14))))
+    pitch = layout.pitch
+    changed = _changed(plain, ringed, Box(0, 0, *layout.window_size))
+    assert changed
+    assert all(pitch.contains(point) for point in changed)
+
+
+def test_no_marks_draw_the_same_frame_as_before(font):
+    board = Board(_team(1), _team(1))
+    plain, layout = _sandbox(board)
+    unmarked, _ = _marked(board, Marks())
+    assert not _changed(plain, unmarked, Box(0, 0, *layout.window_size))

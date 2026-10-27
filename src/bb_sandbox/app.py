@@ -130,9 +130,13 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
     elif event.type == pygame.KEYDOWN and event.key in KEYS:
         _perform(session, session.key(KEYS[event.key]))
     elif event.type == pygame.MOUSEBUTTONDOWN and event.button == RIGHT_BUTTON:
-        session.right_click(event.pos)
+        # Reason: Ctrl is read here so session and interaction stay free of Pygame.
+        ctrl = bool(pygame.key.get_mods() & pygame.KMOD_CTRL)
+        session.right_click(event.pos, ctrl=ctrl)
     elif event.type == pygame.MOUSEBUTTONUP and event.button == LEFT_BUTTON:
         session.release(event.pos)
+    elif event.type == pygame.MOUSEBUTTONUP and event.button == RIGHT_BUTTON:
+        session.right_release(event.pos)
     elif event.type == pygame.MOUSEMOTION:
         session.move(event.pos)
     elif event.type == pygame.WINDOWFOCUSGAINED:

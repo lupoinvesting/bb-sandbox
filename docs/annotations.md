@@ -9,7 +9,7 @@ Marks only exist on the pitch. They are never saved and never change the board.
 
 The player menu (status, dugout boxes, Comment) moves from a plain right-click to **Ctrl + right-click**.
 
-Status: designed, not built (Phase 13 in [task.md](task.md)); the requirements are §3.12 of the [PRD](prd.md).
+Status: built (Phase 13 in [task.md](task.md)); the requirements are §3.12 of the [PRD](prd.md).
 
 ## Decisions
 

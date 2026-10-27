@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pytest
 
+from bb_sandbox.annotations import Arrow, Marks
 from bb_sandbox.dice import DICE
 from bb_sandbox.interaction import EditKey
 from bb_sandbox.layout import MenuList, build_layout
@@ -201,7 +202,7 @@ def test_sandbox_forwards_pointer_input(session):
     session.release(_click(LAYOUT.square(4, 4)))
     assert session.board.square_of(key) == Square(4, 4)
 
-    session.right_click(_click(LAYOUT.square(4, 4)))
+    session.right_click(_click(LAYOUT.square(4, 4)), ctrl=True)
     assert len(session.interaction.view().menu) == 7
 
     session.press(_click(LAYOUT.menu_button))
@@ -302,7 +303,10 @@ def test_clicks_and_pointer_input_are_ignored_while_the_box_is_open(session):
     _sandbox(session)
     session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
     session.press(_click(LAYOUT.save_button))
+    session.right_click(_click(LAYOUT.square(4, 4)), ctrl=True)
     session.right_click(_click(LAYOUT.square(4, 4)))
+    session.right_release(_click(LAYOUT.square(8, 8)))
+    assert session.interaction.view().marks == Marks()
     session.press(_click(LAYOUT.square(4, 4)))
     session.move(_click(LAYOUT.square(8, 8)))
     session.release(_click(LAYOUT.square(8, 8)))
@@ -582,7 +586,7 @@ def test_a_roll_starts_no_drag_and_leaves_the_menu_and_message(session):
     session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
     _save_setup(session)
     message = session.message
-    session.right_click(_click(LAYOUT.square(4, 4)))
+    session.right_click(_click(LAYOUT.square(4, 4)), ctrl=True)
     session.press(_dice(0))
     session.move(_click(LAYOUT.square(8, 8)))
     view = session.interaction.view()
@@ -734,7 +738,7 @@ def test_a_failed_settings_save_becomes_the_message_and_keeps_the_choice(tmp_pat
 def _start_comment(session, text):
     _sandbox(session)
     session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
-    session.right_click(_click(LAYOUT.square(4, 4)))
+    session.right_click(_click(LAYOUT.square(4, 4)), ctrl=True)
     session.press(_click(session.interaction.view().menu[-1].box))
     session.type_text(text)
 
@@ -886,7 +890,7 @@ def test_back_keeps_the_board_and_the_roll_and_closes_the_menu(session):
     session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
     session.press(_dice(0))
     roll = session.last_roll
-    session.right_click(_click(LAYOUT.square(4, 4)))
+    session.right_click(_click(LAYOUT.square(4, 4)), ctrl=True)
     session.press(_click(LAYOUT.team_setups_button))
     session.open_team_setups()
     assert session.last_roll == roll
@@ -1170,3 +1174,45 @@ def test_deleting_a_roster_whose_name_cant_be_a_folder_keeps_that_folder(tmp_pat
     assert not (tmp_path / "orcs.v2.csv").exists()
     # The app never uses a folder with that name, so it doesn't touch it.
     assert (tmp_path / "orcs.v2" / "Cage.json").is_file()
+
+
+def _arrow(session, start, end):
+    session.right_click(_click(LAYOUT.square(*start)))
+    session.move(_click(LAYOUT.square(*end)))
+    session.right_release(_click(LAYOUT.square(*end)))
+
+
+def test_plain_right_drag_in_the_sandbox_draws_an_arrow(session):
+    _sandbox(session)
+    _arrow(session, (2, 2), (5, 3))
+    arrow = Arrow(Square(2, 2), Square(5, 3))
+    assert session.interaction.view().marks.arrows == (arrow,)
+    assert session.interaction.view().menu == ()
+
+
+def test_ctrl_right_click_opens_the_player_menu(session):
+    _sandbox(session)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(4, 4))
+    session.right_click(_click(LAYOUT.square(4, 4)))
+    assert session.interaction.view().menu == ()
+    session.right_click(_click(LAYOUT.square(4, 4)), ctrl=True)
+    assert len(session.interaction.view().menu) == 7
+
+
+@pytest.mark.parametrize("where", ["pitch", "dice", "save"])
+def test_a_left_press_clears_the_marks(session, where):
+    _sandbox(session)
+    _arrow(session, (2, 2), (5, 3))
+    target = {
+        "pitch": _click(LAYOUT.square(10, 10)),
+        "dice": _dice(0),
+        "save": _click(LAYOUT.save_button),
+    }[where]
+    session.press(target)
+    assert session.interaction.view().marks == Marks()
+
+
+def test_plain_right_click_on_the_menu_still_opens_the_rename_box(session):
+    session.right_click(_row(MenuList.AWAY_ROSTERS, 2))
+    session.right_release(_row(MenuList.AWAY_ROSTERS, 2))
+    assert session.name_view is not None

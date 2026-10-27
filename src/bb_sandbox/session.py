@@ -741,6 +741,9 @@ class Session:
             FileRequest | None: OpenTeamSetups for the Team setups button,
                 else None; Save opens the name box.
         """
+        # Reason: any left press on the sandbox clears the pitch marks, so a
+        # player moved by a left drag never leaves a stale ring behind.
+        self._interaction.clear_marks()
         # Reason: Save setup, Team setups and Main menu first save an open
         # comment, so it is in the file and outlives the pointer input; a dice
         # click leaves the edit open.
@@ -1018,15 +1021,17 @@ class Session:
         if self._interaction is not None and self._name_box is None:
             self._interaction.move(pos)
 
-    def right_click(self, pos: tuple[int, int]) -> None:
+    def right_click(self, pos: tuple[int, int], ctrl: bool = False) -> None:
         """
-        Handle a right click: rename or delete a file on the main menu or the
-        Team setups screen, or sandbox input.
+        Handle a right press: rename or delete a file on the main menu or the
+        Team setups screen; in the sandbox, start a pitch mark, or with Ctrl
+        open the player menu.
 
         Ignored while the name box is open.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
+            ctrl (bool): Whether Ctrl is held; only the sandbox uses it.
         """
         if self._name_box is not None:
             return
@@ -1040,8 +1045,22 @@ class Session:
             hit = self._team_setup_at(pos)
             if hit is not None:
                 self._open_rename(hit[1], "Rename team setup", "Delete team setup?")
-        elif self._interaction is not None:
+        elif self._interaction is not None and ctrl:
             self._interaction.right_click(pos)
+        elif self._interaction is not None:
+            self._interaction.mark_press(pos)
+
+    def right_release(self, pos: tuple[int, int]) -> None:
+        """
+        Handle a right button release: finish a pitch mark in the sandbox.
+
+        Ignored while the name box is open.
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+        """
+        if self._interaction is not None and self._name_box is None:
+            self._interaction.mark_release(pos)
 
     def rescan(self) -> None:
         """

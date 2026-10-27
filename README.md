@@ -43,6 +43,16 @@ The teams come from [src/bb_sandbox/races.csv](src/bb_sandbox/races.csv), one ro
 Dragging the player on the ball's square takes the ball along: it rides in the token's corner and lands with them.
 Drag the ball's corner instead to move the ball alone. A carrier dropped into Reserve, KO or Injured leaves the ball on the square they came from.
 
+## Marking the pitch
+
+Mark up the pitch while you think through a play, as on chess.com's analysis board:
+- **Right-drag** from one square to another to draw an orange arrow. Drawing the same arrow again removes it.
+- **Double right-click** a player on the pitch to ring them; do it again to remove the ring.
+- **Any left click** in the sandbox clears every mark.
+
+Marks stay on the pitch, are never saved, and go away when you leave the sandbox.
+The player menu (Stand up, Prone, Stunned, the dugout boxes and Comment) now opens with **Ctrl + right-click**.
+
 ## Saving setups
 
 In the sandbox, **Save setup** asks for a name (default `<home>-vs-<away>-YYYYMMDD-HHMMSS`) and writes the board to `setups/<name>.json`
@@ -87,7 +97,7 @@ Renaming a roster renames the team and its team setups folder; renaming a setup 
 
 ## Player comments
 
-Right-click a player on the pitch and pick **Comment** to tag them with up to 4 characters, such as `BLK`, `MB2` or `!?`.
+Ctrl + right-click a player on the pitch and pick **Comment** to tag them with up to 4 characters, such as `BLK`, `MB2` or `!?`.
 Type on the token: Backspace deletes, Enter or any click saves, Esc cancels. Saving an empty comment removes it.
 The comment shows on a small badge in the token's top-right corner, follows the player into the dugout boxes,
 and is kept in saved setups. Only printable ASCII characters are accepted.

@@ -12,13 +12,14 @@ from typing import NamedTuple
 
 import pygame
 
+from bb_sandbox.annotations import Marks, arrow_polygon
 from bb_sandbox.board import Board
 from bb_sandbox.builder import TEAM_BUDGET, RosterBuilder
 from bb_sandbox.dice import DICE, BlockFace, Roll
 from bb_sandbox.images import list_images
 from bb_sandbox.interaction import BALL, InteractionView, MenuItem
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
-from bb_sandbox.pitch import Dugout, PlayerKey, Side, Status
+from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
 from bb_sandbox.session import (
@@ -60,6 +61,8 @@ MENU_FILL = (60, 60, 70)
 # Reason: orange marks a positional hired past its max, or a total over budget;
 # both are allowed, so this is a warning, not an error.
 OVER_LIMIT = (230, 150, 40)
+# Reason: translucent orange, as on chess.com's analysis board.
+MARK_COLOUR = (255, 170, 0, 160)
 # Reason: x offsets of the builder table's text columns from a row's left edge,
 # sized for the widest values in races.csv at the app's font size (20).
 TABLE_COLUMNS = (
@@ -1100,6 +1103,47 @@ def _draw_pieces(
                 _draw_ball(surface, view.dragged.ball)
 
 
+def _mark_centre(square: Square, size: int) -> tuple[float, float]:
+    """
+    Return a square's centre on the pitch-sized mark overlay.
+
+    Args:
+        square (Square): The pitch square.
+        size (int): Side of one square in pixels.
+
+    Returns:
+        tuple[float, float]: The centre, relative to the pitch's top-left corner.
+    """
+    return (square.column * size + size / 2, square.row * size + size / 2)
+
+
+def _draw_marks(surface: pygame.Surface, layout: Layout, marks: Marks) -> None:
+    """
+    Draw the pitch marks: arrows from square centre to square centre and rings.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        marks (Marks): The arrows and rings to draw.
+    """
+    if marks == Marks():
+        return
+    size = layout.square_size
+    # Reason: a pitch-sized overlay clips every mark to the pitch, and drawing
+    # on an SRCALPHA surface writes the colour rather than blending it, so
+    # overlapping marks don't stack darker.
+    overlay = pygame.Surface((layout.pitch.width, layout.pitch.height), pygame.SRCALPHA)
+    for arrow in marks.arrows:
+        start, end = _mark_centre(arrow.start, size), _mark_centre(arrow.end, size)
+        pygame.draw.polygon(overlay, MARK_COLOUR, arrow_polygon(start, end, size))
+    for square in marks.circles:
+        centre = _mark_centre(square, size)
+        pygame.draw.circle(
+            overlay, MARK_COLOUR, centre, size // 2 - 1, max(2, size // 10)
+        )
+    surface.blit(overlay, (layout.pitch.x, layout.pitch.y))
+
+
 def draw_sandbox(
     surface: pygame.Surface,
     layout: Layout,
@@ -1112,7 +1156,8 @@ def draw_sandbox(
     message: str,
 ) -> None:
     """
-    Draw the sandbox: scene, tokens, ball, dragged item, info panel and context menu.
+    Draw the sandbox: scene, tokens, ball, dragged item, pitch marks, info
+    panel and context menu.
 
     Args:
         surface (pygame.Surface): Target surface, sized to layout.window_size.
@@ -1120,7 +1165,8 @@ def draw_sandbox(
         font (pygame.font.Font): Font for captions and shirt numbers.
         comment_font (pygame.font.Font): Smaller font for player comments.
         board (Board): Where every player and the ball are.
-        view (InteractionView): Hover, drag, context menu and comment edit state.
+        view (InteractionView): Hover, drag, context menu, comment edit and
+            pitch marks.
         player_sprites (PlayerSprites): Player images; a player without one
             is drawn as a token in the team colour.
         pitch_image (pygame.Surface | None): The pitch image, from
@@ -1130,6 +1176,7 @@ def draw_sandbox(
     """
     draw_scene(surface, layout, font, pitch_image)
     _draw_pieces(surface, layout, font, comment_font, board, view, player_sprites)
+    _draw_marks(surface, layout, view.marks)
     _draw_panel(surface, layout, font, board, view.hovered)
     if view.editing is not None:
         message = COMMENT_HINT

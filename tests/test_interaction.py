@@ -2,6 +2,7 @@
 
 import pytest
 
+from bb_sandbox.annotations import Arrow, Marks
 from bb_sandbox.board import BALL_START, Board
 from bb_sandbox.interaction import (
     BALL,
@@ -390,3 +391,129 @@ def test_delete_leaves_an_open_edit_and_its_draft_alone(interaction, board):
     interaction.edit_key(EditKey.DELETE)
     assert interaction.view().editing == CommentEdit(HOME0, "BLKX")
     assert board.comment_of(HOME0) == "BLK"
+
+
+class _FakeClock:
+    """A clock the test advances by hand."""
+
+    def __init__(self):
+        self.now = 100.0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.fixture
+def clock():
+    return _FakeClock()
+
+
+@pytest.fixture
+def marker(board, clock):
+    return Interaction(board, LAYOUT, clock)
+
+
+def _right_drag(interaction, start, end):
+    interaction.mark_press(start)
+    interaction.move(end)
+    interaction.mark_release(end)
+
+
+def _right_click(interaction, pos):
+    interaction.mark_press(pos)
+    interaction.mark_release(pos)
+
+
+def test_right_drag_draws_an_arrow_and_again_removes_it(marker):
+    _right_drag(marker, _at(_square(2, 2)), _at(_square(5, 3)))
+    assert marker.view().marks == Marks((Arrow(Square(2, 2), Square(5, 3)),), ())
+    _right_drag(marker, _at(_square(5, 3)), _at(_square(2, 2)))
+    assert len(marker.view().marks.arrows) == 2  # the reverse is a separate arrow
+    _right_drag(marker, _at(_square(2, 2)), _at(_square(5, 3)))
+    assert marker.view().marks.arrows == (Arrow(Square(5, 3), Square(2, 2)),)
+
+
+def test_view_shows_the_preview_arrow_mid_drag(marker):
+    marker.mark_press(_at(_square(2, 2)))
+    assert marker.view().marks == Marks()
+    marker.move(_at(_square(6, 6)))
+    assert marker.view().marks.arrows == (Arrow(Square(2, 2), Square(6, 6)),)
+    # Back on the press square or off the pitch: no preview.
+    marker.move(_at(_square(2, 2)))
+    assert marker.view().marks == Marks()
+    marker.move((0, 0))
+    assert marker.view().marks == Marks()
+
+
+def test_double_right_click_on_a_player_toggles_a_ring(marker, board, clock):
+    board.place(HOME0, Square(4, 4))
+    pos = _at(_square(4, 4))
+    _right_click(marker, pos)
+    assert marker.view().marks == Marks()
+    clock.now += 0.3
+    _right_click(marker, pos)
+    assert marker.view().marks.circles == (Square(4, 4),)
+    clock.now += 1
+    _right_click(marker, pos)
+    clock.now += 0.1
+    _right_click(marker, pos)
+    assert marker.view().marks.circles == ()
+
+
+def test_slow_click_pair_adds_nothing(marker, board, clock):
+    board.place(HOME0, Square(4, 4))
+    _right_click(marker, _at(_square(4, 4)))
+    clock.now += 0.5
+    _right_click(marker, _at(_square(4, 4)))
+    assert marker.view().marks == Marks()
+
+
+def test_triple_click_toggles_once(marker, board, clock):
+    board.place(HOME0, Square(4, 4))
+    for _ in range(3):
+        _right_click(marker, _at(_square(4, 4)))
+        clock.now += 0.1
+    assert marker.view().marks.circles == (Square(4, 4),)
+
+
+def test_clear_marks_empties_everything(marker, board, clock):
+    board.place(HOME0, Square(4, 4))
+    _right_drag(marker, _at(_square(2, 2)), _at(_square(5, 3)))
+    _right_click(marker, _at(_square(4, 4)))
+    _right_click(marker, _at(_square(4, 4)))
+    _right_click(marker, _at(_square(4, 4)))  # first of a new pair
+    marker.mark_press(_at(_square(1, 1)))
+    marker.move(_at(_square(3, 1)))
+    marker.clear_marks()
+    assert marker.view().marks == Marks()
+    # The press in progress and the last click are forgotten too.
+    marker.mark_release(_at(_square(3, 1)))
+    _right_click(marker, _at(_square(4, 4)))
+    assert marker.view().marks == Marks()
+
+
+def test_marks_off_the_pitch_or_on_empty_squares_add_nothing(marker):
+    _right_drag(marker, _at(_square(2, 2)), (0, 0))
+    _right_drag(marker, (0, 0), _at(_square(2, 2)))
+    _right_drag(marker, _at(_reserve(HOME0)), _at(_square(2, 2)))
+    _right_click(marker, _at(_square(8, 8)))
+    _right_click(marker, _at(_square(8, 8)))
+    assert marker.view().marks == Marks()
+
+
+def test_mark_press_during_a_left_drag_is_ignored(marker):
+    marker.press(_at(_reserve(HOME0)))
+    _right_drag(marker, _at(_square(2, 2)), _at(_square(5, 3)))
+    assert marker.view().marks == Marks()
+
+
+def test_mark_press_saves_the_comment_and_closes_the_menu(marker, board):
+    board.place(HOME0, Square(4, 4))
+    marker.right_click(_at(_square(4, 4)))
+    marker.press(_at(marker.view().menu[-1].box))
+    marker.type_text("hi")
+    marker.mark_press(_at(_square(2, 2)))
+    assert board.comment_of(HOME0) == "hi"
+    marker.right_click(_at(_square(4, 4)))
+    marker.mark_press(_at(_square(2, 2)))
+    assert marker.view().menu == () and marker.view().editing is None
