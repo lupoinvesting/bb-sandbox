@@ -393,24 +393,9 @@ def test_delete_leaves_an_open_edit_and_its_draft_alone(interaction, board):
     assert board.comment_of(HOME0) == "BLK"
 
 
-class _FakeClock:
-    """A clock the test advances by hand."""
-
-    def __init__(self):
-        self.now = 100.0
-
-    def __call__(self):
-        return self.now
-
-
 @pytest.fixture
-def clock():
-    return _FakeClock()
-
-
-@pytest.fixture
-def marker(board, clock):
-    return Interaction(board, LAYOUT, clock)
+def marker(board):
+    return Interaction(board, LAYOUT)
 
 
 def _right_drag(interaction, start, end):
@@ -445,59 +430,38 @@ def test_view_shows_the_preview_arrow_mid_drag(marker):
     assert marker.view().marks == Marks()
 
 
-def test_double_right_click_on_a_player_toggles_a_ring(marker, board, clock):
+def test_right_click_on_a_player_toggles_a_ring(marker, board):
     board.place(HOME0, Square(4, 4))
-    pos = _at(_square(4, 4))
-    _right_click(marker, pos)
-    assert marker.view().marks == Marks()
-    clock.now += 0.3
-    _right_click(marker, pos)
+    _right_click(marker, _at(_square(4, 4)))
     assert marker.view().marks.circles == (Square(4, 4),)
-    clock.now += 1
-    _right_click(marker, pos)
-    clock.now += 0.1
-    _right_click(marker, pos)
+    _right_click(marker, _at(_square(4, 4)))
     assert marker.view().marks.circles == ()
 
 
-def test_slow_click_pair_adds_nothing(marker, board, clock):
-    board.place(HOME0, Square(4, 4))
-    _right_click(marker, _at(_square(4, 4)))
-    clock.now += 0.5
-    _right_click(marker, _at(_square(4, 4)))
-    assert marker.view().marks == Marks()
+def test_right_click_on_an_empty_square_rings_it(marker):
+    _right_click(marker, _at(_square(8, 8)))
+    _right_click(marker, _at(_square(2, 2)))
+    assert marker.view().marks.circles == (Square(8, 8), Square(2, 2))
 
 
-def test_triple_click_toggles_once(marker, board, clock):
-    board.place(HOME0, Square(4, 4))
-    for _ in range(3):
-        _right_click(marker, _at(_square(4, 4)))
-        clock.now += 0.1
-    assert marker.view().marks.circles == (Square(4, 4),)
-
-
-def test_clear_marks_empties_everything(marker, board, clock):
-    board.place(HOME0, Square(4, 4))
+def test_clear_marks_empties_everything(marker):
     _right_drag(marker, _at(_square(2, 2)), _at(_square(5, 3)))
     _right_click(marker, _at(_square(4, 4)))
-    _right_click(marker, _at(_square(4, 4)))
-    _right_click(marker, _at(_square(4, 4)))  # first of a new pair
     marker.mark_press(_at(_square(1, 1)))
     marker.move(_at(_square(3, 1)))
     marker.clear_marks()
     assert marker.view().marks == Marks()
-    # The press in progress and the last click are forgotten too.
+    # The press in progress is forgotten too.
     marker.mark_release(_at(_square(3, 1)))
-    _right_click(marker, _at(_square(4, 4)))
     assert marker.view().marks == Marks()
 
 
-def test_marks_off_the_pitch_or_on_empty_squares_add_nothing(marker):
+def test_marks_off_the_pitch_add_nothing(marker):
     _right_drag(marker, _at(_square(2, 2)), (0, 0))
     _right_drag(marker, (0, 0), _at(_square(2, 2)))
     _right_drag(marker, _at(_reserve(HOME0)), _at(_square(2, 2)))
-    _right_click(marker, _at(_square(8, 8)))
-    _right_click(marker, _at(_square(8, 8)))
+    _right_click(marker, (0, 0))
+    _right_click(marker, _at(_reserve(HOME0)))
     assert marker.view().marks == Marks()
 
 

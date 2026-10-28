@@ -47,7 +47,7 @@ Drag the ball's corner instead to move the ball alone. A carrier dropped into Re
 
 Mark up the pitch while you think through a play, as on chess.com's analysis board:
 - **Right-drag** from one square to another to draw an orange arrow. Drawing the same arrow again removes it.
-- **Double right-click** a player on the pitch to ring them; do it again to remove the ring.
+- **Right-click** a square on the pitch to ring it; do it again to remove the ring.
 - **Any left click** in the sandbox clears every mark.
 
 Marks stay on the pitch, are never saved, and go away when you leave the sandbox.

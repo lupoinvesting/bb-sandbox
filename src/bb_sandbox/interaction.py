@@ -5,8 +5,6 @@ Interaction turns screen positions into Board commands. It never touches Pygame;
 render draws whatever view() describes.
 """
 
-import time
-from collections.abc import Callable
 from enum import Enum
 from typing import NamedTuple
 
@@ -14,10 +12,6 @@ from bb_sandbox.annotations import Arrow, Marks, toggle_arrow, toggle_circle
 from bb_sandbox.board import MAX_COMMENT_LENGTH, Board, comment_char_ok
 from bb_sandbox.layout import Box, Layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Square, Status
-
-# Reason: Pygame 2.6.1's mouse events carry no click count, so double clicks
-# are timed here, from the first click's release to the second's.
-DOUBLE_CLICK_SECONDS = 0.4
 
 
 class Ball(Enum):
@@ -131,20 +125,13 @@ class Interaction:
     The board only changes on release, menu picks or a comment commit.
     """
 
-    def __init__(
-        self,
-        board: Board,
-        layout: Layout,
-        clock: Callable[[], float] = time.monotonic,
-    ) -> None:
+    def __init__(self, board: Board, layout: Layout) -> None:
         """
         Start with nothing dragged, hovered, open, being edited or marked.
 
         Args:
             board (Board): The board to change.
             layout (Layout): Screen geometry for hit tests.
-            clock (Callable[[], float]): Seconds, for timing double clicks;
-                tests pass a fake one.
         """
         self._board = board
         self._layout = layout
@@ -152,10 +139,8 @@ class Interaction:
         self._grab: _Grab | None = None
         self._menu: tuple[PlayerKey, tuple[Box, ...]] | None = None
         self._edit: CommentEdit | None = None
-        self._clock = clock
         self._marks = Marks()
         self._mark_start: Square | None = None
-        self._last_click: tuple[Square, float] | None = None
 
     def press(self, pos: tuple[int, int]) -> None:
         """
@@ -263,9 +248,8 @@ class Interaction:
 
     def mark_release(self, pos: tuple[int, int]) -> None:
         """
-        Finish a mark: an arrow to another square, or a click on the start
-        square; two clicks on the same player within DOUBLE_CLICK_SECONDS
-        toggle a ring.
+        Finish a mark: toggle an arrow to another square, or a ring when
+        released on the start square.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
@@ -277,27 +261,13 @@ class Interaction:
             return
         if square != start:
             self._marks = toggle_arrow(self._marks, Arrow(start, square))
-            return
-        now = self._clock()
-        last = self._last_click
-        if (
-            last is not None
-            and last[0] == square
-            and now - last[1] <= DOUBLE_CLICK_SECONDS
-            and self._board.player_at(square) is not None
-        ):
-            self._marks = toggle_circle(self._marks, square)
-            # Reason: the next click starts a new pair, so a triple click
-            # toggles the ring only once.
-            self._last_click = None
         else:
-            self._last_click = (square, now)
+            self._marks = toggle_circle(self._marks, square)
 
     def clear_marks(self) -> None:
-        """Remove every mark and forget a mark in progress and the last click."""
+        """Remove every mark and forget a mark in progress."""
         self._marks = Marks()
         self._mark_start = None
-        self._last_click = None
 
     def type_text(self, text: str) -> None:
         """

@@ -149,3 +149,4 @@ Design: [annotations.md](annotations.md).
 - [ ] A team loaded from a saved setup keeps its stored name, so Save team setup creates `rosters/<name>/` even when no such roster exists, or attaches to an unrelated roster that now has that name.
 - [ ] `session.py` (1,346 lines) and `render.py` (1,412) each cover every screen; consider splitting them per screen with `Session` as a router.
 - [ ] `docs/comments.md` still says the player menu opens on a plain right-click; since Phase 13 it is Ctrl + right-click.
+- [x] A single right-click (not a double one) toggles a ring, on any pitch square, as on chess.com; dropped the double-click clock from `Interaction`.

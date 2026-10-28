@@ -126,7 +126,7 @@ Design: [team_setups.md](team_setups.md).
 ### 3.12. Pitch Annotations
 
 * **Arrows:** Right-dragging from one pitch square to another draws a translucent arrow from square centre to square centre, as on chess.com. A preview follows the cursor while the button is held. Drawing the same arrow again removes it.
-* **Rings:** Double right-clicking a player on the pitch draws a ring around them; doing it again removes the ring.
+* **Rings:** Right-clicking a square on the pitch draws a ring on it; doing it again removes the ring.
 * **Clearing:** Any left click on the sandbox clears every mark, then does what it did before (drag, menu pick, button, dice roll).
 * **Pitch Only:** Marks start and end on pitch squares and are drawn clipped to the pitch. They never change the board and are not saved.
 * **Player Menu:** The player menu (§3.3) moves to Ctrl + right-click. Right-click renaming on the main menu and the Team setups screen is unchanged.
@@ -206,5 +206,5 @@ Design: [annotations.md](annotations.md).
 **Phase 13: Pitch Annotations**
 
 * Build the annotations module: arrows, rings, their toggles and the arrow polygon.
-* Draw arrows with a right-drag and rings with a double right-click; clear them with any left click.
+* Draw arrows with a right-drag and rings with a right-click; clear them with any left click.
 * Move the player menu to Ctrl + right-click.

@@ -2,7 +2,7 @@
 
 **Pitch annotations** let you mark up the pitch while you think through a play, as on chess.com's analysis board:
 - **Right-drag** from one square to another draws an arrow.
-- **Double right-click** on a player draws a ring around them.
+- **Right-click** on a square draws a ring on it.
 - **Any left click** clears every mark.
 
 Marks only exist on the pitch. They are never saved and never change the board.
@@ -23,10 +23,9 @@ Status: built (Phase 13 in [task.md](task.md)); the requirements are §3.12 of t
   - A press or a release off the pitch draws nothing.
   - A release on the press square is a click, not an arrow.
 - **Preview:** while the right button is held, a preview arrow runs from the press square to the hovered square, drawn like a real one. It goes away when the cursor leaves the pitch or comes back to the press square.
-- **Ring:** two right clicks on the same **occupied** pitch square within `DOUBLE_CLICK_SECONDS = 0.4` toggle a ring on that square.
-  - A click is a press and a release on the same square. The 0.4 s are measured from the first click's release to the second click's release.
-  - After a double click, the next click starts a new pair, so a triple click doesn't toggle twice.
-  - A double click on an empty square, a dugout or the panel does nothing. A single right click does nothing visible.
+- **Ring:** one right click on a pitch square, occupied or empty, toggles a ring on that square.
+  - A click is a press and a release on the same square.
+  - A click on a dugout or the panel does nothing.
 - **Marks belong to squares, not players.** A left drag clears them on its press, so moving a player never leaves a stale ring behind.
 - **Lifetime:** marks live in `Interaction`, so they go whenever the session makes a new one: Main menu, Team setups and back, or a deploy. They are not in setup files.
 - **Look:** one colour, `MARK_COLOUR = (255, 170, 0, 160)`, translucent orange as on chess.com.
@@ -49,7 +48,7 @@ Status: built (Phase 13 in [task.md](task.md)); the requirements are §3.12 of t
 | Right press off the pitch | Saves an edit and closes the menu, as above; there is no start square, so the release draws nothing |
 | Mouse move, right button held | The view shows the preview arrow when the cursor is on another pitch square |
 | Right release on another pitch square | `toggle_arrow(start → square)` |
-| Right release on the start square | A click. If the last click was on the same occupied square within 0.4 s, `toggle_circle(square)`; otherwise it is remembered as the last click |
+| Right release on the start square | A click: `toggle_circle(square)` |
 | Right release off the pitch | Nothing; the start square is forgotten |
 | Ctrl + right press | Opens the player menu, as a plain right press did before (`Interaction.right_click`) |
 | Left press anywhere | `clear_marks()` first, then whatever the press did before |
@@ -58,7 +57,7 @@ Status: built (Phase 13 in [task.md](task.md)); the requirements are §3.12 of t
 stateDiagram-v2
   Idle --> Drawing: right press on pitch
   Drawing --> Idle: release on another square (toggle arrow)
-  Drawing --> Idle: release on start square (click; 2nd within 0.4 s on a player toggles ring)
+  Drawing --> Idle: release on start square (toggle ring)
   Drawing --> Idle: release off pitch
   Idle --> Idle: left press (clear marks)
 ```
@@ -93,7 +92,7 @@ The shortest arrow joins neighbouring squares, so its length is at least `s`, wh
 | Module | Status | Job |
 |---|---|---|
 | `annotations.py` | **new**, no pygame, no pydantic | The `Arrow` and `Marks` primitives, the toggles and the arrow polygon |
-| `interaction.py` | extend | Right press and release, the double click timing, `clear_marks`, the marks and the preview in the view |
+| `interaction.py` | extend | Right press and release, `clear_marks`, the marks and the preview in the view |
 | `session.py` | extend | Routes plain and Ctrl right presses, and the right release; a sandbox left press clears the marks |
 | `render.py` | extend | `MARK_COLOUR` and `_draw_marks` |
 | `app.py` | extend | Reads Ctrl on a right press; forwards the right button's release |
@@ -121,12 +120,10 @@ def arrow_polygon(start: tuple[float, float], end: tuple[float, float],
                                                           # ValueError if start == end or square_size <= 0
 
 # interaction.py
-DOUBLE_CLICK_SECONDS = 0.4
-Interaction(board: Board, layout: Layout, clock: Callable[[], float] = time.monotonic)
-                                        # the clock times double clicks; tests pass a fake one
+Interaction(board: Board, layout: Layout)
 Interaction.mark_press(pos) -> None
 Interaction.mark_release(pos) -> None
-Interaction.clear_marks() -> None       # also forgets a press in progress and the last click
+Interaction.clear_marks() -> None       # also forgets a press in progress
 Interaction.right_click(pos) -> None    # unchanged: opens the player menu (now reached with Ctrl)
 InteractionView.marks: Marks = Marks()  # the marks plus the preview arrow, if any; the default
                                         # keeps existing InteractionView(...) calls working
@@ -149,10 +146,9 @@ def _draw_marks(surface: pygame.Surface, layout: Layout, marks: Marks) -> None
 # MOUSEBUTTONUP,   RIGHT_BUTTON → session.right_release(event.pos)
 ```
 
-Interaction's private state grows by three fields:
+Interaction's private state grows by two fields:
 - `_marks: Marks`;
-- `_mark_start: Square | None`, the press square while the right button is held;
-- `_last_click: tuple[Square, float] | None`, for the double click.
+- `_mark_start: Square | None`, the press square while the right button is held.
 
 ## Invariants and errors
 
@@ -167,7 +163,7 @@ Interaction's private state grows by three fields:
 | File | Expected | Edge | Failure |
 |---|---|---|---|
 | test_annotations | `toggle_arrow` and `toggle_circle` add, then remove; `arrow_polygon`'s 4th point is `end`, and its 1st and 7th points are centred on `start` | the reverse arrow is a separate mark; horizontal, vertical and diagonal arrows have a head symmetric about the shaft; neighbouring squares still fit the head | `arrow_polygon` with `start == end`, or `square_size` 0, raises `ValueError` |
-| test_interaction | a drag from A to B adds `Arrow(A, B)`; a double click on a player adds a ring; the view shows the preview mid-drag; `clear_marks` empties everything | a second double click removes the ring; the same arrow again removes it; a click pair 0.5 s apart (fake clock) adds nothing; a triple click toggles once | a press or release off the pitch, and a double click on an empty square, add nothing; a mark press during a left drag is ignored |
+| test_interaction | a drag from A to B adds `Arrow(A, B)`; a right click on a player adds a ring; the view shows the preview mid-drag; `clear_marks` empties everything | a second right click removes the ring; the same arrow again removes it; a right click on an empty square rings it | a press or release off the pitch, or a click on a dugout, adds nothing; a mark press during a left drag is ignored |
 | test_session | a left press on the pitch, a dice button and Save setup clears the marks; `right_click(pos, ctrl=True)` opens the menu | a plain right-click on MENU still opens the rename box | right input is ignored while the name box is open |
 | test_render | an arrow and a ring change pixels inside the pitch | a ring on a corner square changes no pixel outside the pitch box | with no marks, the frame is the same as before this feature |
 | test_app | RIGHT down and up on two squares draws an arrow; with `pygame.key.set_mods(pygame.KMOD_CTRL)`, a RIGHT press opens the menu | — | — |
@@ -177,7 +173,7 @@ Interaction's private state grows by three fields:
 **Manual check:**
 1. Start a match. Right-drag from a Home player to a square three columns ahead: an orange arrow follows the cursor and stays after the release.
 2. Right-drag the same arrow again: it disappears. Draw it back.
-3. Double right-click an Away player: they get a ring. Double right-click them again: it's gone. Put it back.
+3. Right-click an Away player: they get a ring. Right-click them again: it's gone. Put it back.
 4. Right-drag from the pitch into the panel: no arrow.
 5. Ctrl + right-click a player: the menu opens. Pick Prone: the marks are gone, because the pick was a left click.
 6. Draw an arrow and click Roll on a die: the marks clear, and the dice roll.
@@ -186,7 +182,7 @@ Interaction's private state grows by three fields:
 
 Tests first at each step, then `uv run pytest`.
 1. `annotations.py` + test_annotations.
-2. interaction: the clock, `mark_press`, `mark_release`, `clear_marks`, `InteractionView.marks`, + test_interaction.
+2. interaction: `mark_press`, `mark_release`, `clear_marks`, `InteractionView.marks`, + test_interaction.
 3. session: `right_click(pos, ctrl)`, `right_release`, the clear in `_press_sandbox`, + test_session; update the existing menu tests.
 4. render: `MARK_COLOUR`, `_draw_marks`, + test_render. Then check a headless screenshot with an arrow and a ring.
 5. app: Ctrl on a RIGHT press and the RIGHT release, + test_app.
@@ -197,7 +193,7 @@ Tests first at each step, then `uv run pytest`.
 | Requirement (PRD §3.12) | Where |
 |---|---|
 | Right-drag draws an arrow | `Interaction.mark_press` / `mark_release`, `annotations.toggle_arrow`, `render._draw_marks`, `arrow_polygon` |
-| Double right-click rings a player | `Interaction.mark_release` (`_last_click`, `DOUBLE_CLICK_SECONDS`), `annotations.toggle_circle` |
+| Right-click rings a square | `Interaction.mark_release`, `annotations.toggle_circle` |
 | Left click anywhere clears | `Session._press_sandbox` → `Interaction.clear_marks` |
 | Marks only on the pitch | `layout.square_at` gates every mark; the pitch-sized overlay clips the drawing |
 | Player menu on Ctrl + right-click | `app.handle_event` (`KMOD_CTRL`), `Session.right_click(pos, ctrl)` |
@@ -211,7 +207,7 @@ Checked against [architecture_principles.md](architecture_principles.md):
 - **4:** every new function stays at 60 lines or fewer.
 - **5:** `arrow_polygon` checks its arguments. Interaction only makes marks from `square_at` results.
 - **6:** nothing can fail at runtime; input off the pitch is ignored on purpose.
-- **7:** mark state lives in `Interaction`. There is no module state, and the clock is injected.
+- **7:** mark state lives in `Interaction`. There is no module state.
 - **8:** no I/O.
 - **10:** still not enforced by any linter (already in task.md).
 - **12:** the tests above.
@@ -219,5 +215,4 @@ Checked against [architecture_principles.md](architecture_principles.md):
 ## Notes
 
 - `pygame.key.get_mods()` is read in `app`, so `session` and `interaction` stay free of Pygame.
-- Pygame 2.6.1's mouse events carry no click count, which is why `Interaction` times double clicks with its own clock.
 - `interaction.py` is about 400 lines and grows by about 80.
