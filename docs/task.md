@@ -108,6 +108,17 @@ Design: [annotations.md](annotations.md).
 - [x] app: Ctrl from `pygame.key.get_mods()` on a RIGHT press, `session.right_release` on a RIGHT release
 - [x] README "Marking the pitch" section and "Ctrl + right-click" for the player menu; status line in annotations.md
 
+## Phase 14: Languages
+Design: [languages.md](languages.md).
+- [x] language: new module with `Text`, `Message`, `raw`, `Texts`, `Languages`, `LanguageError`, `load_languages`; `languages/en.json` with every key and the race, position and skill names; test_language and test_language_files
+- [x] settings: `language` field (default `en`, bare code) + tests
+- [x] layout: `language_row`, `language_row_at` in `menu_columns[1]` + tests
+- [x] names: `name_problem` returns `Message | None`, `FileNameError.message`; interaction: `MENU_ACTIONS` and `MenuItem.label` as `Text` + tests
+- [x] session: messages and name-box captions as `Message`, `load_languages` (also in `rescan`), `texts`, `language_problem`, the Language column in `options_view` / `_press_options`, `language` in `save_settings` + tests
+- [x] render: `texts` in every `draw_*`, caption constants as `Text`, race/position/skill names and block faces through `texts`, the Language column + tests; headless screenshot in Italian
+- [x] app: `LANGUAGES_DIR`, `load_languages` before `load_settings`, `session.texts` to every draw, `language_problem` on the message line + tests
+- [x] README "Languages" section (adding a language, keep texts about as long as English); status line in languages.md; replace todo.md item 11
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -150,3 +161,5 @@ Design: [annotations.md](annotations.md).
 - [ ] `session.py` (1,346 lines) and `render.py` (1,412) each cover every screen; consider splitting them per screen with `Session` as a router.
 - [ ] `docs/comments.md` still says the player menu opens on a plain right-click; since Phase 13 it is Ctrl + right-click.
 - [x] A single right-click (not a double one) toggles a ring, on any pitch square, as on chess.com; dropped the double-click clock from `Interaction`.
+- [x] Phase 14: `Message.values` also take a `Text` or a `Message`, so a side ("home") or a name problem inside a sentence is translated too; `common.both` ("{first}; {second}") joins the two problems of a failed roster rename roll-back. Neither was in the design's key list.
+- [ ] Phase 14: clicking a Language row clears the status message, as a pitch row does, so the "the current message turns Italian at once" check is only seen for messages set after the switch.

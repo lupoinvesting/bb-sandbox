@@ -1,13 +1,16 @@
 """Tests for bb_sandbox.session, with a temporary rosters/ folder."""
 
+import json
 import random
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
 from bb_sandbox.annotations import Arrow, Marks
 from bb_sandbox.dice import DICE
 from bb_sandbox.interaction import EditKey
+from bb_sandbox.language import Text, raw
 from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.names import FileNameError, rename_file
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square
@@ -35,6 +38,7 @@ from bb_sandbox.session import (
 )
 from bb_sandbox.team_setups import TeamSetupError, load_team_setup, save_team_setup
 
+LANGUAGES_DIR = Path(__file__).parent.parent / "languages"
 CSV = (
     "race,Orc\nname,position,MA,ST,AG,PA,AV,skills\n"
     "Grishnak,Blitzer,5,3,3+,4+,10+,Block\n"
@@ -81,12 +85,21 @@ def _files(folder):
     return {"pitches_dir": folder / "pitch", "settings_file": folder / "settings.json"}
 
 
+def _session(*args, **kwargs):
+    # Reason: the tests compare English messages, so they read the shipped
+    # en.json; app does the same before load_settings.
+    kwargs.setdefault("languages_dir", LANGUAGES_DIR)
+    session = Session(*args, **kwargs)
+    session.load_languages()
+    return session
+
+
 @pytest.fixture
 def session(tmp_path):
     for name in ("orcs", "humans"):
         (tmp_path / f"{name}.csv").write_text(CSV)
     (tmp_path / "broken.csv").write_text("nonsense\n")
-    session = Session(
+    session = _session(
         LAYOUT,
         tmp_path,
         tmp_path / "setups",
@@ -105,7 +118,7 @@ def _import_both(session):
 
 
 def test_starts_on_menu_without_io(tmp_path):
-    session = Session(
+    session = _session(
         LAYOUT, tmp_path / "missing", tmp_path / "none", RACES, **_files(tmp_path)
     )
     assert session.screen is Screen.MENU and session.board is None
@@ -177,7 +190,7 @@ def test_overflow_shows_more_row_and_ignores_it(tmp_path):
     total = LAYOUT.menu_rows + 3
     for index in range(total):
         (tmp_path / f"team{index:02}.csv").write_text(CSV)
-    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
+    session = _session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
     session.rescan()
     view = session.menu_view()
     assert len(view.rosters) == LAYOUT.menu_rows - 1
@@ -493,7 +506,7 @@ def test_failed_roster_save_stays_in_builder(tmp_path):
     # Reason: a file where the rosters folder should be makes the save fail.
     rosters = tmp_path / "rosters"
     rosters.write_text("not a folder")
-    session = Session(LAYOUT, rosters, tmp_path / "setups", RACES, **_files(tmp_path))
+    session = _session(LAYOUT, rosters, tmp_path / "setups", RACES, **_files(tmp_path))
     _builder(session, 0)
     session.press(_click(LAYOUT.positional_row(0)))
     session.save_roster("Human-20260101-000000")
@@ -596,7 +609,7 @@ def test_a_roll_starts_no_drag_and_leaves_the_menu_and_message(session):
 
 def _seeded_sandbox(tmp_path, seed):
     (tmp_path / "orcs.csv").write_text(CSV)
-    session = Session(
+    session = _session(
         LAYOUT,
         tmp_path,
         tmp_path / "setups",
@@ -649,7 +662,7 @@ def _options(tmp_path, *names):
     folder.mkdir(parents=True, exist_ok=True)
     for name in names:
         (folder / name).write_bytes(b"")
-    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
+    session = _session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
     session.rescan()
     session.press(_click(LAYOUT.options_button))
     return session
@@ -668,7 +681,8 @@ def test_options_button_opens_the_options_screen_and_clears_the_message(session)
 
 def test_options_lists_the_pitch_images_with_the_drawn_pitch_chosen(tmp_path):
     session = _options(tmp_path, "b.jpg", "a.png", "notes.txt")
-    assert session.options_view() == OptionsView(("a.png", "b.jpg"), 0, None)
+    view = session.options_view()
+    assert view == OptionsView(("a.png", "b.jpg"), 0, None, ("English",), 0, 0)
     assert session.pitch is None and session.pitch_path is None
 
 
@@ -704,7 +718,7 @@ def test_load_settings_restores_the_pitch_and_save_settings_writes_it(tmp_path):
     session = _options(tmp_path, "a.png")
     session.press(_option(1))
     session.save_settings()
-    restored = Session(LAYOUT, tmp_path, tmp_path, RACES, **_files(tmp_path))
+    restored = _session(LAYOUT, tmp_path, tmp_path, RACES, **_files(tmp_path))
     restored.load_settings()
     assert restored.pitch == "a.png" and restored.message == ""
 
@@ -714,12 +728,12 @@ def test_a_missing_file_stays_chosen_and_listed_files_follow_the_folder(tmp_path
     session.press(_option(1))
     (tmp_path / "pitch" / "a.png").unlink()
     session.rescan()
-    assert session.options_view() == OptionsView((), 0, "a.png")
+    assert session.options_view() == OptionsView((), 0, "a.png", ("English",))
 
 
 def test_an_invalid_settings_file_keeps_the_drawn_pitch_with_a_message(tmp_path):
     (tmp_path / "settings.json").write_text('{"version": 1, "pitch": "../x.png"}')
-    session = Session(LAYOUT, tmp_path, tmp_path, RACES, **_files(tmp_path))
+    session = _session(LAYOUT, tmp_path, tmp_path, RACES, **_files(tmp_path))
     session.load_settings()
     assert session.pitch is None
     assert session.message.startswith("settings.json: ")
@@ -971,7 +985,7 @@ def test_a_team_name_that_cant_be_a_folder_has_no_team_setups(tmp_path):
         (tmp_path / f"{name}.csv").write_text(CSV)
     (tmp_path / "orcs.v2").mkdir()
     (tmp_path / "orcs.v2" / "Cage.json").write_text("{}")
-    session = Session(
+    session = _session(
         LAYOUT, tmp_path, tmp_path / "setups", RACES, clock=_clock, **_files(tmp_path)
     )
     session.rescan()
@@ -1152,7 +1166,8 @@ def test_a_failed_roll_back_reports_both_problems(session, tmp_path, monkeypatch
     def rename_once(path, name):
         names.append(name)
         if len(names) > 1:
-            raise FileNameError(f"Couldn't rename {path.name}: Access is denied")
+            problem = raw(f"Couldn't rename {path.name}: Access is denied")
+            raise FileNameError(problem)
         return rename_file(path, name)
 
     monkeypatch.setattr("bb_sandbox.session.rename_file", rename_once)
@@ -1167,7 +1182,7 @@ def test_deleting_a_roster_whose_name_cant_be_a_folder_keeps_that_folder(tmp_pat
     (tmp_path / "orcs.v2.csv").write_text(CSV)
     (tmp_path / "orcs.v2").mkdir()
     (tmp_path / "orcs.v2" / "Cage.json").write_text("{}")
-    session = Session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
+    session = _session(LAYOUT, tmp_path, tmp_path / "setups", RACES, **_files(tmp_path))
     session.rescan()
     session.delete(tmp_path / "orcs.v2.csv")
     assert session.message == "Deleted orcs.v2"
@@ -1216,3 +1231,108 @@ def test_plain_right_click_on_the_menu_still_opens_the_rename_box(session):
     session.right_click(_row(MenuList.AWAY_ROSTERS, 2))
     session.right_release(_row(MenuList.AWAY_ROSTERS, 2))
     assert session.name_view is not None
+
+
+IT = {
+    "version": 1,
+    "name": "Italiano",
+    "texts": {
+        "message.loaded_team": "{team} caricata come {side}",
+        "side.home": "casa",
+    },
+}
+
+
+def _languages(tmp_path, italian=IT):
+    folder = tmp_path / "languages"
+    folder.mkdir()
+    (folder / "en.json").write_text((LANGUAGES_DIR / "en.json").read_text("utf-8"))
+    (folder / "it.json").write_text(json.dumps(italian), encoding="utf-8")
+    return folder
+
+
+def _language(index):
+    return _click(LAYOUT.language_row(index))
+
+
+def test_a_language_row_switches_language_and_the_message_at_once(tmp_path):
+    (tmp_path / "orcs.csv").write_text(CSV)
+    session = _session(
+        LAYOUT,
+        tmp_path,
+        tmp_path / "setups",
+        RACES,
+        languages_dir=_languages(tmp_path),
+        **_files(tmp_path),
+    )
+    session.rescan()
+    session.press(_click(LAYOUT.options_button))
+    assert session.options_view().languages == ("English", "Italiano")
+    session.import_team(Side.HOME, tmp_path / "orcs.csv")
+    assert session.message == "Loaded orcs as home"
+    assert session.press(_language(1)) == SaveSettings()
+    assert session.texts.code == "it" and session.options_view().language == 1
+    session.import_team(Side.HOME, tmp_path / "orcs.csv")
+    assert session.message == "orcs caricata come casa"
+    # Picking the chosen language again saves nothing.
+    assert session.press(_language(1)) is None
+    session.save_settings()
+    restored = _session(
+        LAYOUT,
+        tmp_path,
+        tmp_path,
+        RACES,
+        languages_dir=tmp_path / "languages",
+        **_files(tmp_path),
+    )
+    restored.load_settings()
+    assert restored.texts.code == "it"
+
+
+def test_a_name_box_caption_and_problem_are_translated(tmp_path):
+    italian = {**IT, "texts": {"name.rename_roster": "Rinomina", "name.empty": "Vuoto"}}
+    folder = _languages(tmp_path, italian)
+    (tmp_path / "orcs.csv").write_text(CSV)
+    (tmp_path / "settings.json").write_text('{"version": 1, "language": "it"}')
+    session = _session(
+        LAYOUT, tmp_path, tmp_path, RACES, languages_dir=folder, **_files(tmp_path)
+    )
+    session.load_settings()
+    session.rescan()
+    session.right_click(_row(MenuList.HOME_ROSTERS, 0))
+    for _ in "orcs":
+        session.key(EditKey.BACKSPACE)
+    session.key(EditKey.ENTER)
+    assert session.name_view.caption == "Rinomina"
+    assert session.name_view.problem == "Vuoto"
+
+
+def test_a_deleted_language_file_falls_back_to_english_on_rescan(tmp_path):
+    folder = _languages(tmp_path)
+    session = _session(
+        LAYOUT, tmp_path, tmp_path, RACES, languages_dir=folder, **_files(tmp_path)
+    )
+    session.rescan()
+    session.press(_click(LAYOUT.options_button))
+    session.press(_language(1))
+    (folder / "it.json").unlink()
+    session.rescan()
+    assert session.texts.code == "en"
+    assert session.options_view().languages == ("English",)
+    assert session.options_view().language == 0
+
+
+def test_a_click_past_the_languages_does_nothing(tmp_path):
+    session = _options(tmp_path)
+    assert session.press(_language(1)) is None
+    assert session.press(_language(LAYOUT.option_rows - 1)) is None
+    assert session.texts.code == "en"
+
+
+def test_language_problems_are_reported(tmp_path):
+    folder = _languages(tmp_path, italian={"version": 2, "name": "x"})
+    session = _session(
+        LAYOUT, tmp_path, tmp_path, RACES, languages_dir=folder, **_files(tmp_path)
+    )
+    assert "it.json" in session.language_problem
+    assert session.texts[Text.START] == "Start"

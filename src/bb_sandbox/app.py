@@ -52,6 +52,7 @@ SETUPS_DIR = Path("setups")
 PLAYER_SPRITES_DIR = Path("sprites")
 PITCH_SPRITES_DIR = PLAYER_SPRITES_DIR / "pitch"
 SETTINGS_FILE = Path("settings.json")
+LANGUAGES_DIR = Path("languages")
 LEFT_BUTTON = 1
 RIGHT_BUTTON = 3
 # Reason: holding Backspace in the name box or a comment deletes repeatedly.
@@ -140,8 +141,8 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
     elif event.type == pygame.MOUSEMOTION:
         session.move(event.pos)
     elif event.type == pygame.WINDOWFOCUSGAINED:
-        # Reason: picks up roster, setup and pitch image files added or
-        # renamed in Explorer while the app was in the background.
+        # Reason: picks up roster, setup, pitch image and language files
+        # added or renamed in Explorer while the app was in the background.
         session.rescan()
     return True
 
@@ -172,9 +173,15 @@ def _draw(
         pitch_sprite (PitchSprite): The pitch image, from load_pitch_sprite.
         session (Session): The session to draw.
     """
-    # Reason: a broken player or pitch image stays reported until it is fixed,
-    # without hiding the session's own feedback.
-    message = session.message or player_sprites.problem or pitch_sprite.problem
+    # Reason: a broken player or pitch image or language file stays reported
+    # until it is fixed, without hiding the session's own feedback.
+    message = (
+        session.message
+        or player_sprites.problem
+        or pitch_sprite.problem
+        or session.language_problem
+    )
+    texts = session.texts
     if session.screen is Screen.SANDBOX and session.interaction is not None:
         view = session.interaction.view()
         board, pitch = session.board, pitch_sprite.image
@@ -182,6 +189,7 @@ def _draw(
             surface,
             layout,
             font,
+            texts,
             comment_font,
             board,
             view,
@@ -189,21 +197,21 @@ def _draw(
             pitch,
             message,
         )
-        draw_dice(surface, layout, font, die_font, session.last_roll, sprites)
+        draw_dice(surface, layout, font, texts, die_font, session.last_roll, sprites)
     elif session.screen is Screen.TEAM_SETUPS:
         view = session.team_setups_view()
-        draw_team_setups(surface, layout, font, view, message)
+        draw_team_setups(surface, layout, font, texts, view, message)
     elif session.screen is Screen.RACES:
-        draw_races(surface, layout, font, session.races, message)
+        draw_races(surface, layout, font, texts, session.races, message)
     elif session.screen is Screen.OPTIONS:
-        draw_options(surface, layout, font, session.options_view(), message)
+        draw_options(surface, layout, font, texts, session.options_view(), message)
     elif session.screen is Screen.BUILDER and session.builder is not None:
-        draw_builder(surface, layout, font, session.builder, message)
+        draw_builder(surface, layout, font, texts, session.builder, message)
     else:
-        draw_menu(surface, layout, font, session.menu_view(), message)
+        draw_menu(surface, layout, font, texts, session.menu_view(), message)
     # Reason: drawn last so the box sits over whichever screen opened it.
     if session.name_view is not None:
-        draw_name_box(surface, layout, font, session.name_view)
+        draw_name_box(surface, layout, font, texts, session.name_view)
 
 
 def _load_pitch(session: Session, layout: Layout) -> PitchSprite:
@@ -315,7 +323,11 @@ def run(max_frames: int | None = None) -> int:
         races,
         pitches_dir=PITCH_SPRITES_DIR,
         settings_file=SETTINGS_FILE,
+        languages_dir=LANGUAGES_DIR,
     )
+    # Reason: language files are user files too, so a broken one is skipped
+    # and reported. They are read first so the saved language can be found.
+    session.load_languages()
     # Reason: settings.json is a user file, so a broken one becomes the
     # session message instead of stopping the app.
     session.load_settings()

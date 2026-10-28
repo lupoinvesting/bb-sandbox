@@ -2,7 +2,8 @@
 the sandbox, the Team setups screen and the name box, and loads the block dice,
 player and pitch sprites.
 
-The only module that calls Pygame draw.
+The only module that calls Pygame draw. Every caption, label and hint, and
+every race, position and skill name, is looked up in the Texts it is given.
 """
 
 import re
@@ -15,14 +16,16 @@ import pygame
 from bb_sandbox.annotations import Marks, arrow_polygon
 from bb_sandbox.board import Board
 from bb_sandbox.builder import TEAM_BUDGET, RosterBuilder
-from bb_sandbox.dice import DICE, BlockFace, Roll
+from bb_sandbox.dice import BLOCK_DIE, DICE, BlockFace, Dice, Roll
 from bb_sandbox.images import list_images
 from bb_sandbox.interaction import BALL, InteractionView, MenuItem
+from bb_sandbox.language import Message, Text, Texts
 from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
 from bb_sandbox.session import (
+    SIDE_TEXTS,
     MenuView,
     NameView,
     OptionsView,
@@ -53,7 +56,7 @@ BADGE_FILL = (20, 20, 20)
 BADGE_PADDING = 2
 # Reason: the message line shows this instead of the session message while a
 # comment is being typed; a longer hint doesn't fit the 224 px line.
-COMMENT_HINT = "Enter saves, Esc cancels"
+COMMENT_HINT = Text.COMMENT_HINT
 COMMENT_CARET = "|"
 BALL_FILL = (150, 90, 40)
 BALL_OUTLINE = (250, 240, 220)
@@ -64,18 +67,19 @@ OVER_LIMIT = (230, 150, 40)
 # Reason: translucent orange, as on chess.com's analysis board.
 MARK_COLOUR = (255, 170, 0, 160)
 # Reason: x offsets of the builder table's text columns from a row's left edge,
-# sized for the widest values in races.csv at the app's font size (20).
-TABLE_COLUMNS = (
+# sized for the widest values in races.csv at the app's font size (20). "#"
+# is a symbol, not a word, so it isn't translated.
+TABLE_COLUMNS: tuple[tuple[str | Text, int], ...] = (
     ("#", 8),
-    ("Max", 36),
-    ("Position", 76),
-    ("Cost", 262),
-    ("MA", 306),
-    ("ST", 336),
-    ("AG", 366),
-    ("PA", 396),
-    ("AV", 426),
-    ("Skills", 460),
+    (Text.MAX, 36),
+    (Text.POSITION, 76),
+    (Text.COST, 262),
+    (Text.MA, 306),
+    (Text.ST, 336),
+    (Text.AG, 366),
+    (Text.PA, 396),
+    (Text.AV, 426),
+    (Text.SKILLS, 460),
 )
 # Reason: prone lies on its side, stunned is upside down (pygame turns anticlockwise).
 STATUS_ANGLES = {Status.STANDING: 0, Status.PRONE: 90, Status.STUNNED: 180}
@@ -83,23 +87,34 @@ STATUS_ANGLES = {Status.STANDING: 0, Status.PRONE: 90, Status.STUNNED: 180}
 # caption names the team for all three.
 DUGOUT_CAPTIONS = {
     (side, dugout): caption
-    for side in Side
+    for side, reserve in (
+        (Side.HOME, Text.HOME_RESERVE),
+        (Side.AWAY, Text.AWAY_RESERVE),
+    )
     for dugout, caption in (
-        (Dugout.RESERVE, f"{side.value.capitalize()} Reserve"),
-        (Dugout.KO, "KO"),
-        (Dugout.INJURED, "Injured"),
+        (Dugout.RESERVE, reserve),
+        (Dugout.KO, Text.KO_BOX),
+        (Dugout.INJURED, Text.INJURED_BOX),
     )
 }
 MENU_CAPTIONS = {
-    MenuList.HOME_ROSTERS: "Home roster",
-    MenuList.AWAY_ROSTERS: "Away roster",
-    MenuList.SETUPS: "Saved setups",
+    MenuList.HOME_ROSTERS: Text.HOME_ROSTER,
+    MenuList.AWAY_ROSTERS: Text.AWAY_ROSTER,
+    MenuList.SETUPS: Text.SAVED_SETUPS,
 }
-MENU_HINT = "Right-click a roster or setup to rename or delete it"
-TEAM_SETUPS_HINT = "Click a setup to deploy it, right-click to rename or delete it"
-NAME_HINT = "Enter: OK   Esc: cancel"
-DELETE_HINT = "Enter: OK   Esc: cancel   Del: delete"
-CONFIRM_HINT = "Enter: delete   Esc: cancel"
+TEAM_CAPTIONS = {Side.HOME: Text.HOME_CAPTION, Side.AWAY: Text.AWAY_CAPTION}
+FACE_TEXTS = {
+    BlockFace.PLAYER_DOWN: Text.PLAYER_DOWN,
+    BlockFace.BOTH_DOWN: Text.BOTH_DOWN,
+    BlockFace.PUSH_BACK: Text.PUSH_BACK,
+    BlockFace.STUMBLE: Text.STUMBLE,
+    BlockFace.POW: Text.POW,
+}
+MENU_HINT = Text.MENU_HINT
+TEAM_SETUPS_HINT = Text.TEAM_SETUPS_HINT
+NAME_HINT = Text.NAME_HINT
+DELETE_HINT = Text.DELETE_HINT
+CONFIRM_HINT = Text.CONFIRM_HINT
 NAME_CARET = "|"
 # Reason: the gap between a text line and the left or right edge of its box.
 TEXT_INSET = 8
@@ -283,6 +298,7 @@ def draw_scene(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     pitch_image: pygame.Surface | None = None,
 ) -> None:
     """
@@ -292,6 +308,7 @@ def draw_scene(
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for area captions.
+        texts (Texts): The language to draw in.
         pitch_image (pygame.Surface | None): The pitch image, from
             load_pitch_sprite; None draws the pitch in code.
     """
@@ -303,11 +320,11 @@ def draw_scene(
             box = layout.dugout(side, dugout)
             pygame.draw.rect(surface, RESERVE_FILL, _rect(box))
             pygame.draw.rect(surface, BORDER, _rect(box), 2)
-            _draw_label(surface, font, DUGOUT_CAPTIONS[side, dugout], box)
+            _draw_label(surface, font, texts[DUGOUT_CAPTIONS[side, dugout]], box)
 
     pygame.draw.rect(surface, PANEL_FILL, _rect(layout.panel))
     pygame.draw.rect(surface, BORDER, _rect(layout.panel), 2)
-    _draw_label(surface, font, "Player Info", layout.panel)
+    _draw_label(surface, font, texts[Text.PLAYER_INFO], layout.panel)
 
 
 def _draw_centred(
@@ -354,10 +371,25 @@ def _draw_button(
     _draw_centred(surface, font, label, box, text)
 
 
+def _more(texts: Texts, hidden: int) -> str:
+    """
+    Build the "+N more" line of a list that doesn't fit.
+
+    Args:
+        texts (Texts): The language to draw in.
+        hidden (int): How many items didn't fit.
+
+    Returns:
+        str: E.g. "+3 more".
+    """
+    return texts.say(Message(Text.MORE, {"count": str(hidden)}))
+
+
 def _draw_menu_list(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     which: MenuList,
     names: tuple[str, ...],
     hidden: int,
@@ -371,6 +403,7 @@ def _draw_menu_list(
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw in.
         which (MenuList): The column to draw.
         names (tuple[str, ...]): Visible file names, top to bottom.
         hidden (int): Files that didn't fit.
@@ -380,7 +413,7 @@ def _draw_menu_list(
     column = layout.menu_column(which)
     pygame.draw.rect(surface, PANEL_FILL, _rect(column))
     pygame.draw.rect(surface, BORDER, _rect(column), 2)
-    _draw_label(surface, font, MENU_CAPTIONS[which], column)
+    _draw_label(surface, font, texts[MENU_CAPTIONS[which]], column)
     if layout.menu_rows == 0:
         return
     if not names:
@@ -392,35 +425,39 @@ def _draw_menu_list(
         _draw_label(surface, font, name, row)
     if hidden:
         row = layout.menu_row(which, len(names))
-        _draw_label(surface, font, f"+{hidden} more", row)
+        _draw_label(surface, font, _more(texts, hidden), row)
 
 
-def _roster_label(entry: RosterEntry) -> str:
+def _roster_label(entry: RosterEntry, texts: Texts) -> str:
     """
     Label a roster row with its race.
 
     Args:
         entry (RosterEntry): The roster file.
+        texts (Texts): The language to draw in.
 
     Returns:
         str: `name (Race)`, or `name (invalid)` if its race line is unreadable.
     """
-    return f"{entry.name} ({entry.race or 'invalid'})"
+    race = texts[Text.INVALID_RACE] if entry.race is None else texts.race(entry.race)
+    return f"{entry.name} ({race})"
 
 
-def _preview_lines(team: Team) -> list[str]:
+def _preview_lines(team: Team, texts: Texts) -> list[str]:
     """
     Build the main menu preview text for an imported team.
 
     Args:
         team (Team): The team.
+        texts (Texts): The language to draw in.
 
     Returns:
         list[str]: A `Race - N players` header, then `#n name  position` per player.
     """
-    lines = [f"{team.race} - {len(team.players)} players"]
+    values = {"race": texts.race(team.race), "count": str(len(team.players))}
+    lines = [texts.say(Message(Text.PREVIEW, values))]
     lines.extend(
-        f"#{number} {player.name}  {player.position}"
+        f"#{number} {player.name}  {texts.position(player.position)}"
         for number, player in enumerate(team.players, start=1)
     )
     return lines
@@ -430,6 +467,7 @@ def _draw_preview(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     which: MenuList,
     team: Team,
 ) -> None:
@@ -440,13 +478,14 @@ def _draw_preview(
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for the text.
+        texts (Texts): The language to draw in.
         which (MenuList): The roster list the team was picked from.
         team (Team): The team to preview.
     """
     # Reason: long names are clipped to the column instead of spilling into
     # the next one.
     surface.set_clip(_rect(layout.menu_column(which)))
-    for index, line in enumerate(_preview_lines(team)):
+    for index, line in enumerate(_preview_lines(team, texts)):
         box = layout.menu_preview_line(which, index)
         surface.blit(font.render(line, True, TEXT), (box.x + 8, box.y))
     surface.set_clip(None)
@@ -456,6 +495,7 @@ def draw_menu(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     menu: MenuView,
     message: str,
 ) -> None:
@@ -467,54 +507,66 @@ def draw_menu(
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw in.
         menu (MenuView): Roster and setup names and selected teams.
         message (str): Status message, '' for none.
     """
     surface.fill(BACKGROUND)
-    labels = tuple(_roster_label(entry) for entry in menu.rosters)
+    labels = tuple(_roster_label(entry, texts) for entry in menu.rosters)
     selections = {MenuList.HOME_ROSTERS: menu.home, MenuList.AWAY_ROSTERS: menu.away}
     for which, team in selections.items():
         # Reason: rows are labelled with the race, so the highlight is matched
         # on the roster name and drawn on that row's label.
         selected = next(
-            (_roster_label(e) for e in menu.rosters if team and e.name == team.name),
+            (
+                _roster_label(e, texts)
+                for e in menu.rosters
+                if team and e.name == team.name
+            ),
             None,
         )
         _draw_menu_list(
             surface,
             layout,
             font,
+            texts,
             which,
             labels,
             menu.hidden,
             selected,
-            "No CSV files in rosters/",
+            texts[Text.NO_ROSTERS],
         )
         if team is not None:
-            _draw_preview(surface, layout, font, which, team)
+            _draw_preview(surface, layout, font, texts, which, team)
     _draw_menu_list(
         surface,
         layout,
         font,
+        texts,
         MenuList.SETUPS,
         menu.setups,
         menu.setups_hidden,
         None,
-        "No JSON files in setups/",
+        texts[Text.NO_SETUPS],
     )
 
+    line = layout.menu_message_line
     if message:
-        _draw_label(surface, font, message, layout.menu_message_line)
+        _draw_label(surface, font, message, line)
     else:
-        _draw_label(surface, font, MENU_HINT, layout.menu_message_line, TEXT_DIM)
-    _draw_button(surface, font, layout.new_roster_button, "New roster")
+        _draw_label(surface, font, texts[MENU_HINT], line, TEXT_DIM)
+    _draw_button(surface, font, layout.new_roster_button, texts[Text.NEW_ROSTER])
     ready = menu.home is not None and menu.away is not None
-    _draw_button(surface, font, layout.start_button, "Start", ready)
-    _draw_button(surface, font, layout.options_button, "Options")
+    _draw_button(surface, font, layout.start_button, texts[Text.START], ready)
+    _draw_button(surface, font, layout.options_button, texts[Text.OPTIONS])
 
 
 def draw_name_box(
-    surface: pygame.Surface, layout: Layout, font: pygame.font.Font, view: NameView
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    texts: Texts,
+    view: NameView,
 ) -> None:
     """
     Draw the name box over whatever screen is showing.
@@ -527,6 +579,8 @@ def draw_name_box(
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw the hints in; the caption and
+            problem come translated.
         view (NameView): The caption, the typed text, its problem and whether
             the box can delete or is asking to.
     """
@@ -551,17 +605,18 @@ def draw_name_box(
     if view.problem:
         _draw_label(surface, font, view.problem, hint_line, OVER_LIMIT)
     elif view.confirming:
-        _draw_label(surface, font, CONFIRM_HINT, hint_line, TEXT_DIM)
+        _draw_label(surface, font, texts[CONFIRM_HINT], hint_line, TEXT_DIM)
     elif view.deletable:
-        _draw_label(surface, font, DELETE_HINT, hint_line, TEXT_DIM)
+        _draw_label(surface, font, texts[DELETE_HINT], hint_line, TEXT_DIM)
     else:
-        _draw_label(surface, font, NAME_HINT, hint_line, TEXT_DIM)
+        _draw_label(surface, font, texts[NAME_HINT], hint_line, TEXT_DIM)
 
 
 def draw_races(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     races: tuple[Race, ...],
     message: str,
 ) -> None:
@@ -572,6 +627,7 @@ def draw_races(
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw in.
         races (tuple[Race, ...]): The races, at most one per race cell.
         message (str): Status message, '' for none.
     """
@@ -579,38 +635,75 @@ def draw_races(
     for column in layout.menu_columns:
         pygame.draw.rect(surface, PANEL_FILL, _rect(column))
         pygame.draw.rect(surface, BORDER, _rect(column), 2)
-    _draw_label(surface, font, "Pick a race", layout.menu_columns[0])
+    _draw_label(surface, font, texts[Text.PICK_RACE], layout.menu_columns[0])
     for index, race in enumerate(races):
-        _draw_label(surface, font, race.name, layout.race_cell(index))
+        _draw_label(surface, font, texts.race(race.name), layout.race_cell(index))
     _draw_label(surface, font, message, layout.menu_message_line)
-    _draw_button(surface, font, layout.back_button, "Back")
+    _draw_button(surface, font, layout.back_button, texts[Text.BACK])
+
+
+def _draw_languages(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    texts: Texts,
+    options: OptionsView,
+) -> None:
+    """
+    Draw the Options screen's Language column: caption, display names, the
+    chosen one highlighted, and "+N more".
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw in.
+        options (OptionsView): The language names and the chosen one.
+    """
+    column = layout.menu_columns[1]
+    # Reason: long display names are clipped to the column.
+    surface.set_clip(_rect(column))
+    _draw_label(surface, font, texts[Text.LANGUAGE], column)
+    names = options.languages[: layout.option_rows]
+    for index, name in enumerate(names):
+        row = layout.language_row(index)
+        if index == options.language:
+            pygame.draw.rect(surface, HIGHLIGHT, _rect(row))
+        _draw_label(surface, font, name, row)
+    if options.languages_hidden and len(names) < layout.option_rows:
+        row = layout.language_row(len(names))
+        _draw_label(surface, font, _more(texts, options.languages_hidden), row)
+    surface.set_clip(None)
 
 
 def draw_options(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     options: OptionsView,
     message: str,
 ) -> None:
     """
-    Draw the Options screen: the pitch list in the first column, message line
-    and Back.
+    Draw the Options screen: the pitch list in the first column, the language
+    list in the second, message line and Back.
 
     Args:
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
-        options (OptionsView): The pitch image names and the chosen one.
+        texts (Texts): The language to draw in.
+        options (OptionsView): The pitch image and language names and the
+            chosen ones.
         message (str): Status message, '' for none.
     """
     surface.fill(BACKGROUND)
     for column in layout.menu_columns:
         pygame.draw.rect(surface, PANEL_FILL, _rect(column))
         pygame.draw.rect(surface, BORDER, _rect(column), 2)
-    _draw_label(surface, font, "Pitch", layout.menu_columns[0])
+    _draw_label(surface, font, texts[Text.PITCH], layout.menu_columns[0])
     # Reason: row 0 is the drawn pitch, which None selects.
-    rows: list[tuple[str, str | None]] = [("Drawn pitch", None)]
+    rows: list[tuple[str, str | None]] = [(texts[Text.DRAWN_PITCH], None)]
     rows.extend((name, name) for name in options.pitches)
     for index, (label, pitch) in enumerate(rows[: layout.option_rows]):
         row = layout.option_row(index)
@@ -620,17 +713,19 @@ def draw_options(
     if len(rows) < layout.option_rows:
         last = layout.option_row(len(rows))
         if options.hidden:
-            _draw_label(surface, font, f"+{options.hidden} more", last)
+            _draw_label(surface, font, _more(texts, options.hidden), last)
         elif not options.pitches:
-            _draw_label(surface, font, "No images in sprites/pitch/", last)
+            _draw_label(surface, font, texts[Text.NO_PITCHES], last)
+    _draw_languages(surface, layout, font, texts, options)
     _draw_label(surface, font, message, layout.menu_message_line)
-    _draw_button(surface, font, layout.back_button, "Back")
+    _draw_button(surface, font, layout.back_button, texts[Text.BACK])
 
 
 def _draw_team_setup_list(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     side: Side,
     setups: TeamSetupList,
 ) -> None:
@@ -642,19 +737,21 @@ def _draw_team_setup_list(
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw in.
         side (Side): The team, which picks the column.
         setups (TeamSetupList): The team's name and visible setup names.
     """
     lines = list(setups.setups)
     if setups.hidden:
-        lines.append(f"+{setups.hidden} more")
+        lines.append(_more(texts, setups.hidden))
     elif not lines:
-        lines.append("No team setups yet")
+        lines.append(texts[Text.NO_TEAM_SETUPS])
     column = layout.team_setup_column(side)
     # Reason: long team and setup names are clipped to the column instead of
     # spilling into the other team's.
     surface.set_clip(_rect(column))
-    _draw_label(surface, font, f"{side.value.capitalize()}: {setups.team}", column)
+    caption = texts.say(Message(TEAM_CAPTIONS[side], {"team": setups.team}))
+    _draw_label(surface, font, caption, column)
     # Reason: a tiny square size can leave fewer rows than lines, even none.
     for index, line in enumerate(lines[: layout.option_rows]):
         _draw_label(surface, font, line, layout.team_setup_row(side, index))
@@ -665,6 +762,7 @@ def draw_team_setups(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     view: TeamSetupsView,
     message: str,
 ) -> None:
@@ -678,6 +776,7 @@ def draw_team_setups(
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw in.
         view (TeamSetupsView): Both teams' names and setup names.
         message (str): Status message, '' for the hint.
     """
@@ -685,26 +784,29 @@ def draw_team_setups(
     for column in layout.menu_columns:
         pygame.draw.rect(surface, PANEL_FILL, _rect(column))
         pygame.draw.rect(surface, BORDER, _rect(column), 2)
-    _draw_team_setup_list(surface, layout, font, Side.HOME, view.home)
-    _draw_team_setup_list(surface, layout, font, Side.AWAY, view.away)
+    _draw_team_setup_list(surface, layout, font, texts, Side.HOME, view.home)
+    _draw_team_setup_list(surface, layout, font, texts, Side.AWAY, view.away)
     if message:
         _draw_label(surface, font, message, layout.menu_message_line)
     else:
         line = layout.menu_message_line
-        _draw_label(surface, font, TEAM_SETUPS_HINT, line, TEXT_DIM)
-    _draw_button(surface, font, layout.back_button, "Back")
+        _draw_label(surface, font, texts[TEAM_SETUPS_HINT], line, TEXT_DIM)
+    _draw_button(surface, font, layout.back_button, texts[Text.BACK])
     home, away = layout.save_home_button, layout.save_away_button
-    _draw_button(surface, font, home, "Save home", view.home.can_save)
-    _draw_button(surface, font, away, "Save away", view.away.can_save)
+    _draw_button(surface, font, home, texts[Text.SAVE_HOME], view.home.can_save)
+    _draw_button(surface, font, away, texts[Text.SAVE_AWAY], view.away.can_save)
 
 
-def _positional_texts(hired: int, positional: Positional) -> tuple[str, ...]:
+def _positional_texts(
+    hired: int, positional: Positional, texts: Texts
+) -> tuple[str, ...]:
     """
     Build the texts of one positional row, in TABLE_COLUMNS order.
 
     Args:
         hired (int): How many the draft has.
         positional (Positional): The positional.
+        texts (Texts): The language to draw the position and skills in.
 
     Returns:
         tuple[str, ...]: Hired, `0-N`, position, `85K`, MA, ST, AG, PA, AV
@@ -713,14 +815,14 @@ def _positional_texts(hired: int, positional: Positional) -> tuple[str, ...]:
     return (
         str(hired),
         f"0-{positional.max_count}",
-        positional.position,
+        texts.position(positional.position),
         f"{positional.cost}K",
         str(positional.ma),
         str(positional.st),
         format_target(positional.ag),
         format_target(positional.pa),
         format_target(positional.av),
-        ", ".join(positional.skills),
+        ", ".join(texts.skill(skill) for skill in positional.skills),
     )
 
 
@@ -753,6 +855,7 @@ def _draw_positionals(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     builder: RosterBuilder,
 ) -> None:
     """
@@ -763,14 +866,18 @@ def _draw_positionals(
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for the text.
+        texts (Texts): The language to draw in.
         builder (RosterBuilder): The draft.
     """
     table = layout.positional_table
     pygame.draw.rect(surface, PANEL_FILL, _rect(table))
     pygame.draw.rect(surface, BORDER, _rect(table), 2)
-    caption = f"{builder.race.name}: click a positional to add, a player to remove"
+    race = texts.race(builder.race.name)
+    caption = texts.say(Message(Text.BUILDER_CAPTION, {"race": race}))
     _draw_label(surface, font, caption, table)
-    titles = tuple(title for title, _ in TABLE_COLUMNS)
+    titles = tuple(
+        texts[title] if isinstance(title, Text) else title for title, _ in TABLE_COLUMNS
+    )
     _draw_table_row(
         surface, font, layout.positional_titles, titles, (TEXT_DIM,) * len(titles)
     )
@@ -778,14 +885,15 @@ def _draw_positionals(
     for index, (hired, positional) in enumerate(rows):
         count = OVER_LIMIT if hired > positional.max_count else TEXT
         colours = (count,) + (TEXT,) * (len(TABLE_COLUMNS) - 1)
-        texts = _positional_texts(hired, positional)
-        _draw_table_row(surface, font, layout.positional_row(index), texts, colours)
+        row = _positional_texts(hired, positional, texts)
+        _draw_table_row(surface, font, layout.positional_row(index), row, colours)
 
 
 def _draw_roster_list(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     builder: RosterBuilder,
 ) -> None:
     """
@@ -796,12 +904,14 @@ def _draw_roster_list(
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for the text.
+        texts (Texts): The language to draw in.
         builder (RosterBuilder): The draft.
     """
     column = layout.roster_list
     pygame.draw.rect(surface, PANEL_FILL, _rect(column))
     pygame.draw.rect(surface, BORDER, _rect(column), 2)
-    size = f"Roster {len(builder.picks)}/{MAX_TEAM_SIZE}"
+    values = {"count": str(len(builder.picks)), "max": str(MAX_TEAM_SIZE)}
+    size = texts.say(Message(Text.ROSTER_SIZE, values))
     _draw_label(surface, font, size, column)
     total = builder.total_cost()
     colour = OVER_LIMIT if total > TEAM_BUDGET else TEXT
@@ -811,7 +921,7 @@ def _draw_roster_list(
     positionals = builder.race.positionals
     for slot, index in enumerate(builder.picks):
         line = layout.roster_line(slot)
-        text = f"#{slot + 1} {positionals[index].position}"
+        text = f"#{slot + 1} {texts.position(positionals[index].position)}"
         surface.blit(font.render(text, True, TEXT), (line.x + 8, line.y))
 
 
@@ -819,6 +929,7 @@ def draw_builder(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     builder: RosterBuilder,
     message: str,
 ) -> None:
@@ -830,16 +941,18 @@ def draw_builder(
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw in.
         builder (RosterBuilder): The draft.
         message (str): Status message, '' for none.
     """
     surface.fill(BACKGROUND)
-    _draw_positionals(surface, layout, font, builder)
-    _draw_roster_list(surface, layout, font, builder)
+    _draw_positionals(surface, layout, font, texts, builder)
+    _draw_roster_list(surface, layout, font, texts, builder)
     _draw_label(surface, font, message, layout.menu_message_line)
-    _draw_button(surface, font, layout.back_button, "Back")
+    _draw_button(surface, font, layout.back_button, texts[Text.BACK])
     ready = bool(builder.picks)
-    _draw_button(surface, font, layout.save_roster_button, "Save roster", ready)
+    save = texts[Text.SAVE_ROSTER]
+    _draw_button(surface, font, layout.save_roster_button, save, ready)
 
 
 def _draw_badge(
@@ -939,29 +1052,34 @@ def _draw_ball(surface: pygame.Surface, box: Box) -> None:
     pygame.draw.ellipse(surface, BALL_OUTLINE, _rect(box), 1)
 
 
-def _player_lines(board: Board, key: PlayerKey) -> list[str]:
+def _player_lines(board: Board, key: PlayerKey, texts: Texts) -> list[str]:
     """
     Build the info panel text for one player.
 
     Args:
         board (Board): The board the player is on.
         key (PlayerKey): The player.
+        texts (Texts): The language to draw in.
 
     Returns:
         list[str]: Lines top to bottom: number and name, team, stats, skills.
     """
     player = board.player(key)
     stats = (
-        f"MA {player.ma}  ST {player.st}  AG {format_target(player.ag)}  "
-        f"PA {format_target(player.pa)}  AV {format_target(player.av)}"
+        f"{texts[Text.MA]} {player.ma}  {texts[Text.ST]} {player.st}  "
+        f"{texts[Text.AG]} {format_target(player.ag)}  "
+        f"{texts[Text.PA]} {format_target(player.pa)}  "
+        f"{texts[Text.AV]} {format_target(player.av)}"
     )
+    team = {"team": board.team(key.side).name, "side": SIDE_TEXTS[key.side]}
     lines = [
         f"#{key.index + 1} {player.name}",
-        f"{board.team(key.side).name} ({key.side.value})",
+        texts.say(Message(Text.TEAM_SIDE, team)),
         stats,
-        "Skills:",
+        texts[Text.PLAYER_SKILLS],
     ]
-    lines.extend(f"  {skill}" for skill in player.skills or ("none",))
+    skills = [texts.skill(skill) for skill in player.skills]
+    lines.extend(f"  {skill}" for skill in skills or (texts[Text.NO_SKILLS],))
     return lines
 
 
@@ -969,6 +1087,7 @@ def _draw_panel(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     board: Board,
     hovered: PlayerKey | None,
 ) -> None:
@@ -979,6 +1098,7 @@ def _draw_panel(
         surface (pygame.Surface): Target surface.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for the text.
+        texts (Texts): The language to draw in.
         board (Board): The board the player is on.
         hovered (PlayerKey | None): The player to show, or None for nothing.
     """
@@ -995,14 +1115,17 @@ def _draw_panel(
     # spilling over the pitch, the dice, the message or the buttons.
     surface.set_clip(_rect(text_area))
     line_height = font.get_linesize()
-    for number, line in enumerate(_player_lines(board, hovered)):
+    for number, line in enumerate(_player_lines(board, hovered, texts)):
         y = text_area.y + number * line_height
         surface.blit(font.render(line, True, TEXT), (text_area.x + 6, y))
     surface.set_clip(None)
 
 
 def _draw_context_menu(
-    surface: pygame.Surface, font: pygame.font.Font, menu: tuple[MenuItem, ...]
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    texts: Texts,
+    menu: tuple[MenuItem, ...],
 ) -> None:
     """
     Draw the open context menu.
@@ -1010,12 +1133,13 @@ def _draw_context_menu(
     Args:
         surface (pygame.Surface): Target surface.
         font (pygame.font.Font): Font for the labels.
+        texts (Texts): The language to draw in.
         menu (tuple[MenuItem, ...]): The items; () draws nothing.
     """
     for item in menu:
         pygame.draw.rect(surface, MENU_FILL, _rect(item.box))
         pygame.draw.rect(surface, BORDER, _rect(item.box), 1)
-        _draw_label(surface, font, item.label, item.box)
+        _draw_label(surface, font, texts[item.label], item.box)
 
 
 def _player_images(
@@ -1148,6 +1272,7 @@ def draw_sandbox(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     comment_font: pygame.font.Font,
     board: Board,
     view: InteractionView,
@@ -1163,6 +1288,7 @@ def draw_sandbox(
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for captions and shirt numbers.
+        texts (Texts): The language to draw in.
         comment_font (pygame.font.Font): Smaller font for player comments.
         board (Board): Where every player and the ball are.
         view (InteractionView): Hover, drag, context menu, comment edit and
@@ -1174,20 +1300,20 @@ def draw_sandbox(
         message (str): Status message (save/load feedback), '' for none; a
             comment edit shows COMMENT_HINT instead.
     """
-    draw_scene(surface, layout, font, pitch_image)
+    draw_scene(surface, layout, font, texts, pitch_image)
     _draw_pieces(surface, layout, font, comment_font, board, view, player_sprites)
     _draw_marks(surface, layout, view.marks)
-    _draw_panel(surface, layout, font, board, view.hovered)
+    _draw_panel(surface, layout, font, texts, board, view.hovered)
     if view.editing is not None:
-        message = COMMENT_HINT
+        message = texts[COMMENT_HINT]
     # Reason: file names in the message can be wider than the panel.
     surface.set_clip(_rect(layout.sandbox_message_line))
     _draw_label(surface, font, message, layout.sandbox_message_line)
     surface.set_clip(None)
-    _draw_button(surface, font, layout.save_button, "Save setup")
-    _draw_button(surface, font, layout.team_setups_button, "Team setups")
-    _draw_button(surface, font, layout.menu_button, "Main menu")
-    _draw_context_menu(surface, font, view.menu)
+    _draw_button(surface, font, layout.save_button, texts[Text.SAVE_SETUP])
+    _draw_button(surface, font, layout.team_setups_button, texts[Text.TEAM_SETUPS])
+    _draw_button(surface, font, layout.menu_button, texts[Text.MAIN_MENU])
+    _draw_context_menu(surface, font, texts, view.menu)
 
 
 def _load_image(path: Path) -> pygame.Surface:
@@ -1369,17 +1495,36 @@ def load_pitch_sprite(path: Path | None, size: tuple[int, int]) -> PitchSprite:
     return PitchSprite(pygame.transform.smoothscale(image, size))
 
 
-def _roll_text(roll: Roll) -> str:
+def _dice_label(dice: Dice, texts: Texts) -> str:
+    """
+    Label a dice button: block dice in words, numbered dice in notation.
+
+    Args:
+        dice (Dice): What the button rolls.
+        texts (Texts): The language to draw in.
+
+    Returns:
+        str: E.g. `2d6` as is, or `3 blocks` translated.
+    """
+    if dice.die != BLOCK_DIE:
+        return dice.label
+    if dice.count == 1:
+        return texts[Text.ONE_BLOCK]
+    return texts.say(Message(Text.BLOCKS, {"count": str(dice.count)}))
+
+
+def _roll_text(roll: Roll, texts: Texts) -> str:
     """
     Build the dice result line for a roll.
 
     Args:
         roll (Roll): The roll.
+        texts (Texts): The language to draw in.
 
     Returns:
         str: `#12  2d6 = 8`; block dice have no total, so `#12  3 blocks`.
     """
-    text = f"#{roll.number}  {roll.dice.label}"
+    text = f"#{roll.number}  {_dice_label(roll.dice, texts)}"
     if roll.total is None:
         return text
     return f"{text} = {roll.total}"
@@ -1388,6 +1533,7 @@ def _roll_text(roll: Roll) -> str:
 def _draw_die(
     surface: pygame.Surface,
     font: pygame.font.Font,
+    texts: Texts,
     die_font: pygame.font.Font,
     box: Box,
     face: int | BlockFace,
@@ -1400,6 +1546,7 @@ def _draw_die(
     Args:
         surface (pygame.Surface): Target surface.
         font (pygame.font.Font): Font for a block face's words.
+        texts (Texts): The language of a block face's words.
         die_font (pygame.font.Font): Bigger font for a number.
         box (Box): The die box.
         face (int | BlockFace): The rolled face.
@@ -1415,7 +1562,7 @@ def _draw_die(
         _draw_centred(surface, die_font, str(face), box, DIE_TEXT)
         return
     # Reason: one word per line, so the longest name, Player Down!, fits the box.
-    words = face.value.split()
+    words = texts[FACE_TEXTS[face]].split()
     height = font.get_linesize()
     top = box.y + (box.height - len(words) * height) // 2
     for index, word in enumerate(words):
@@ -1427,6 +1574,7 @@ def draw_dice(
     surface: pygame.Surface,
     layout: Layout,
     font: pygame.font.Font,
+    texts: Texts,
     die_font: pygame.font.Font,
     roll: Roll | None,
     sprites: dict[BlockFace, pygame.Surface],
@@ -1441,6 +1589,7 @@ def draw_dice(
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for the caption, buttons, result line
             and block face words.
+        texts (Texts): The language to draw in.
         die_font (pygame.font.Font): Bigger font for numbered dice.
         roll (Roll | None): The last roll; None draws no result and no dice.
         sprites (dict[BlockFace, pygame.Surface]): Block faces with an image,
@@ -1449,11 +1598,11 @@ def draw_dice(
     area = layout.dice_area
     right = area.x + area.width - 1
     pygame.draw.line(surface, BORDER, (area.x, area.y), (right, area.y), 2)
-    _draw_label(surface, font, "Dice", area)
+    _draw_label(surface, font, texts[Text.DICE], area)
     for dice, button in zip(DICE, layout.dice_buttons):
-        _draw_button(surface, font, button, dice.label)
+        _draw_button(surface, font, button, _dice_label(dice, texts))
     if roll is None:
         return
-    _draw_label(surface, font, _roll_text(roll), layout.dice_result_line)
+    _draw_label(surface, font, _roll_text(roll, texts), layout.dice_result_line)
     for face, box in zip(roll.faces, layout.die_boxes):
-        _draw_die(surface, font, die_font, box, face, sprites)
+        _draw_die(surface, font, texts, die_font, box, face, sprites)

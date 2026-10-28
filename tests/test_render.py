@@ -1,5 +1,8 @@
 """Tests for bb_sandbox.render, drawn onto an off-screen surface."""
 
+import json
+from pathlib import Path
+
 import pygame
 import pytest
 
@@ -9,6 +12,7 @@ from bb_sandbox.board import BALL_START, Board
 from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, BlockFace, Roll
 from bb_sandbox.interaction import BALL, CommentEdit, Drag, InteractionView, MenuItem
+from bb_sandbox.language import Text, load_languages
 from bb_sandbox.layout import Box, MenuList, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, Positional, Race, load_races
@@ -22,6 +26,9 @@ from bb_sandbox.session import (
     TeamSetupsView,
 )
 
+LANGUAGES_DIR = Path(__file__).parent.parent / "languages"
+# The shipped English texts.
+EN = load_languages(LANGUAGES_DIR).all[0]
 EMPTY_VIEW = InteractionView(None, None, ())
 NO_SPRITES = render.PlayerSprites()
 
@@ -31,7 +38,7 @@ def drawn():
     pygame.init()
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_scene(surface, layout, pygame.font.Font(None, 20))
+    render.draw_scene(surface, layout, pygame.font.Font(None, 20), EN)
     yield surface, layout
     pygame.quit()
 
@@ -99,7 +106,7 @@ def test_sandbox_draws_tokens_in_dugouts(font):
     board.bench(PlayerKey(Side.HOME, 1), Dugout.KO)
     surface = pygame.Surface(layout.window_size)
     render.draw_sandbox(
-        surface, layout, font, font, board, EMPTY_VIEW, NO_SPRITES, None, ""
+        surface, layout, font, EN, font, board, EMPTY_VIEW, NO_SPRITES, None, ""
     )
 
     home_slot = layout.dugout_slot(Side.HOME, Dugout.RESERVE, 0)
@@ -125,7 +132,7 @@ def test_sandbox_draws_placed_token_on_its_square(font):
     board.place(PlayerKey(Side.AWAY, 0), Square(5, 7))
     surface = pygame.Surface(layout.window_size)
     render.draw_sandbox(
-        surface, layout, font, font, board, EMPTY_VIEW, NO_SPRITES, None, ""
+        surface, layout, font, EN, font, board, EMPTY_VIEW, NO_SPRITES, None, ""
     )
     square = layout.square(5, 7)
     assert surface.get_at((square.x + 5, square.y + 27))[:3] == (
@@ -140,7 +147,7 @@ def test_menu_highlights_selection_and_dims_start(font):
     surface = pygame.Surface(layout.window_size)
     rosters = (RosterEntry("humans", "Human"), RosterEntry("orcs", None))
     menu = MenuView(rosters, 0, _team(1, "orcs"), None)
-    render.draw_menu(surface, layout, font, menu, "hello")
+    render.draw_menu(surface, layout, font, EN, menu, "hello")
     selected = layout.menu_row(MenuList.HOME_ROSTERS, 1)
     assert (
         surface.get_at((selected.x + selected.width - 3, selected.y + 3))[:3]
@@ -160,7 +167,7 @@ def test_menu_start_enabled_with_both_teams_and_overflow_drawn(font):
     surface = pygame.Surface(layout.window_size)
     a = _team(1, "a")
     menu = MenuView((RosterEntry("a", "Human"),), 5, a, a)
-    render.draw_menu(surface, layout, font, menu, "")
+    render.draw_menu(surface, layout, font, EN, menu, "")
     start = layout.start_button
     assert surface.get_at((start.x + 3, start.y + 3))[:3] == render.BUTTON_FILL
 
@@ -183,7 +190,7 @@ def test_preview_lines_list_race_and_positions():
             ),
         ),
     )
-    assert render._preview_lines(team) == [
+    assert render._preview_lines(team, EN) == [
         "Human - 2 players",
         "#1 P  Lineman",
         "#2 Edmund  Blitzer",
@@ -191,8 +198,8 @@ def test_preview_lines_list_race_and_positions():
 
 
 def test_roster_label_shows_race_or_invalid():
-    assert render._roster_label(RosterEntry("orcs", "Orc")) == "orcs (Orc)"
-    assert render._roster_label(RosterEntry("bad", None)) == "bad (invalid)"
+    assert render._roster_label(RosterEntry("orcs", "Orc"), EN) == "orcs (Orc)"
+    assert render._roster_label(RosterEntry("bad", None), EN) == "bad (invalid)"
 
 
 def _has_text(surface, box):
@@ -210,7 +217,7 @@ def test_menu_draws_preview_only_for_selected_side(font):
     surface = pygame.Surface(layout.window_size)
     # A full 16-player team fills every preview line without raising.
     menu = MenuView((RosterEntry("t", "Human"),), 0, _team(16), None)
-    render.draw_menu(surface, layout, font, menu, "")
+    render.draw_menu(surface, layout, font, EN, menu, "")
     home_header = layout.menu_preview_line(MenuList.HOME_ROSTERS, 0)
     away_header = layout.menu_preview_line(MenuList.AWAY_ROSTERS, 0)
     assert _has_text(surface, home_header)
@@ -220,7 +227,7 @@ def test_menu_draws_preview_only_for_selected_side(font):
 def test_menu_with_no_rosters_draws(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_menu(surface, layout, font, MenuView((), 0, None, None), "")
+    render.draw_menu(surface, layout, font, EN, MenuView((), 0, None, None), "")
     assert surface.get_at((1, 1))[:3] == render.BACKGROUND
 
 
@@ -229,7 +236,7 @@ def _sandbox(board, view=EMPTY_VIEW, player_sprites=NO_SPRITES):
     surface = pygame.Surface(layout.window_size)
     font = pygame.font.Font(None, 20)
     render.draw_sandbox(
-        surface, layout, font, font, board, view, player_sprites, None, ""
+        surface, layout, font, EN, font, board, view, player_sprites, None, ""
     )
     return surface, layout
 
@@ -319,7 +326,7 @@ def test_player_lines_format_stats_and_skills():
         skills=("Block",),
     )
     board = Board(Team(name="orcs", race="Human", players=(player,)), _team(1))
-    lines = render._player_lines(board, PlayerKey(Side.HOME, 0))
+    lines = render._player_lines(board, PlayerKey(Side.HOME, 0), EN)
     assert lines == [
         "#1 Grim",
         "orcs (home)",
@@ -327,13 +334,14 @@ def test_player_lines_format_stats_and_skills():
         "Skills:",
         "  Block",
     ]
-    assert render._player_lines(board, PlayerKey(Side.AWAY, 0))[-1] == "  none"
+    assert render._player_lines(board, PlayerKey(Side.AWAY, 0), EN)[-1] == "  none"
 
 
 def test_context_menu_is_drawn(font):
     board = Board(_team(1), _team(1))
     box = Box(100, 100, 120, 32)
-    surface, _ = _sandbox(board, InteractionView(None, None, (MenuItem("Prone", box),)))
+    view = InteractionView(None, None, (MenuItem(Text.PRONE, box),))
+    surface, _ = _sandbox(board, view)
     assert surface.get_at((box.x + 110, box.y + 28))[:3] == render.MENU_FILL
 
 
@@ -341,7 +349,7 @@ def test_menu_draws_setups_column(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
     menu = MenuView((RosterEntry("a", "Human"),), 0, None, None, ("a-vs-b",), 3)
-    render.draw_menu(surface, layout, font, menu, "")
+    render.draw_menu(surface, layout, font, EN, menu, "")
     row = layout.menu_row(MenuList.SETUPS, 0)
     # Setups are never highlighted.
     assert surface.get_at((row.x + row.width - 3, row.y + 3))[:3] == render.PANEL_FILL
@@ -353,7 +361,7 @@ def test_sandbox_draws_save_button_and_clipped_message(font):
     board = Board(_team(1), _team(1))
     message = "Saved " + "x" * 200
     render.draw_sandbox(
-        surface, layout, font, font, board, EMPTY_VIEW, NO_SPRITES, None, message
+        surface, layout, font, EN, font, board, EMPTY_VIEW, NO_SPRITES, None, message
     )
     save = layout.save_button
     assert surface.get_at((save.x + 3, save.y + 3))[:3] == render.BUTTON_FILL
@@ -402,7 +410,7 @@ def _draw_builder(font, *picks):
         builder.add(index)
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_builder(surface, layout, font, builder, "")
+    render.draw_builder(surface, layout, font, EN, builder, "")
     return surface, layout
 
 
@@ -417,7 +425,7 @@ def _colours(surface, box):
 def test_menu_draws_new_roster_button(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_menu(surface, layout, font, MenuView((), 0, None, None), "")
+    render.draw_menu(surface, layout, font, EN, MenuView((), 0, None, None), "")
     button = layout.new_roster_button
     assert surface.get_at((button.x + 3, button.y + 3))[:3] == render.BUTTON_FILL
 
@@ -426,7 +434,7 @@ def test_races_screen_draws_one_name_per_race(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
     races = (RACE, RACE.model_copy(update={"name": "Orc"}))
-    render.draw_races(surface, layout, font, races, "")
+    render.draw_races(surface, layout, font, EN, races, "")
     assert _has_text(surface, layout.race_cell(0))
     assert _has_text(surface, layout.race_cell(1))
     assert not _has_text(surface, layout.race_cell(2))
@@ -479,7 +487,7 @@ def test_total_over_budget_is_over_limit_colour(font):
 
 
 def test_positional_texts_show_max_cost_stats_and_skills():
-    assert render._positional_texts(3, RACE.positionals[1]) == (
+    assert render._positional_texts(3, RACE.positionals[1], EN) == (
         "3",
         "0-1",
         "Ogre",
@@ -491,7 +499,7 @@ def test_positional_texts_show_max_cost_stats_and_skills():
         "10+",
         "Bone Head, Mighty Blow",
     )
-    assert render._positional_texts(0, RACE.positionals[0])[-1] == ""
+    assert render._positional_texts(0, RACE.positionals[0], EN)[-1] == ""
 
 
 SPRITE_COLOUR = (200, 30, 160)
@@ -507,9 +515,9 @@ SPRITE_FILES = (
 def _draw_dice(font, roll, sprites=None):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_scene(surface, layout, font)
+    render.draw_scene(surface, layout, font, EN)
     die_font = pygame.font.Font(None, 40)
-    render.draw_dice(surface, layout, font, die_font, roll, sprites or {})
+    render.draw_dice(surface, layout, font, EN, die_font, roll, sprites or {})
     return surface, layout
 
 
@@ -562,10 +570,10 @@ def test_a_pow_sprite_replaces_pows_words_only(font):
 
 
 def test_roll_text_shows_a_total_for_numbered_dice_only():
-    assert render._roll_text(Roll(12, DICE[1], (3, 5))) == "#12  2d6 = 8"
-    assert render._roll_text(Roll(1, DICE[3], (16,))) == "#1  1d16 = 16"
+    assert render._roll_text(Roll(12, DICE[1], (3, 5)), EN) == "#12  2d6 = 8"
+    assert render._roll_text(Roll(1, DICE[3], (16,)), EN) == "#1  1d16 = 16"
     faces = (BlockFace.POW, BlockFace.POW, BlockFace.STUMBLE)
-    assert render._roll_text(Roll(12, DICE[6], faces)) == "#12  3 blocks"
+    assert render._roll_text(Roll(12, DICE[6], faces), EN) == "#12  3 blocks"
 
 
 def test_panel_text_stops_above_the_dice(font):
@@ -844,7 +852,7 @@ def test_a_pitch_image_replaces_the_fills_under_the_lines(font):
     image = pygame.Surface(PITCH_SIZE)
     image.fill(SPRITE_COLOUR)
     surface = pygame.Surface(layout.window_size)
-    render.draw_scene(surface, layout, font, image)
+    render.draw_scene(surface, layout, font, EN, image)
     for column, row in ((5, 7), (5, 0), (0, 7)):
         centre = _center_of(layout.square(column, row))
         assert surface.get_at(centre)[:3] == SPRITE_COLOUR
@@ -858,7 +866,7 @@ def test_a_pitch_image_replaces_the_fills_under_the_lines(font):
 def _draw_options(font, options):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_options(surface, layout, font, options, "")
+    render.draw_options(surface, layout, font, EN, options, "")
     return surface, layout
 
 
@@ -890,7 +898,7 @@ def test_options_draws_more_after_the_last_visible_pitch(font):
 def test_menu_draws_the_options_button(font):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_menu(surface, layout, font, MenuView((), 0, None, None), "")
+    render.draw_menu(surface, layout, font, EN, MenuView((), 0, None, None), "")
     button = layout.options_button
     assert surface.get_at((button.x + 3, button.y + 3))[:3] == render.BUTTON_FILL
 
@@ -898,7 +906,7 @@ def test_menu_draws_the_options_button(font):
 def _menu_surface(font, message=""):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
-    render.draw_menu(surface, layout, font, MenuView((), 0, None, None), message)
+    render.draw_menu(surface, layout, font, EN, MenuView((), 0, None, None), message)
     return surface, layout
 
 
@@ -918,7 +926,7 @@ def _hint_line(layout):
 def test_name_box_draws_over_the_menu_with_the_hint(font):
     surface, layout = _menu_surface(font)
     view = NameView("Rename roster", "orcs", "")
-    render.draw_name_box(surface, layout, font, view)
+    render.draw_name_box(surface, layout, font, EN, view)
     box, field = layout.name_box, layout.name_field
     assert surface.get_at((box.x + 3, box.y + box.height - 3))[:3] == render.PANEL_FILL
     assert render.TEXT in _colours(surface, field)
@@ -928,7 +936,9 @@ def test_name_box_draws_over_the_menu_with_the_hint(font):
 
 def test_name_box_problem_replaces_the_hint(font):
     surface, layout = _menu_surface(font)
-    render.draw_name_box(surface, layout, font, NameView("Save setup as", "", "Oops"))
+    render.draw_name_box(
+        surface, layout, font, EN, NameView("Save setup as", "", "Oops")
+    )
     hint = _colours(surface, _hint_line(layout))
     assert render.OVER_LIMIT in hint and render.TEXT_DIM not in hint
 
@@ -939,7 +949,7 @@ def test_a_long_name_shows_its_end(font):
 
     def field_pixels(text):
         surface = pygame.Surface(layout.window_size)
-        render.draw_name_box(surface, layout, font, NameView("Save", text, ""))
+        render.draw_name_box(surface, layout, font, EN, NameView("Save", text, ""))
         return [
             surface.get_at((x, y))
             for x in range(field.x, field.x + field.width)
@@ -1014,7 +1024,7 @@ def _draw_team_setups(font, home, away, message=""):
     layout = build_layout(32)
     surface = pygame.Surface(layout.window_size)
     view = TeamSetupsView(home, away)
-    render.draw_team_setups(surface, layout, font, view, message)
+    render.draw_team_setups(surface, layout, font, EN, view, message)
     return surface, layout
 
 
@@ -1081,38 +1091,44 @@ def test_team_setups_with_no_rows_draws_only_the_captions(font):
     surface = pygame.Surface(layout.window_size)
     hidden = TeamSetupList("Reavers", (), 4, True)
     view = TeamSetupsView(hidden, hidden)
-    render.draw_team_setups(surface, layout, font, view, "")
+    render.draw_team_setups(surface, layout, font, EN, view, "")
 
 
-HINTS = ("NAME_HINT", "DELETE_HINT", "CONFIRM_HINT")
+HINTS = (Text.NAME_HINT, Text.DELETE_HINT, Text.CONFIRM_HINT)
+
+
+def _english(folder, blank=()):
+    """English with some texts blanked, read from a copy of en.json."""
+    data = json.loads((LANGUAGES_DIR / "en.json").read_text(encoding="utf-8"))
+    data["texts"].update({key.value: "" for key in blank})
+    (folder / "en.json").write_text(json.dumps(data), encoding="utf-8")
+    return load_languages(folder).all[0]
 
 
 @pytest.mark.parametrize(
     "view, hint",
     [
-        (NameView("Save setup as", "a", ""), "NAME_HINT"),
-        (NameView("Rename roster", "a", "", deletable=True), "DELETE_HINT"),
-        (NameView("Delete setup?", "a", "", True, confirming=True), "CONFIRM_HINT"),
+        (NameView("Save setup as", "a", ""), Text.NAME_HINT),
+        (NameView("Rename roster", "a", "", deletable=True), Text.DELETE_HINT),
+        (NameView("Delete setup?", "a", "", True, confirming=True), Text.CONFIRM_HINT),
     ],
 )
-def test_the_name_box_hint_says_which_keys_work(font, monkeypatch, view, hint):
+def test_the_name_box_hint_says_which_keys_work(font, tmp_path, view, hint):
     # Reason: with the other two hints blanked, dim text in the hint line
     # can only be the expected one.
-    for other in HINTS:
-        if other != hint:
-            monkeypatch.setattr(render, other, "")
+    texts = _english(tmp_path, [other for other in HINTS if other != hint])
     surface, layout = _menu_surface(font)
-    render.draw_name_box(surface, layout, font, view)
+    render.draw_name_box(surface, layout, font, texts, view)
     assert render.TEXT_DIM in _colours(surface, _hint_line(layout))
-    monkeypatch.setattr(render, hint, "")
-    render.draw_name_box(surface, layout, font, view)
+    surface, layout = _menu_surface(font)
+    render.draw_name_box(surface, layout, font, _english(tmp_path, HINTS), view)
     assert render.TEXT_DIM not in _colours(surface, _hint_line(layout))
 
 
 def test_a_problem_replaces_the_confirm_hint(font):
     surface, layout = _menu_surface(font)
     view = NameView("Delete setup?", "a", "Couldn't delete a.json: x", True, True)
-    render.draw_name_box(surface, layout, font, view)
+    render.draw_name_box(surface, layout, font, EN, view)
     hint = _colours(surface, _hint_line(layout))
     assert render.OVER_LIMIT in hint and render.TEXT_DIM not in hint
 
@@ -1120,7 +1136,7 @@ def test_a_problem_replaces_the_confirm_hint(font):
 def test_the_field_has_no_caret_while_the_box_asks(font):
     def field_colours(view):
         surface, layout = _menu_surface(font)
-        render.draw_name_box(surface, layout, font, view)
+        render.draw_name_box(surface, layout, font, EN, view)
         return _colours(surface, layout.name_field)
 
     # Reason: the thin caret is anti-aliased, so compare with an empty field.
@@ -1173,3 +1189,101 @@ def test_no_marks_draw_the_same_frame_as_before(font):
     plain, layout = _sandbox(board)
     unmarked, _ = _marked(board, Marks())
     assert not _changed(plain, unmarked, Box(0, 0, *layout.window_size))
+
+
+def _italian(folder, texts=None, **names):
+    """English and Italian, read from a copy of en.json and a small it.json."""
+    _english(folder)
+    italian = {"version": 1, "name": "Italiano", "texts": texts or {}, **names}
+    (folder / "it.json").write_text(json.dumps(italian), encoding="utf-8")
+    return load_languages(folder).all[1]
+
+
+def test_options_draws_the_language_column_with_the_chosen_one_highlighted(font):
+    options = OptionsView((), 0, None, ("English", "Italiano"), 2, 1)
+    surface, layout = _draw_options(font, options)
+    for index, fill in enumerate((render.PANEL_FILL, render.HIGHLIGHT)):
+        row = layout.language_row(index)
+        assert surface.get_at((row.x + row.width - 3, row.y + 3))[:3] == fill
+    # The caption, both names and "+2 more".
+    caption = layout.menu_columns[1]._replace(height=layout.square_size)
+    assert _has_text(surface, caption)
+    assert _has_text(surface, layout.language_row(2))
+    assert not _has_text(surface, layout.language_row(3))
+
+
+def test_a_hidden_chosen_language_highlights_no_row(font):
+    surface, layout = _draw_options(font, OptionsView((), 0, None, ("English",), 0, -1))
+    row = layout.language_row(0)
+    assert surface.get_at((row.x + row.width - 3, row.y + 3))[:3] == render.PANEL_FILL
+
+
+def test_a_translated_button_label_changes_pixels(font, tmp_path):
+    italian = _italian(tmp_path, {"menu.start": "Comincia la partita"})
+    layout = build_layout(32)
+    english = pygame.Surface(layout.window_size)
+    translated = pygame.Surface(layout.window_size)
+    menu = MenuView((), 0, None, None)
+    render.draw_menu(english, layout, font, EN, menu, "")
+    render.draw_menu(translated, layout, font, italian, menu, "")
+    start = layout.start_button
+    assert _changed(english, translated, start)
+    assert not _changed(english, translated, layout.options_button)
+
+
+def test_names_and_texts_go_through_the_language(tmp_path):
+    italian = _italian(
+        tmp_path,
+        {
+            "sandbox.team": "{team} [{side}]",
+            "side.home": "casa",
+            "dice.blocks": "{count} blocchi",
+        },
+        races={"Human": "Umani"},
+        positions={"Lineman": "Linea"},
+        skills={"Loner": "Solitario"},
+    )
+    player = Player(
+        name="Grim",
+        position="Lineman",
+        ma=5,
+        st=3,
+        ag=3,
+        pa=4,
+        av=9,
+        skills=("Loner (4+)",),
+    )
+    team = Team(name="orcs", race="Human", players=(player,))
+    lines = render._player_lines(
+        Board(team, _team(1)), PlayerKey(Side.HOME, 0), italian
+    )
+    assert lines[1] == "orcs [casa]" and lines[-1] == "  Solitario (4+)"
+    assert render._preview_lines(team, italian)[1] == "#1 Grim  Linea"
+    assert render._roster_label(RosterEntry("orcs", "Human"), italian) == "orcs (Umani)"
+    assert (
+        render._roll_text(Roll(3, DICE[6], (BlockFace.POW,) * 3), italian)
+        == "#3  3 blocchi"
+    )
+    assert render._roll_text(Roll(4, DICE[1], (1, 2)), italian) == "#4  2d6 = 3"
+
+
+def test_every_draw_works_without_en_json(font, tmp_path):
+    # Reason: with no en.json every lookup returns its key; drawing must not fail.
+    keys = load_languages(tmp_path).all[0]
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    board = Board(_team(2), _team(1))
+    menu = MenuView((RosterEntry("a", None),), 1, board.team(Side.HOME), None)
+    render.draw_menu(surface, layout, font, keys, menu, "")
+    render.draw_name_box(surface, layout, font, keys, NameView("c", "a", ""))
+    render.draw_races(surface, layout, font, keys, (RACE,), "")
+    render.draw_options(surface, layout, font, keys, OptionsView((), 3, None), "")
+    view = TeamSetupsView(*(TeamSetupList("t", (), 2, True),) * 2)
+    render.draw_team_setups(surface, layout, font, keys, view, "")
+    render.draw_builder(surface, layout, font, keys, RosterBuilder(RACE), "")
+    hovered = InteractionView(PlayerKey(Side.HOME, 0), None, ())
+    render.draw_sandbox(
+        surface, layout, font, keys, font, board, hovered, NO_SPRITES, None, ""
+    )
+    roll = Roll(1, DICE[6], (BlockFace.POW,) * 3)
+    render.draw_dice(surface, layout, font, keys, font, roll, {})

@@ -7,6 +7,8 @@ rename_folder and delete_file.
 import re
 from pathlib import Path
 
+from bb_sandbox.language import Message, Text, raw
+
 MAX_NAME_LENGTH = 64
 # Reason: Windows refuses these as file names, whatever the case or extension.
 RESERVED_NAMES = frozenset(
@@ -17,11 +19,28 @@ RESERVED_NAMES = frozenset(
 # Reason: today's safe set (roster.UNSAFE_NAME_CHARS) plus space, so every
 # default timestamped name is valid.
 NAME_CHAR = re.compile(r"[A-Za-z0-9 _-]")
-CHARS_PROBLEM = "Names use letters, digits, spaces, - and _"
+CHARS_PROBLEM = Message(Text.NAME_CHARS)
 
 
 class FileNameError(Exception):
-    """A name is taken or not allowed, or a rename failed."""
+    """A name is taken or not allowed, or a rename or delete failed.
+
+    Attributes:
+        message (Message): What to tell the user, still to translate; an OS
+            failure is raw English text.
+    """
+
+    def __init__(self, message: Message) -> None:
+        """
+        Keep the message; str(error) shows its key and values, or the raw text.
+
+        Args:
+            message (Message): What to tell the user.
+        """
+        values = dict(message.values)
+        text = values["text"] if message.key is Text.RAW else f"{message.key}: {values}"
+        super().__init__(text)
+        self.message = message
 
 
 def add_chars(text: str, chars: str) -> tuple[str, bool]:
@@ -53,7 +72,7 @@ def remove_char(text: str) -> str:
     return text[:-1]
 
 
-def name_problem(name: str) -> str:
+def name_problem(name: str) -> Message | None:
     """
     Check a name before it becomes a file name.
 
@@ -61,15 +80,16 @@ def name_problem(name: str) -> str:
         name (str): The name, already stripped of outer spaces.
 
     Returns:
-        str: '' if the name is valid, else the message for the user.
+        Message | None: None if the name is valid, else the message for the user.
     """
     if not name:
-        return "Type a name"
+        return Message(Text.NAME_EMPTY)
     if add_chars("", name) != (name, True):
-        return CHARS_PROBLEM if len(name) <= MAX_NAME_LENGTH else "Name is too long"
+        too_long = len(name) > MAX_NAME_LENGTH
+        return Message(Text.NAME_TOO_LONG) if too_long else CHARS_PROBLEM
     if name.upper() in RESERVED_NAMES:
-        return f"{name} is reserved"
-    return ""
+        return Message(Text.NAME_RESERVED, {"name": name})
+    return None
 
 
 def _check(name: str) -> None:
@@ -83,7 +103,7 @@ def _check(name: str) -> None:
         FileNameError: If name_problem finds a problem.
     """
     problem = name_problem(name)
-    if problem:
+    if problem is not None:
         raise FileNameError(problem)
 
 
@@ -105,11 +125,11 @@ def free_path(folder: Path, name: str, suffix: str) -> Path:
     _check(name)
     path = folder / f"{name}{suffix}"
     if path.exists():
-        raise FileNameError(f"{name} already exists")
+        raise FileNameError(Message(Text.NAME_EXISTS, {"name": name}))
     return path
 
 
-def _rename(path: Path, name: str, suffix: str, taken: str) -> Path:
+def _rename(path: Path, name: str, suffix: str, taken: Text) -> Path:
     """
     Rename a file or folder in place, keeping its folder; never overwrites.
 
@@ -117,7 +137,8 @@ def _rename(path: Path, name: str, suffix: str, taken: str) -> Path:
         path (Path): The file or folder to rename.
         name (str): The new name without suffix.
         suffix (str): The suffix to keep, e.g. ".csv"; '' for a folder.
-        taken (str): The problem to raise when the new name is taken.
+        taken (Text): The problem to raise when the new name is taken; it
+            gets the name as {name}.
 
     Returns:
         Path: The renamed file or folder.
@@ -131,13 +152,15 @@ def _rename(path: Path, name: str, suffix: str, taken: str) -> Path:
     # Reason: on Windows a case-only rename finds "itself" at the target, which
     # is fine; anything else there must not be overwritten.
     if target.exists() and not (path.exists() and path.samefile(target)):
-        raise FileNameError(taken)
+        raise FileNameError(Message(taken, {"name": name}))
     try:
         # Reason: Path.rename refuses an existing target on Windows, so a file
         # or folder created since the check isn't overwritten either.
         return path.rename(target)
     except OSError as error:
-        raise FileNameError(f"Couldn't rename {path.name}: {error.strerror}") from error
+        # Reason: the OS's own text can't be translated, so it stays English.
+        problem = raw(f"Couldn't rename {path.name}: {error.strerror}")
+        raise FileNameError(problem) from error
 
 
 def rename_file(path: Path, name: str) -> Path:
@@ -155,7 +178,7 @@ def rename_file(path: Path, name: str) -> Path:
         FileNameError: If the name is invalid, another file has it, or the
             rename fails.
     """
-    return _rename(path, name, path.suffix, f"{name} already exists")
+    return _rename(path, name, path.suffix, Text.NAME_EXISTS)
 
 
 def rename_folder(folder: Path, name: str) -> Path:
@@ -173,7 +196,7 @@ def rename_folder(folder: Path, name: str) -> Path:
         FileNameError: If the name is invalid, something else has it
             ("Folder <name> already exists"), or the rename fails.
     """
-    return _rename(folder, name, "", f"Folder {name} already exists")
+    return _rename(folder, name, "", Text.FOLDER_EXISTS)
 
 
 def delete_file(path: Path) -> None:
@@ -189,4 +212,5 @@ def delete_file(path: Path) -> None:
     try:
         path.unlink()
     except OSError as error:
-        raise FileNameError(f"Couldn't delete {path.name}: {error.strerror}") from error
+        problem = raw(f"Couldn't delete {path.name}: {error.strerror}")
+        raise FileNameError(problem) from error

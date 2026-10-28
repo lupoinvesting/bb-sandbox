@@ -4,8 +4,11 @@ the Options screen, the sandbox and its Team setups screen.
 Session never touches Pygame. Clicks come in as screen positions and typing as
 text and EditKey values; disk I/O only happens in the methods app calls explicitly
 (rescan, import_team, load_setup, save_setup, save_roster, rename, delete,
-load_settings, save_settings, open_team_setups, deploy_team_setup,
-save_team_setup).
+load_settings, save_settings, load_languages, open_team_setups,
+deploy_team_setup, save_team_setup).
+
+Status messages and name box captions are kept as Messages and translated
+when read, so a language change shows on the next frame.
 """
 
 import random
@@ -22,6 +25,8 @@ from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, Roll, roll_dice
 from bb_sandbox.images import list_images
 from bb_sandbox.interaction import EditKey, Interaction
+from bb_sandbox.language import ENGLISH, Languages, Message, Text, Texts, raw
+from bb_sandbox.language import load_languages as read_languages
 from bb_sandbox.layout import Layout, MenuList
 from bb_sandbox.names import (
     CHARS_PROBLEM,
@@ -67,10 +72,13 @@ from bb_sandbox.team_setups import save_team_setup as write_team_setup
 LIST_SIDES = {MenuList.HOME_ROSTERS: Side.HOME, MenuList.AWAY_ROSTERS: Side.AWAY}
 # Reason: what a main menu list's rename box says, and what Del asks there.
 RENAME_CAPTIONS = {
-    MenuList.HOME_ROSTERS: ("Rename roster", "Delete roster and its team setups?"),
-    MenuList.AWAY_ROSTERS: ("Rename roster", "Delete roster and its team setups?"),
-    MenuList.SETUPS: ("Rename setup", "Delete setup?"),
+    MenuList.HOME_ROSTERS: (Text.RENAME_ROSTER, Text.DELETE_ROSTER),
+    MenuList.AWAY_ROSTERS: (Text.RENAME_ROSTER, Text.DELETE_ROSTER),
+    MenuList.SETUPS: (Text.RENAME_SETUP, Text.DELETE_SETUP),
 }
+# A side's name inside a sentence, e.g. "Loaded Orcs as home".
+SIDE_TEXTS = {Side.HOME: Text.HOME, Side.AWAY: Text.AWAY}
+NO_MESSAGE = raw("")
 
 
 class Screen(Enum):
@@ -132,7 +140,8 @@ class SaveRoster:
 
 @dataclass(frozen=True)
 class SaveSettings:
-    """A request from press() to save the settings after the pitch changed."""
+    """A request from press() to save the settings after the pitch or the
+    language changed."""
 
 
 @dataclass(frozen=True)
@@ -229,23 +238,24 @@ class _NameBox:
     """The open name box's state.
 
     Attributes:
-        caption (str): What the name is for, or the question while the box asks.
+        caption (Message): What the name is for, or the question while the box
+            asks.
         text (str): The name typed so far.
-        problem (str): Why the name can't be used, or ''.
+        problem (Message | None): Why the name can't be used, or None.
         request (Callable[[str], FileRequest]): Turns the stripped name into
             the request key() returns on Enter.
         prefilled (str): The text the box opened with; Del shows it again.
-        delete (tuple[str, DeleteFile] | None): What Del asks, and the request
-            Enter then returns; None for the Save boxes, which ignore Del.
+        delete (tuple[Message, DeleteFile] | None): What Del asks, and the
+            request Enter then returns; None for the Save boxes, which ignore Del.
         confirming (bool): True while the box asks whether to delete the file.
     """
 
-    caption: str
+    caption: Message
     text: str
-    problem: str
+    problem: Message | None
     request: Callable[[str], FileRequest]
     prefilled: str
-    delete: tuple[str, DeleteFile] | None = None
+    delete: tuple[Message, DeleteFile] | None = None
     confirming: bool = False
 
 
@@ -290,11 +300,19 @@ class OptionsView(NamedTuple):
             bottom, after the "Drawn pitch" row.
         hidden (int): Files that didn't fit (drawn as "+N more").
         selected (str | None): The chosen file name; None for the drawn pitch.
+        languages (tuple[str, ...]): Visible language display names, top to
+            bottom, English first.
+        languages_hidden (int): Languages that didn't fit (drawn as "+N more").
+        language (int): Index of the chosen language in languages; -1 if it
+            is hidden.
     """
 
     pitches: tuple[str, ...]
     hidden: int
     selected: str | None
+    languages: tuple[str, ...] = ()
+    languages_hidden: int = 0
+    language: int = 0
 
 
 class TeamSetupList(NamedTuple):
@@ -359,10 +377,11 @@ class Session:
         *,
         pitches_dir: Path,
         settings_file: Path,
+        languages_dir: Path = Path("languages"),
     ) -> None:
         """
-        Start on the main menu with the drawn pitch. No disk I/O: call
-        load_settings() and rescan() to read the files.
+        Start on the main menu with the drawn pitch, in English. No disk I/O:
+        call load_languages(), load_settings() and rescan() to read the files.
 
         Args:
             layout (Layout): Screen geometry for hit tests.
@@ -375,6 +394,7 @@ class Session:
                 names; None means datetime.now. Tests pass a fixed one.
             pitches_dir (Path): Folder holding the pitch images.
             settings_file (Path): The settings JSON file.
+            languages_dir (Path): Folder holding the language JSON files.
         """
         self._layout = layout
         self._rosters_dir = rosters_dir
@@ -397,7 +417,11 @@ class Session:
         self._builder: RosterBuilder | None = None
         self._board: Board | None = None
         self._interaction: Interaction | None = None
-        self._message = ""
+        self._message = NO_MESSAGE
+        self._languages_dir = languages_dir
+        # Reason: until load_languages() runs, English shows each text's key.
+        self._languages = Languages((Texts(ENGLISH, "English", {}),), "")
+        self._language = ENGLISH
 
     @property
     def screen(self) -> Screen:
@@ -406,8 +430,21 @@ class Session:
 
     @property
     def message(self) -> str:
-        """str: The status message for the user, or ''."""
-        return self._message
+        """str: The status message for the user, translated, or ''."""
+        return self.texts.say(self._message)
+
+    @property
+    def texts(self) -> Texts:
+        """Texts: The chosen language; English if its file is gone."""
+        for texts in self._languages.all:
+            if texts.code == self._language:
+                return texts
+        return self._languages.all[0]
+
+    @property
+    def language_problem(self) -> str:
+        """str: The first language file problem, '' for none."""
+        return self._languages.problem
 
     @property
     def races(self) -> tuple[Race, ...]:
@@ -453,44 +490,48 @@ class Session:
         if box is None:
             return None
         deletable = box.delete is not None
-        return NameView(box.caption, box.text, box.problem, deletable, box.confirming)
+        texts = self.texts
+        caption = texts.say(box.caption)
+        problem = "" if box.problem is None else texts.say(box.problem)
+        return NameView(caption, box.text, problem, deletable, box.confirming)
 
     def _open_name_box(
         self,
-        caption: str,
+        caption: Message,
         default: str,
         request: Callable[[str], FileRequest],
-        delete: tuple[str, DeleteFile] | None = None,
+        delete: tuple[Message, DeleteFile] | None = None,
     ) -> None:
         """
         Open the name box prefilled with a default name.
 
         Args:
-            caption (str): What the name is for.
+            caption (Message): What the name is for.
             default (str): The prefilled name; disallowed characters and any
                 past MAX_NAME_LENGTH are dropped.
             request (Callable[[str], FileRequest]): Builds key()'s request
                 from the typed name.
-            delete (tuple[str, DeleteFile] | None): For a rename box, what Del
-                asks and the request Enter then returns; None ignores Del.
+            delete (tuple[Message, DeleteFile] | None): For a rename box, what
+                Del asks and the request Enter then returns; None ignores Del.
         """
         # Reason: hand-made file names can hold characters the box doesn't
         # allow, so the box text keeps its invariant from the start.
         text, ok = add_chars("", default)
-        problem = "" if ok else CHARS_PROBLEM
+        problem = None if ok else CHARS_PROBLEM
         self._name_box = _NameBox(caption, text, problem, request, text, delete)
 
-    def _open_rename(self, path: Path, caption: str, question: str) -> None:
+    def _open_rename(self, path: Path, caption: Text, question: Text) -> None:
         """
         Open the rename box for a file, where Del asks to delete it instead.
 
         Args:
             path (Path): The roster, setup or team setup file.
-            caption (str): The box's caption, e.g. "Rename roster".
-            question (str): What Del asks, e.g. "Delete setup?".
+            caption (Text): The box's caption, e.g. "Rename roster".
+            question (Text): What Del asks, e.g. "Delete setup?".
         """
-        delete = (question, DeleteFile(path))
-        self._open_name_box(caption, path.stem, partial(RenameFile, path), delete)
+        delete = (Message(question), DeleteFile(path))
+        rename = partial(RenameFile, path)
+        self._open_name_box(Message(caption), path.stem, rename, delete)
 
     def type_text(self, text: str) -> None:
         """
@@ -510,7 +551,7 @@ class Session:
         if box.confirming:
             return
         box.text, ok = add_chars(box.text, text)
-        box.problem = "" if ok else CHARS_PROBLEM
+        box.problem = None if ok else CHARS_PROBLEM
 
     def key(self, key: EditKey) -> FileRequest | None:
         """
@@ -544,35 +585,36 @@ class Session:
             # Reason: the Save boxes have no file yet, so they have nothing to
             # delete. Asking shows the file's name again, without the edits.
             if box.delete is not None:
-                box.caption, box.text, box.problem = box.delete[0], box.prefilled, ""
+                box.caption, box.text = box.delete[0], box.prefilled
+                box.problem = None
                 box.confirming = True
         elif key is EditKey.BACKSPACE:
-            box.text, box.problem = remove_char(box.text), ""
+            box.text, box.problem = remove_char(box.text), None
         else:
             name = box.text.strip()
             box.problem = name_problem(name)
-            if not box.problem:
+            if box.problem is None:
                 return box.request(name)
         return None
 
-    def _report(self, problem: str) -> None:
+    def _report(self, problem: Message) -> None:
         """
         Show a failed save or rename: in the open name box, else as the message.
 
         Args:
-            problem (str): The error text.
+            problem (Message): The error.
         """
         if self._name_box is not None:
             self._name_box.problem = problem
         else:
             self._message = problem
 
-    def _visible_count(self, files: tuple[Path, ...], rows: int) -> int:
+    def _visible_count(self, files: tuple[object, ...], rows: int) -> int:
         """
         Count the file rows that fit, keeping one row for "+N more" on overflow.
 
         Args:
-            files (tuple[Path, ...]): The files one list shows.
+            files (tuple[object, ...]): The files (or languages) one list shows.
             rows (int): The rows the list has for files.
 
         Returns:
@@ -618,15 +660,31 @@ class Session:
         Describe the Options screen for drawing.
 
         Returns:
-            OptionsView: Visible pitch image names, the hidden count and the
-                chosen pitch.
+            OptionsView: Visible pitch image and language names, the hidden
+                counts and the chosen pitch and language.
         """
         shown = self._visible_pitches()
+        languages = self._visible_languages()
+        codes = [texts.code for texts in languages]
+        code = self.texts.code
         return OptionsView(
             pitches=tuple(path.name for path in shown),
             hidden=len(self._pitches) - len(shown),
             selected=self._pitch,
+            languages=tuple(texts.name for texts in languages),
+            languages_hidden=len(self._languages.all) - len(languages),
+            language=codes.index(code) if code in codes else -1,
         )
+
+    def _visible_languages(self) -> tuple[Texts, ...]:
+        """
+        Return the languages the Options Language column shows.
+
+        Returns:
+            tuple[Texts, ...]: The languages that fit, English first.
+        """
+        every = self._languages.all
+        return every[: self._visible_count(every, self._layout.option_rows)]
 
     def team_setups_view(self) -> TeamSetupsView:
         """
@@ -662,10 +720,10 @@ class Session:
             team=self._board.team(side).name,
             setups=tuple(path.stem for path in shown),
             hidden=len(files) - len(shown),
-            can_save=not self._save_problem(side),
+            can_save=self._save_problem(side) is None,
         )
 
-    def _save_problem(self, side: Side) -> str:
+    def _save_problem(self, side: Side) -> Message | None:
         """
         Tell why one team can't save a team setup now. Needs a board.
 
@@ -673,16 +731,17 @@ class Session:
             side (Side): The team.
 
         Returns:
-            str: '' if it can, else the message for the user: its name can't
-                have team setups, or none of its players is on the pitch.
+            Message | None: None if it can, else the message for the user: its
+                name can't have team setups, or none of its players is on the
+                pitch.
         """
         team = self._board.team(side).name
         problem = name_problem(team)
-        if problem:
-            return f"{team}: {problem}"
+        if problem is not None:
+            return Message(Text.TEAM_PROBLEM, {"team": team, "problem": problem})
         if not capture(self._board, side):
-            return f"No {side.value} player on the pitch"
-        return ""
+            return Message(Text.NO_PLAYER, {"side": SIDE_TEXTS[side]})
+        return None
 
     def _team_folder(self, side: Side) -> Path | None:
         """
@@ -750,7 +809,8 @@ class Session:
         if self._layout.save_button.contains(pos):
             self._interaction.commit()
             path = new_setup_path(self._setups_dir, self._board, self._clock())
-            self._open_name_box("Save setup as", path.stem, SaveSetup)
+            caption = Message(Text.SAVE_SETUP_AS)
+            self._open_name_box(caption, path.stem, SaveSetup)
             return None
         if self._layout.team_setups_button.contains(pos):
             self._interaction.commit()
@@ -758,7 +818,8 @@ class Session:
         index = self._layout.dice_button_at(pos)
         if self._layout.menu_button.contains(pos):
             self._interaction.commit()
-            self._screen, self._board, self._message = Screen.MENU, None, ""
+            self._screen, self._board = Screen.MENU, None
+            self._message = NO_MESSAGE
             self._interaction = None
             self._last_roll = None
         elif index is not None:
@@ -783,7 +844,7 @@ class Session:
                 the Save buttons open the name box.
         """
         if self._layout.back_button.contains(pos):
-            self._return_to_sandbox("")
+            self._return_to_sandbox(NO_MESSAGE)
             return None
         if self._layout.save_home_button.contains(pos):
             self._open_save_team_setup(Side.HOME)
@@ -823,19 +884,19 @@ class Session:
             side (Side): The team to save.
         """
         problem = self._save_problem(side)
-        if problem:
+        if problem is not None:
             self._message = problem
             return
         path = new_team_setup_path(self._team_folder(side), self._clock())
-        caption = f"Save {side.value} setup as"
+        caption = Message(Text.SAVE_TEAM_SETUP_AS, {"side": SIDE_TEXTS[side]})
         self._open_name_box(caption, path.stem, partial(SaveTeamSetup, side))
 
-    def _return_to_sandbox(self, message: str) -> None:
+    def _return_to_sandbox(self, message: Message) -> None:
         """
         Show the sandbox's board again with fresh pointer input; the roll stays.
 
         Args:
-            message (str): The status message to show.
+            message (Message): The status message to show.
         """
         self._interaction = Interaction(self._board, self._layout)
         self._screen, self._message = Screen.SANDBOX, message
@@ -848,14 +909,14 @@ class Session:
             pos (tuple[int, int]): Screen (x, y).
         """
         if self._layout.back_button.contains(pos):
-            self._screen, self._message = Screen.MENU, ""
+            self._screen, self._message = Screen.MENU, NO_MESSAGE
             return
         index = self._layout.race_cell_at(pos)
         # Reason: cells past the last race are empty.
         if index is None or index >= len(self._races):
             return
         self._builder = RosterBuilder(self._races[index])
-        self._screen, self._message = Screen.BUILDER, ""
+        self._screen, self._message = Screen.BUILDER, NO_MESSAGE
 
     def _press_builder(self, pos: tuple[int, int]) -> FileRequest | None:
         """
@@ -872,7 +933,8 @@ class Session:
             return None
         if self._layout.back_button.contains(pos):
             # Reason: going back drops the draft; only Save roster keeps it.
-            self._screen, self._builder, self._message = Screen.RACES, None, ""
+            self._screen, self._builder = Screen.RACES, None
+            self._message = NO_MESSAGE
             return None
         builder = self._builder
         row = self._layout.positional_row_at(pos)
@@ -880,38 +942,42 @@ class Session:
         # player are empty.
         if row is not None and row < len(builder.race.positionals):
             added = builder.add(row)
-            self._message = (
-                "" if added else f"A team has at most {MAX_TEAM_SIZE} players"
-            )
+            full = Message(Text.TEAM_FULL, {"max": str(MAX_TEAM_SIZE)})
+            self._message = NO_MESSAGE if added else full
             return None
         line = self._layout.roster_line_at(pos)
         if line is not None and line < len(builder.picks):
             builder.remove(line)
-            self._message = ""
+            self._message = NO_MESSAGE
         return None
 
     def _open_save_roster(self) -> None:
         """Open the Save roster name box, or explain why the draft can't be saved."""
         if not self._builder.picks:
-            self._message = "Add at least one player"
+            self._message = Message(Text.ADD_PLAYER)
             return
         race = self._builder.race.name
         path = new_roster_path(self._rosters_dir, race, self._clock())
-        self._open_name_box("Save roster as", path.stem, SaveRoster)
+        self._open_name_box(Message(Text.SAVE_ROSTER_AS), path.stem, SaveRoster)
 
     def _press_options(self, pos: tuple[int, int]) -> FileRequest | None:
         """
-        Handle an Options click: a pitch row picks that pitch, Back the main menu.
+        Handle an Options click: a pitch row picks that pitch, a language row
+        that language, Back the main menu.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
-            FileRequest | None: SaveSettings if the pitch changed, else None.
+            FileRequest | None: SaveSettings if the pitch or the language
+                changed, else None.
         """
         if self._layout.back_button.contains(pos):
-            self._screen, self._message = Screen.MENU, ""
+            self._screen, self._message = Screen.MENU, NO_MESSAGE
             return None
+        language = self._layout.language_row_at(pos)
+        if language is not None:
+            return self._press_language(language)
         index = self._layout.option_row_at(pos)
         shown = self._visible_pitches()
         # Reason: row 0 is "Drawn pitch"; rows past the visible names are the
@@ -923,7 +989,26 @@ class Session:
             return None
         # Reason: the save that follows replaces any settings file whose
         # error the message was showing.
-        self._pitch, self._message = pitch, ""
+        self._pitch, self._message = pitch, NO_MESSAGE
+        return SaveSettings()
+
+    def _press_language(self, index: int) -> FileRequest | None:
+        """
+        Pick the language on a Language row.
+
+        Args:
+            index (int): The row clicked.
+
+        Returns:
+            FileRequest | None: SaveSettings if the language changed, else None.
+        """
+        shown = self._visible_languages()
+        # Reason: rows past the visible names are the "+N more" line or empty.
+        if index >= len(shown) or shown[index].code == self._language:
+            return None
+        # Reason: as for a pitch, the save replaces any settings file whose
+        # error the message was showing.
+        self._language, self._message = shown[index].code, NO_MESSAGE
         return SaveSettings()
 
     def _menu_file_at(self, pos: tuple[int, int]) -> tuple[MenuList, Path] | None:
@@ -959,10 +1044,10 @@ class Session:
             FileRequest | None: The import or load request for a file row.
         """
         if self._layout.new_roster_button.contains(pos):
-            self._screen, self._message = Screen.RACES, ""
+            self._screen, self._message = Screen.RACES, NO_MESSAGE
             return None
         if self._layout.options_button.contains(pos):
-            self._screen, self._message = Screen.OPTIONS, ""
+            self._screen, self._message = Screen.OPTIONS, NO_MESSAGE
             return None
         if self._layout.start_button.contains(pos):
             self._start()
@@ -979,17 +1064,17 @@ class Session:
         """Open the sandbox if both teams are imported, else explain why not."""
         home, away = self._teams[Side.HOME], self._teams[Side.AWAY]
         if home is None or away is None:
-            self._message = "Pick a home and an away roster"
+            self._message = Message(Text.PICK_ROSTERS)
             return
-        self._open_sandbox(Board(home, away), "")
+        self._open_sandbox(Board(home, away), NO_MESSAGE)
 
-    def _open_sandbox(self, board: Board, message: str) -> None:
+    def _open_sandbox(self, board: Board, message: Message) -> None:
         """
         Switch to the sandbox showing a board, with no dice rolled yet.
 
         Args:
             board (Board): The board to play with.
-            message (str): The status message to show.
+            message (Message): The status message to show.
         """
         self._board = board
         self._interaction = Interaction(board, self._layout)
@@ -1044,7 +1129,8 @@ class Session:
         elif self._screen is Screen.TEAM_SETUPS:
             hit = self._team_setup_at(pos)
             if hit is not None:
-                self._open_rename(hit[1], "Rename team setup", "Delete team setup?")
+                rename, delete = Text.RENAME_TEAM_SETUP, Text.DELETE_TEAM_SETUP
+                self._open_rename(hit[1], rename, delete)
         elif self._interaction is not None and ctrl:
             self._interaction.right_click(pos)
         elif self._interaction is not None:
@@ -1065,12 +1151,13 @@ class Session:
     def rescan(self) -> None:
         """
         Re-list the roster, setup, pitch image and team setup files, reading
-        each roster's race.
+        each roster's race, and read the language files again.
 
-        A chosen pitch whose file has gone stays chosen, so it is used again
-        when the file comes back. The team setups listed are the board's
-        teams'; with no board, none are.
+        A chosen pitch or language whose file has gone stays chosen, so it is
+        used again when the file comes back. The team setups listed are the
+        board's teams'; with no board, none are.
         """
+        self.load_languages()
         self._rosters = list_rosters(self._rosters_dir)
         self._roster_entries = tuple(
             RosterEntry(path.stem, _race_or_none(path)) for path in self._rosters
@@ -1085,29 +1172,36 @@ class Session:
             folder = self._team_folder(side)
             self._team_setups[side] = () if folder is None else list_team_setups(folder)
 
+    def load_languages(self) -> None:
+        """Read the language files; their first problem becomes language_problem."""
+        self._languages = read_languages(self._languages_dir)
+
     def load_settings(self) -> None:
         """
-        Read the chosen pitch from the settings file; a failure becomes the message.
+        Read the chosen pitch and language from the settings file; a failure
+        becomes the message.
 
-        A missing file keeps the drawn pitch; so does an invalid one.
+        A missing file keeps the drawn pitch and English; so does an invalid one.
         """
         try:
             settings = read_settings(self._settings_file)
         except SettingsError as error:
-            self._message = str(error)
+            self._message = raw(str(error))
             return
-        self._pitch = settings.pitch
+        self._pitch, self._language = settings.pitch, settings.language
 
     def save_settings(self) -> None:
         """
-        Write the chosen pitch to the settings file; a failure becomes the message.
+        Write the chosen pitch and language to the settings file; a failure
+        becomes the message.
 
         The choice still applies for this run if the write fails.
         """
+        settings = Settings(pitch=self._pitch, language=self._language)
         try:
-            write_settings(self._settings_file, Settings(pitch=self._pitch))
+            write_settings(self._settings_file, settings)
         except SettingsError as error:
-            self._message = str(error)
+            self._message = raw(str(error))
 
     def import_team(self, side: Side, path: Path) -> None:
         """
@@ -1120,10 +1214,11 @@ class Session:
         try:
             team = load_team(path)
         except RosterError as error:
-            self._message = str(error)
+            self._message = raw(str(error))
             return
         self._teams[side] = team
-        self._message = f"Loaded {team.name} as {side.value}"
+        values = {"team": team.name, "side": SIDE_TEXTS[side]}
+        self._message = Message(Text.LOADED_TEAM, values)
 
     def load_setup(self, path: Path) -> None:
         """
@@ -1135,9 +1230,9 @@ class Session:
         try:
             board = read_setup(path)
         except SetupFileError as error:
-            self._message = str(error)
+            self._message = raw(str(error))
             return
-        self._open_sandbox(board, f"Loaded {path.stem}")
+        self._open_sandbox(board, Message(Text.LOADED, {"name": path.stem}))
 
     def save_setup(self, name: str) -> None:
         """
@@ -1157,11 +1252,14 @@ class Session:
         try:
             path = free_path(self._setups_dir, name, ".json")
             write_setup(self._board, path)
-        except (FileNameError, SetupFileError) as error:
-            self._report(str(error))
+        except FileNameError as error:
+            self._report(error.message)
+            return
+        except SetupFileError as error:
+            self._report(raw(str(error)))
             return
         self._name_box = None
-        self._message = f"Saved {name}"
+        self._message = Message(Text.SAVED, {"name": name})
 
     def save_roster(self, name: str) -> None:
         """
@@ -1180,19 +1278,22 @@ class Session:
         if self._builder is None:
             raise ValueError("No roster draft to save")
         if not self._builder.picks:
-            self._message = "Add at least one player"
+            self._message = Message(Text.ADD_PLAYER)
             return
         try:
             path = free_path(self._rosters_dir, name, ".csv")
             # Reason: load_team names a team after its file, so naming it after
             # the file stem makes the saved roster read back unchanged.
             save_team(self._builder.team(name), path)
-        except (FileNameError, RosterError) as error:
-            self._report(str(error))
+        except FileNameError as error:
+            self._report(error.message)
+            return
+        except RosterError as error:
+            self._report(raw(str(error)))
             return
         self._name_box = None
         self._screen, self._builder = Screen.MENU, None
-        self._message = f"Saved {name}"
+        self._message = Message(Text.SAVED, {"name": name})
 
     def open_team_setups(self) -> None:
         """
@@ -1207,7 +1308,7 @@ class Session:
             raise ValueError("No sandbox board to show team setups for")
         self._list_team_setups()
         self._interaction = None
-        self._screen, self._message = Screen.TEAM_SETUPS, ""
+        self._screen, self._message = Screen.TEAM_SETUPS, NO_MESSAGE
 
     def deploy_team_setup(self, side: Side, path: Path) -> None:
         """
@@ -1228,15 +1329,16 @@ class Session:
         try:
             setup = load_team_setup(path)
         except TeamSetupError as error:
-            self._message = str(error)
+            self._message = raw(str(error))
             return
         missed = deploy(self._board, side, setup)
         # Reason: the count comes first because the panel's message line
         # clips at about 32 characters.
         if missed:
-            self._return_to_sandbox(f"{missed} not placed from {path.stem}")
+            values = {"count": str(missed), "name": path.stem}
+            self._return_to_sandbox(Message(Text.NOT_PLACED, values))
         else:
-            self._return_to_sandbox(f"Deployed {path.stem}")
+            self._return_to_sandbox(Message(Text.DEPLOYED, {"name": path.stem}))
 
     def save_team_setup(self, side: Side, name: str) -> None:
         """
@@ -1257,17 +1359,20 @@ class Session:
             raise ValueError("No sandbox board to save a team setup from")
         # Reason: checked again because this can be called without the button.
         problem = self._save_problem(side)
-        if problem:
+        if problem is not None:
             self._report(problem)
             return
         try:
             path = free_path(self._team_folder(side), name, ".json")
             write_team_setup(capture(self._board, side), path)
-        except (FileNameError, TeamSetupError) as error:
-            self._report(str(error))
+        except FileNameError as error:
+            self._report(error.message)
+            return
+        except TeamSetupError as error:
+            self._report(raw(str(error)))
             return
         self._name_box = None
-        self._message = f"Saved {name}"
+        self._message = Message(Text.SAVED, {"name": name})
 
     def delete(self, path: Path) -> None:
         """
@@ -1284,10 +1389,10 @@ class Session:
         try:
             delete_file(path)
         except FileNameError as error:
-            self._report(str(error))
+            self._report(error.message)
             return
         self._name_box = None
-        self._message = f"Deleted {path.stem}"
+        self._message = Message(Text.DELETED, {"name": path.stem})
         if path not in self._rosters:
             return
         for side, team in self._teams.items():
@@ -1299,9 +1404,10 @@ class Session:
         try:
             delete_team_setups(folder)
         except TeamSetupError as error:
-            self._message = f"Deleted {path.stem}, but {error}"
+            values = {"name": path.stem, "error": str(error)}
+            self._message = Message(Text.DELETED_BUT, values)
 
-    def _move_team_setups(self, old: Path, new: Path) -> str:
+    def _move_team_setups(self, old: Path, new: Path) -> Message | None:
         """
         Rename a renamed roster's team setups folder after it. If the folder
         can't be renamed, the roster is renamed back.
@@ -1311,23 +1417,23 @@ class Session:
             new (Path): The roster's CSV file now.
 
         Returns:
-            str: '' on success or when the roster has no folder, else why the
-                folder couldn't follow.
+            Message | None: None on success or when the roster has no folder,
+                else why the folder couldn't follow.
         """
         folder = team_setups_folder(self._rosters_dir, old.stem)
         if folder is None or not folder.is_dir():
-            return ""
+            return None
         try:
             rename_folder(folder, new.stem)
-            return ""
+            return None
         except FileNameError as error:
-            problem = str(error)
+            problem = error.message
         # Reason: a roster finds its team setups by name, so when the folder
         # can't follow the rename, the roster goes back to its old name.
         try:
             rename_file(new, old.stem)
         except FileNameError as error:
-            return f"{problem}; {error}"
+            return Message(Text.BOTH, {"first": problem, "second": error.message})
         return problem
 
     def rename(self, path: Path, name: str) -> None:
@@ -1347,11 +1453,11 @@ class Session:
         try:
             new = rename_file(path, name)
         except FileNameError as error:
-            self._report(str(error))
+            self._report(error.message)
             return
         if path in self._rosters:
             problem = self._move_team_setups(path, new)
-            if problem:
+            if problem is not None:
                 self._report(problem)
                 return
         # Reason: load_team names a team after its file, so the imported team
@@ -1362,4 +1468,4 @@ class Session:
             if team is not None and team.name == old:
                 self._teams[side] = team.model_copy(update={"name": new.stem})
         self._name_box = None
-        self._message = f"Renamed {path.stem} to {new.stem}"
+        self._message = Message(Text.RENAMED, {"old": path.stem, "new": new.stem})

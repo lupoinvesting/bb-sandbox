@@ -133,6 +133,17 @@ Design: [team_setups.md](team_setups.md).
 
 Design: [annotations.md](annotations.md).
 
+### 3.13. Languages
+
+* **Language Files:** Each language is one JSON file in `languages/` at the project root. Adding a file adds the language; no code changes. `languages/en.json` ships with the app.
+* **Scope:** Everything the player reads is translated: buttons, captions, hints, status messages, the player menu, block die faces, stat labels, and race, position and skill names. User data (team, player and file names, comments) and the details of file errors are not.
+* **Default and Fallback:** English is the default. A text missing from a language file is shown in English.
+* **Picker:** The Options screen lists the languages by their display name, next to the pitch list. A click switches language at once and is saved in `settings.json`.
+* **Files Stay English:** Translation is display-only. Rosters, setups and settings keep the English names, so switching language never changes a saved file.
+* **Robustness:** A broken language file is skipped and reported on the message line; it never stops the app.
+
+Design: [languages.md](languages.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -208,3 +219,9 @@ Design: [annotations.md](annotations.md).
 * Build the annotations module: arrows, rings, their toggles and the arrow polygon.
 * Draw arrows with a right-drag and rings with a right-click; clear them with any left click.
 * Move the player menu to Ctrl + right-click.
+
+**Phase 14: Languages**
+
+* Build the language module and `languages/en.json` with every English text and the race, position and skill names.
+* Route every displayed text through the chosen language, with the English fallback.
+* Add the Language column to the Options screen and save the choice in `settings.json`.

@@ -162,6 +162,28 @@ The pitch is drawn in green unless you pick an image for it. Put images in `spri
   An invalid `settings.json` puts its error on the message line and starts with the drawn pitch; the next pick replaces it.
 - Neither the images nor `settings.json` are committed: `.gitignore` ignores both.
 
+## Languages
+
+Every word the app shows can be switched to another language, including race, position and skill names.
+On **Options**, the Language list (next to Pitch) shows each language by its own name, English first.
+Click one to switch at once; the choice is saved in `settings.json`. Team, player and file names, comments
+and the details of file errors are never translated, and saved files keep the English names.
+
+To add a language:
+1. Copy `languages/en.json` to `languages/<code>.json`, e.g. `it.json` or `pt-br.json`. The file name is the code `settings.json` stores.
+2. Set `"name"` to the language's own name, e.g. `"Italiano"`, and translate the values. Never change the keys.
+   - `texts` holds the app's texts. Keep `{placeholders}` such as `{name}` as they are; you may reorder them or leave some out.
+     Write `{{` and `}}` for literal braces.
+   - `races`, `positions` and `skills` map the English names in `races.csv` to yours. A skill such as `Loner (4+)`
+     is translated through `Loner`, and keeps its `(4+)`.
+3. Switch back to the app: the list reloads when the window regains focus.
+
+Anything you leave out, or leave as copied, shows in English, so a half-done translation works.
+Keep each text about as long as the English one: buttons and columns are sized for English, and a much longer text overflows.
+The default font draws Latin-script languages (Italian, French, German, Spanish, Portuguese…); other scripts show boxes.
+A broken file is skipped and named on the message line, as is a text whose `{placeholders}` don't match the English one
+(that text then shows in English). Language files are only ever read.
+
 ## Layout
 
 | Module | Responsibility |

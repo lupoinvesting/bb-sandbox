@@ -27,6 +27,7 @@ CSV = (
     "race,Orc\nname,position,MA,ST,AG,PA,AV,skills\n"
     "Grishnak,Blitzer,5,3,3+,4+,10+,Block\n"
 )
+LANGUAGES_DIR = Path(__file__).parent.parent / "languages"
 RACES = load_races(RACES_FILE)
 NO_PLAYER_SPRITES = PlayerSprites()
 
@@ -40,6 +41,14 @@ def in_tmp(tmp_path, monkeypatch):
 
 def _files(folder):
     return {"pitches_dir": folder / "pitch", "settings_file": folder / "settings.json"}
+
+
+def _session(*args, **kwargs):
+    # Reason: the tests compare English messages, so they read the shipped
+    # en.json, as run() does from the languages folder.
+    session = Session(*args, languages_dir=LANGUAGES_DIR, **kwargs)
+    session.load_languages()
+    return session
 
 
 def _click(box, button=1):
@@ -95,7 +104,7 @@ def test_handle_event_drives_menu_to_sandbox(in_tmp):
     rosters = in_tmp / "rosters"
     rosters.mkdir()
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
+    session = _session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     (rosters / "orcs.csv").write_text(CSV)
     # A focus event rescans the folder and picks up the new file.
@@ -110,7 +119,7 @@ def test_handle_event_drives_menu_to_sandbox(in_tmp):
 
 
 def test_handle_event_ignores_right_click_and_reports_quit(in_tmp, no_mods):
-    session = Session(build_layout(), in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session = _session(build_layout(), in_tmp, in_tmp, RACES, **_files(in_tmp))
     assert handle_event(session, _click(build_layout().start_button, button=3))
     assert session.message == ""
     assert not handle_event(session, pygame.event.Event(pygame.QUIT))
@@ -121,7 +130,7 @@ def test_handle_event_drives_drag_and_context_menu(in_tmp, ctrl_held):
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
+    session = _session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         handle_event(session, _click(layout.menu_row(which, 0)))
@@ -148,7 +157,7 @@ def test_handle_event_saves_and_loads_setup(in_tmp):
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
+    session = _session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         handle_event(session, _click(layout.menu_row(which, 0)))
@@ -169,7 +178,7 @@ def test_handle_event_saves_and_loads_setup(in_tmp):
 
 def test_handle_event_builds_and_saves_a_roster(in_tmp):
     layout = build_layout()
-    session = Session(
+    session = _session(
         layout, in_tmp / "rosters", in_tmp / "setups", RACES, **_files(in_tmp)
     )
     session.rescan()
@@ -226,7 +235,7 @@ def frame():
 
 def test_draw_shows_the_race_menu_and_the_builder(in_tmp, frame):
     layout, draw = frame
-    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session = _session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
     start = (layout.start_button.x + 3, layout.start_button.y + 3)
     handle_event(session, _click(layout.new_roster_button))
     # The race menu has no button where Start is.
@@ -251,7 +260,7 @@ def _sandbox(in_tmp):
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
+    session = _session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         handle_event(session, _click(layout.menu_row(which, 0)))
@@ -299,7 +308,7 @@ def test_run_reads_the_dice_images_from_the_launch_folder(in_tmp):
 
 def test_draw_shows_a_player_sprite_problem_unless_the_session_has_one(in_tmp, frame):
     layout, draw = frame
-    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session = _session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
     broken = PlayerSprites(problem="sprites/away/ogre.png: Unsupported image format")
     # The problem replaces the menu's rename hint.
     assert pygame.image.tobytes(draw(session), "RGB") != pygame.image.tobytes(
@@ -364,7 +373,7 @@ def test_clicking_an_options_row_saves_the_settings_file(in_tmp):
     (in_tmp / "pitch").mkdir()
     (in_tmp / "pitch" / "grass.png").write_bytes(b"")
     layout = build_layout()
-    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session = _session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
     session.rescan()
     assert handle_event(session, _click(layout.options_button))
     assert handle_event(session, _click(layout.option_row(1)))
@@ -375,7 +384,7 @@ def test_clicking_an_options_row_saves_the_settings_file(in_tmp):
 
 def test_draw_shows_the_options_screen(in_tmp, frame):
     layout, draw = frame
-    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session = _session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
     handle_event(session, _click(layout.options_button))
     # The drawn pitch is chosen, so its row is highlighted.
     row = layout.option_row(0)
@@ -384,7 +393,7 @@ def test_draw_shows_the_options_screen(in_tmp, frame):
 
 def test_draw_falls_back_to_the_pitch_sprite_problem(in_tmp, frame):
     layout, draw = frame
-    session = Session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session = _session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
     broken = PitchSprite(problem="sprites/pitch/grass.png: file not found")
     line = layout.menu_message_line
     shown = draw(session, pitch_sprite=broken)
@@ -401,7 +410,7 @@ def test_typed_keys_rename_a_roster_and_rescan(in_tmp, no_mods):
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
+    session = _session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     row = layout.menu_row(MenuList.HOME_ROSTERS, 0)
     assert handle_event(session, _click(row, button=3))
@@ -442,7 +451,7 @@ def test_handle_event_types_a_comment(in_tmp, ctrl_held):
     rosters.mkdir()
     (rosters / "orcs.csv").write_text(CSV)
     layout = build_layout()
-    session = Session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
+    session = _session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
     session.rescan()
     for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
         handle_event(session, _click(layout.menu_row(which, 0)))
@@ -469,7 +478,7 @@ def test_handle_event_types_a_comment(in_tmp, ctrl_held):
 
 
 def test_text_and_keys_on_the_main_menu_are_ignored(in_tmp):
-    session = Session(build_layout(), in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session = _session(build_layout(), in_tmp, in_tmp, RACES, **_files(in_tmp))
     assert handle_event(session, pygame.event.Event(pygame.TEXTINPUT, text="a"))
     assert handle_event(session, _key(pygame.K_RETURN))
     assert session.screen is Screen.MENU and session.message == ""
@@ -585,3 +594,39 @@ def test_ctrl_right_press_opens_the_player_menu(in_tmp, ctrl_held):
     handle_event(session, _right(pygame.MOUSEBUTTONDOWN, layout.square(4, 4)))
     assert len(session.interaction.view().menu) == 7
     assert session.interaction.view().marks.arrows == ()
+
+
+def _capture_menu_texts(monkeypatch):
+    """Record the Texts each main menu frame is drawn with."""
+    drawn = []
+
+    def draw_menu(surface, layout, font, texts, menu, message):
+        drawn.append((texts, message))
+
+    monkeypatch.setattr(app, "draw_menu", draw_menu)
+    return drawn
+
+
+def test_run_draws_the_first_frame_in_the_saved_language(in_tmp, monkeypatch):
+    (in_tmp / "languages").mkdir()
+    english = (LANGUAGES_DIR / "en.json").read_text(encoding="utf-8")
+    (in_tmp / "languages" / "en.json").write_text(english, encoding="utf-8")
+    (in_tmp / "languages" / "it.json").write_text(
+        '{"version": 1, "name": "Italiano", "texts": {"menu.start": "Inizia"}}',
+        encoding="utf-8",
+    )
+    (in_tmp / "settings.json").write_text('{"version": 1, "language": "it"}')
+    drawn = _capture_menu_texts(monkeypatch)
+    assert run(max_frames=1) == 1
+    texts, message = drawn[0]
+    assert texts.code == "it" and message == ""
+
+
+def test_run_without_a_languages_folder_opens_in_english_and_says_why(
+    in_tmp, monkeypatch
+):
+    drawn = _capture_menu_texts(monkeypatch)
+    assert run(max_frames=1) == 1
+    texts, message = drawn[0]
+    assert texts.code == "en"
+    assert message == "languages/en.json: file not found"

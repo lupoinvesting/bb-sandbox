@@ -2,6 +2,7 @@
 
 import pytest
 
+from bb_sandbox.language import Message, Text
 from bb_sandbox.names import (
     MAX_NAME_LENGTH,
     FileNameError,
@@ -35,18 +36,18 @@ def test_remove_char_deletes_the_last_character_and_keeps_empty_empty():
 
 
 def test_name_problem_accepts_a_plain_name():
-    assert name_problem("Kick-off A") == ""
+    assert name_problem("Kick-off A") is None
 
 
 @pytest.mark.parametrize(
     ("name", "problem"),
     [
-        ("", "Type a name"),
-        ("   ".strip(), "Type a name"),
-        ("con", "con is reserved"),
-        ("Lpt9", "Lpt9 is reserved"),
-        ("a.b", "Names use letters, digits, spaces, - and _"),
-        ("x" * (MAX_NAME_LENGTH + 1), "Name is too long"),
+        ("", Message(Text.NAME_EMPTY)),
+        ("   ".strip(), Message(Text.NAME_EMPTY)),
+        ("con", Message(Text.NAME_RESERVED, {"name": "con"})),
+        ("Lpt9", Message(Text.NAME_RESERVED, {"name": "Lpt9"})),
+        ("a.b", Message(Text.NAME_CHARS)),
+        ("x" * (MAX_NAME_LENGTH + 1), Message(Text.NAME_TOO_LONG)),
     ],
 )
 def test_name_problem_rejects(name, problem):
@@ -59,10 +60,12 @@ def test_free_path_returns_a_new_path(tmp_path):
 
 def test_free_path_refuses_a_taken_or_invalid_name(tmp_path):
     (tmp_path / "taken.csv").write_text("")
-    with pytest.raises(FileNameError, match="taken already exists"):
+    with pytest.raises(FileNameError) as taken:
         free_path(tmp_path, "taken", ".csv")
-    with pytest.raises(FileNameError, match="reserved"):
+    assert taken.value.message == Message(Text.NAME_EXISTS, {"name": "taken"})
+    with pytest.raises(FileNameError) as reserved:
         free_path(tmp_path, "NUL", ".csv")
+    assert reserved.value.message.key is Text.NAME_RESERVED
 
 
 def test_rename_file_moves_the_file(tmp_path):
@@ -85,8 +88,9 @@ def test_rename_file_never_overwrites(tmp_path):
     old, other = tmp_path / "old.json", tmp_path / "other.json"
     old.write_text("old")
     other.write_text("other")
-    with pytest.raises(FileNameError, match="other already exists"):
+    with pytest.raises(FileNameError) as taken:
         rename_file(old, "other")
+    assert taken.value.message == Message(Text.NAME_EXISTS, {"name": "other"})
     assert old.read_text() == "old" and other.read_text() == "other"
 
 
@@ -114,16 +118,18 @@ def test_rename_folder_never_overwrites(tmp_path):
     for name in ("orcs", "Reavers"):
         (tmp_path / name).mkdir()
         (tmp_path / name / f"{name}.json").write_text(name)
-    with pytest.raises(FileNameError, match="Folder Reavers already exists"):
+    with pytest.raises(FileNameError) as taken:
         rename_folder(tmp_path / "orcs", "Reavers")
+    assert taken.value.message == Message(Text.FOLDER_EXISTS, {"name": "Reavers"})
     assert (tmp_path / "orcs" / "orcs.json").read_text() == "orcs"
     assert [p.name for p in (tmp_path / "Reavers").iterdir()] == ["Reavers.json"]
 
 
 def test_rename_folder_refuses_an_invalid_name_or_a_missing_folder(tmp_path):
     (tmp_path / "orcs").mkdir()
-    with pytest.raises(FileNameError, match="Names use"):
+    with pytest.raises(FileNameError) as invalid:
         rename_folder(tmp_path / "orcs", "../x")
+    assert invalid.value.message == Message(Text.NAME_CHARS)
     with pytest.raises(FileNameError, match="Couldn't rename missing"):
         rename_folder(tmp_path / "missing", "new")
     assert (tmp_path / "orcs").is_dir()
@@ -137,5 +143,6 @@ def test_delete_file_deletes_only_that_file(tmp_path):
 
 
 def test_delete_file_of_a_missing_file_raises(tmp_path):
-    with pytest.raises(FileNameError, match="Couldn't delete missing.json: "):
+    with pytest.raises(FileNameError, match="Couldn't delete missing.json: ") as error:
         delete_file(tmp_path / "missing.json")
+    assert error.value.message.key is Text.RAW

@@ -11,6 +11,7 @@ from bb_sandbox.interaction import (
     EditKey,
     Interaction,
 )
+from bb_sandbox.language import Text
 from bb_sandbox.layout import Box, build_layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
@@ -262,6 +263,7 @@ def test_context_menu_sets_status(interaction, board, index, status):
     interaction.right_click(_at(_square(4, 4)))
     menu = interaction.view().menu
     assert [item.label for item in menu] == [label for label, _ in MENU_ACTIONS]
+    assert all(isinstance(item.label, Text) for item in menu)
     interaction.press(_at(menu[index].box))
     assert board.status_of(HOME0) is status
     assert interaction.view().menu == ()
@@ -303,7 +305,7 @@ def _open_comment(interaction, board, square=Square(4, 4)):
     board.place(HOME0, square)
     interaction.right_click(_at(_square(square.column, square.row)))
     menu = interaction.view().menu
-    assert menu[-1].label == "Comment"
+    assert menu[-1].label is Text.COMMENT
     interaction.press(_at(menu[-1].box))
 
 

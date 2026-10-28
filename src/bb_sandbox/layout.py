@@ -492,6 +492,47 @@ class Layout:
             return index
         return None
 
+    def language_row(self, index: int) -> Box:
+        """
+        Return one row of the Options screen's Language column, menu_columns[1],
+        below its caption.
+
+        Args:
+            index (int): Zero-based row, 0..option_rows-1.
+
+        Returns:
+            Box: The row's screen rectangle.
+
+        Raises:
+            ValueError: If index is outside 0..option_rows-1.
+        """
+        if not 0 <= index < self.option_rows:
+            raise ValueError(
+                f"Language row {index} is outside 0..{self.option_rows - 1}"
+            )
+        column = self.menu_columns[1]
+        return column._replace(
+            y=column.y + (index + 1) * self.square_size, height=self.square_size
+        )
+
+    def language_row_at(self, pos: tuple[int, int]) -> int | None:
+        """
+        Find the Language row under a point (inverse of language_row).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            int | None: The row index, or None off the rows.
+        """
+        column = self.menu_columns[1]
+        if not column.contains(pos):
+            return None
+        index = (pos[1] - column.y) // self.square_size - 1
+        if 0 <= index < self.option_rows:
+            return index
+        return None
+
     def team_setup_column(self, side: Side) -> Box:
         """
         Return the Team setups screen's column for one team, caption row included.

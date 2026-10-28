@@ -145,7 +145,7 @@ def team_setups_folder(rosters_dir: Path, team: str) -> Path | None:
         Path | None: rosters_dir / team; None if the name can't be a folder
             name, so a team name read from a file never points outside.
     """
-    if name_problem(team):
+    if name_problem(team) is not None:
         return None
     return rosters_dir / team
 

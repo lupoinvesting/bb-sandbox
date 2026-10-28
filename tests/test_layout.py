@@ -618,6 +618,35 @@ def test_option_row_out_of_range_raises(offset):
         layout.option_row(index)
 
 
+def test_language_row_at_inverts_language_row():
+    layout = build_layout(32)
+    column = layout.menu_columns[1]
+    for index in range(layout.option_rows):
+        row = layout.language_row(index)
+        assert row.x == column.x and row.y + row.height <= column.y + column.height
+        assert layout.language_row_at((row.x + 2, row.y + 2)) == index
+
+
+def test_language_row_at_misses_the_caption_and_the_pitch_column():
+    layout = build_layout(32)
+    column = layout.menu_columns[1]
+    assert layout.language_row_at((column.x + 2, column.y + 2)) is None
+    last = layout.language_row(layout.option_rows - 1)
+    assert layout.language_row_at((last.x + 2, last.y + last.height - 1)) == (
+        layout.option_rows - 1
+    )
+    pitch = layout.option_row(0)
+    assert layout.language_row_at((pitch.x + 2, pitch.y + 2)) is None
+
+
+@pytest.mark.parametrize("offset", [-1, 0])
+def test_language_row_out_of_range_raises(offset):
+    layout = build_layout(32)
+    index = offset if offset < 0 else layout.option_rows
+    with pytest.raises(ValueError):
+        layout.language_row(index)
+
+
 def test_tiny_square_keeps_option_rows_non_negative():
     assert build_layout(1).option_rows >= 0
 

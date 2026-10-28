@@ -1,4 +1,4 @@
-"""App settings: the chosen pitch image, to and from settings.json.
+"""App settings: the chosen pitch image and language, to and from settings.json.
 
 Callers only see Settings and SettingsError; pydantic stays inside.
 """
@@ -9,6 +9,7 @@ from typing import Final, Literal
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from bb_sandbox._files import first_error, write_atomic
+from bb_sandbox.language import ENGLISH
 
 SETTINGS_VERSION: Final = 1
 
@@ -24,21 +25,24 @@ class Settings(BaseModel):
         version (Literal[1]): The file format version.
         pitch (str | None): A file name in the pitch image folder; None for
             the drawn pitch.
+        language (str): A language code: the stem of a file in the languages
+            folder.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     version: Literal[1] = SETTINGS_VERSION
     pitch: str | None = None
+    language: str = ENGLISH
 
-    @field_validator("pitch")
+    @field_validator("pitch", "language")
     @classmethod
     def _bare_file_name(cls, value: str | None) -> str | None:
         """
         Accept a bare file name only, so the setting can't point outside the folder.
 
         Args:
-            value (str | None): The pitch file name.
+            value (str | None): The pitch file name, or the language code.
 
         Returns:
             str | None: The same value.
@@ -49,7 +53,7 @@ class Settings(BaseModel):
         if value is not None and (
             not value or "/" in value or "\\" in value or ".." in value
         ):
-            raise ValueError(f"pitch must be a bare file name, got {value!r}")
+            raise ValueError(f"must be a bare file name, got {value!r}")
         return value
 
 

@@ -40,6 +40,7 @@ Use Serena to search through the codebase. If you get any errors using Serena, r
 - [Crop tiles script](docs/crop_tiles.md)
 - [Team setups](docs/team_setups.md)
 - [Pitch annotations](docs/annotations.md)
+- [Languages](docs/languages.md)
 
 ## 🧪 Testing & Reliability
 - **Always create Pytest unit tests for new features** (functions, classes, routes, etc).

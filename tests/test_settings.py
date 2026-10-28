@@ -9,9 +9,20 @@ from bb_sandbox.settings import Settings, SettingsError, load_settings, save_set
 
 def test_save_then_load_round_trips(tmp_path):
     path = tmp_path / "settings.json"
-    save_settings(path, Settings(pitch="astrogranite.png"))
-    assert json.loads(path.read_text()) == {"version": 1, "pitch": "astrogranite.png"}
-    assert load_settings(path) == Settings(pitch="astrogranite.png")
+    settings = Settings(pitch="astrogranite.png", language="pt-br")
+    save_settings(path, settings)
+    assert json.loads(path.read_text()) == {
+        "version": 1,
+        "pitch": "astrogranite.png",
+        "language": "pt-br",
+    }
+    assert load_settings(path) == settings
+
+
+def test_a_file_without_language_loads_as_english(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text('{"version": 1, "pitch": null}')
+    assert load_settings(path).language == "en"
 
 
 def test_a_missing_file_gives_the_defaults(tmp_path):
@@ -28,6 +39,8 @@ def test_a_missing_file_gives_the_defaults(tmp_path):
         '{"version": 1, "pitch": "a/b.png"}',
         '{"version": 1, "pitch": "a\\\\b.png"}',
         '{"version": 2}',
+        '{"version": 1, "language": "../x"}',
+        '{"version": 1, "language": ""}',
     ],
 )
 def test_a_bad_file_raises_naming_it(tmp_path, text):

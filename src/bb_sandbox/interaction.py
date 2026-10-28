@@ -10,6 +10,7 @@ from typing import NamedTuple
 
 from bb_sandbox.annotations import Arrow, Marks, toggle_arrow, toggle_circle
 from bb_sandbox.board import MAX_COMMENT_LENGTH, Board, comment_char_ok
+from bb_sandbox.language import Text
 from bb_sandbox.layout import Box, Layout
 from bb_sandbox.pitch import Dugout, PlayerKey, Square, Status
 
@@ -41,14 +42,14 @@ class EditKey(Enum):
 
 # Reason: a Status changes the player's state on the pitch; a Dugout sends them
 # off the pitch into that box instead; Comment opens an edit on the token.
-MENU_ACTIONS: tuple[tuple[str, Status | Dugout | MenuCommand], ...] = (
-    ("Stand up", Status.STANDING),
-    ("Prone", Status.PRONE),
-    ("Stunned", Status.STUNNED),
-    ("Reserve", Dugout.RESERVE),
-    ("KO", Dugout.KO),
-    ("Injured", Dugout.INJURED),
-    ("Comment", MenuCommand.COMMENT),
+MENU_ACTIONS: tuple[tuple[Text, Status | Dugout | MenuCommand], ...] = (
+    (Text.STAND_UP, Status.STANDING),
+    (Text.PRONE, Status.PRONE),
+    (Text.STUNNED, Status.STUNNED),
+    (Text.RESERVE, Dugout.RESERVE),
+    (Text.KO, Dugout.KO),
+    (Text.INJURED, Dugout.INJURED),
+    (Text.COMMENT, MenuCommand.COMMENT),
 )
 
 
@@ -71,11 +72,11 @@ class MenuItem(NamedTuple):
     """One context menu entry.
 
     Attributes:
-        label (str): Text to show.
+        label (Text): Text to show, still to translate.
         box (Box): Its screen rectangle.
     """
 
-    label: str
+    label: Text
     box: Box
 
 
