@@ -5,8 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from bb_sandbox._files import first_error, stored_pitch, write_atomic
-from bb_sandbox.pitch import PitchFormat
+from bb_sandbox._files import first_error, write_atomic
 
 
 class _Model(BaseModel):
@@ -62,28 +61,3 @@ def test_a_temp_file_that_cant_be_removed_doesnt_hide_the_error(tmp_path, monkey
     with pytest.raises(OSError) as info:
         write_atomic(path, "text")
     assert "locked" not in str(info.value)
-
-
-def test_stored_pitch_reads_the_pitch_key(tmp_path):
-    path = tmp_path / "a.json"
-    path.write_text('{"version": 1, "pitch": "sevens"}', encoding="utf-8")
-    assert stored_pitch(path) is PitchFormat.SEVENS
-
-
-def test_stored_pitch_without_a_key_is_standard(tmp_path):
-    path = tmp_path / "a.json"
-    path.write_text('{"version": 1}', encoding="utf-8")
-    assert stored_pitch(path) is PitchFormat.STANDARD
-
-
-@pytest.mark.parametrize(
-    "content", ["{not json", '{"pitch": "huge"}', '{"pitch": []}', "[1]", "\xff"]
-)
-def test_stored_pitch_of_an_unreadable_file_is_none(tmp_path, content):
-    path = tmp_path / "a.json"
-    path.write_bytes(content.encode("latin-1"))
-    assert stored_pitch(path) is None
-
-
-def test_stored_pitch_of_a_missing_file_is_none(tmp_path):
-    assert stored_pitch(tmp_path / "missing.json") is None

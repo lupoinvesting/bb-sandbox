@@ -5,13 +5,10 @@ and turn its OSError into their own error types. No Pygame.
 """
 
 import contextlib
-import json
 import os
 from pathlib import Path
 
 from pydantic import ValidationError
-
-from bb_sandbox.pitch import PitchFormat
 
 
 def first_error(error: ValidationError) -> str:
@@ -28,28 +25,6 @@ def first_error(error: ValidationError) -> str:
     first = error.errors()[0]
     field = ".".join(str(part) for part in first["loc"])
     return f"{field}: {first['msg']}" if field else first["msg"]
-
-
-def stored_pitch(path: Path) -> PitchFormat | None:
-    """
-    Read which pitch size a setup or team setup file was saved for.
-
-    Args:
-        path (Path): The JSON file.
-
-    Returns:
-        PitchFormat | None: The file's "pitch" key; STANDARD if it has none,
-            as files saved before pitch sizes existed; None if the file can't
-            be read, isn't a JSON object or names no known size. Never raises.
-    """
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return PitchFormat(data.get("pitch", PitchFormat.STANDARD.value))
-    # Reason: JSONDecodeError and an unknown enum value are ValueErrors; a
-    # JSON value that isn't an object has no .get (AttributeError), and an
-    # unhashable "pitch" value can't be looked up (TypeError).
-    except (OSError, UnicodeDecodeError, ValueError, AttributeError, TypeError):
-        return None
 
 
 def write_atomic(path: Path, text: str) -> None:

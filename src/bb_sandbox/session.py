@@ -20,6 +20,7 @@ from functools import partial
 from pathlib import Path
 from typing import NamedTuple
 
+from bb_sandbox._pitch_tag import stored_pitch
 from bb_sandbox.board import Board
 from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, Roll, roll_dice
@@ -307,6 +308,8 @@ class OptionsView(NamedTuple):
             is hidden.
         pitch_format (PitchFormat): The chosen pitch size; pitches, hidden and
             selected are that size's.
+        pitch_folder (str): The folder the pitch images are read from, as a
+            POSIX path with a trailing slash, e.g. "sprites/pitch-sevens/".
     """
 
     pitches: tuple[str, ...]
@@ -316,6 +319,7 @@ class OptionsView(NamedTuple):
     languages_hidden: int = 0
     language: int = 0
     pitch_format: PitchFormat = PitchFormat.STANDARD
+    pitch_folder: str = ""
 
 
 class TeamSetupList(NamedTuple):
@@ -710,6 +714,7 @@ class Session:
             languages_hidden=len(self._languages.all) - len(languages),
             language=codes.index(code) if code in codes else -1,
             pitch_format=self._pitch_format,
+            pitch_folder=self._pitch_dirs[self._pitch_format].as_posix() + "/",
         )
 
     def _visible_languages(self) -> tuple[Texts, ...]:
@@ -1049,9 +1054,9 @@ class Session:
         if size is self._pitch_format:
             return None
         # Reason: Options opens only from the main menu, so no board exists
-        # whose layout could go out of step. The app's rescan after the save
-        # lists the new size's images and setups.
+        # whose layout or team setups could go out of step.
         self._set_pitch_format(size)
+        self._list_size_files()
         self._message = NO_MESSAGE
         return SaveSettings()
 
@@ -1235,9 +1240,13 @@ class Session:
         self._roster_entries = tuple(
             RosterEntry(path.stem, _race_or_none(path)) for path in self._rosters
         )
+        self._list_size_files()
+        self._list_team_setups()
+
+    def _list_size_files(self) -> None:
+        """List the setups and pitch images of the chosen pitch size."""
         self._setups = list_setups(self._setups_dir, self._pitch_format)
         self._pitches = list_images(self._pitch_dirs[self._pitch_format])
-        self._list_team_setups()
 
     def _list_team_setups(self) -> None:
         """List both teams' setup files; a team without a folder lists none."""
@@ -1343,7 +1352,7 @@ class Session:
             path = free_path(self._setups_dir, name, ".json")
             write_setup(self._board, path)
         except FileNameError as error:
-            self._report(error.message)
+            self._report(self._taken(error, self._setups_dir / f"{name}.json"))
             return
         except SetupFileError as error:
             self._report(raw(str(error)))
@@ -1452,11 +1461,14 @@ class Session:
         if problem is not None:
             self._report(problem)
             return
+        folder = self._team_folder(side)
+        # Reason: _save_problem refused a team whose name can't be a folder.
+        assert folder is not None
         try:
-            path = free_path(self._team_folder(side), name, ".json")
+            path = free_path(folder, name, ".json")
             write_team_setup(capture(self._board, side), self._board.pitch, path)
         except FileNameError as error:
-            self._report(error.message)
+            self._report(self._taken(error, folder / f"{name}.json"))
             return
         except TeamSetupError as error:
             self._report(raw(str(error)))
@@ -1496,6 +1508,29 @@ class Session:
         except TeamSetupError as error:
             values = {"name": path.stem, "error": str(error)}
             self._message = Message(Text.DELETED_BUT, values)
+
+    def _taken(self, error: FileNameError, path: Path) -> Message:
+        """
+        Word a refused file name, saying when the other pitch size owns it.
+
+        Args:
+            error (FileNameError): Why the save or rename was refused.
+            path (Path): The file the new name would have.
+
+        Returns:
+            Message: NAME_EXISTS_OTHER_PITCH if the name is taken by a
+                readable setup or team setup of the other pitch size, which
+                the lists hide; else the error's own message.
+        """
+        # Reason: files of both sizes share one folder, so a name can look
+        # free in this size's list and still be taken.
+        if (
+            error.message.key is Text.NAME_EXISTS
+            and path.suffix == ".json"
+            and stored_pitch(path) not in (self._pitch_format, None)
+        ):
+            return Message(Text.NAME_EXISTS_OTHER_PITCH, {"name": path.stem})
+        return error.message
 
     def _move_team_setups(self, old: Path, new: Path) -> Message | None:
         """
@@ -1543,7 +1578,7 @@ class Session:
         try:
             new = rename_file(path, name)
         except FileNameError as error:
-            self._report(error.message)
+            self._report(self._taken(error, path.with_name(name + path.suffix)))
             return
         if path in self._rosters:
             problem = self._move_team_setups(path, new)

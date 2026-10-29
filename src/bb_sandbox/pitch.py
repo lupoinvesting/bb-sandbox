@@ -71,6 +71,21 @@ class PitchFormat(Enum):
         """
         return square.column < self.columns and square.row < self.rows
 
+    def check(self, square: Square) -> None:
+        """
+        Reject a square that is off this pitch.
+
+        Args:
+            square (Square): Any square.
+
+        Raises:
+            ValueError: E.g. "square (20, 3) is off the sevens pitch".
+        """
+        if not self.contains(square):
+            raise ValueError(
+                f"square ({square.column}, {square.row}) is off the {self.value} pitch"
+            )
+
 
 class Side(Enum):
     """Which team a player belongs to."""

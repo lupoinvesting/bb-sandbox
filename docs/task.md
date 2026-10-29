@@ -141,6 +141,24 @@ Design: [sevens.md](sevens.md). Requirements: PRD §3.14.
 - [x] app: `SEVENS_PITCH_SPRITES_DIR`, draw with `session.layout`, reload on `pitch_path`, rescan after `SaveSettings` + test_app
 - [x] Docs: README Pitch size + `sprites/pitch-sevens/` (20:11 images); force-add its `.gitkeep`; status line in sevens.md
 
+## Phase 17: Sevens Fixes
+Design: [sevens-fixes.md](sevens-fixes.md). Fixes `/code-review high` findings 1–8 on commit 4a2670e.
+- [x] pitch: `PitchFormat.check(square)` used by board and both setup validators; drop `Board._check_square` and `team_setups._off_pitch`; drop `save_team_setup`'s own off-pitch loop + test_pitch, test_board, test_team_setups
+- [x] `_pitch_tag.py`: `stored_pitch` moved from `_files` (tests from test_files), `pitch_mismatch` used by `load_setup` and `load_team_setup` + test_pitch_tag
+- [x] layout: `_pitch_geometry` returns `_PitchGeometry(TypedDict)` (mypy is the check)
+- [x] language: `name.exists_other_pitch`; `options.no_pitches` uses `{folder}`, in `en.json` and `it.json` + test_language_files
+- [x] session: `_list_size_files` on a size switch and in `rescan`; `_taken` for saves and renames; `OptionsView.pitch_folder` + test_session
+- [x] render: hint with the folder + test_render; app: `SaveSettings` no longer rescans + test_app
+- [x] Docs: sevens.md Decisions (shared names, hint), README Pitch size, status line in sevens-fixes.md
+
+## Phase 18: Sevens Zones
+Design: [sevens-zones.md](sevens-zones.md). Requirements: PRD §3.14 (Sevens Geometry). No halfway line on Sevens; 3 zones of 6 columns.
+- [ ] pitch: `SEVENS_ZONE_COLUMNS = 6`, `PitchFormat.scrimmage_columns` ((13,) / (7, 13)), `ball_start` docstring + test_pitch
+- [ ] layout: `scrimmage_lines_x: tuple[int, ...]` replaces `line_of_scrimmage_x` (also in `_PitchGeometry` if Phase 17 is in) + test_layout
+- [ ] render: `_draw_pitch` draws one `SCRIMMAGE_LINE` per entry; none at Sevens' halfway + test_render; headless screenshot
+- [ ] team_setups: mirror docstring says "across the pitch's centre"
+- [ ] Docs: README Pitch size (three 6-square zones, two lines); sevens.md Geometry default and "line of scrimmage" mentions; status line in sevens-zones.md
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -158,7 +176,9 @@ Design: [sevens.md](sevens.md). Requirements: PRD §3.14.
 - [ ] Setup files saved before race/position existed no longer load (no saves had shipped, so the format stayed at version 1).
 - [ ] `build_layout` is 137 lines (108 before Phase 5), over NASA rule 4's 60; split it, e.g. into pitch, panel and menu regions.
 - [ ] Builder rows clip long skill lists at about 250px, so Big Guys lose most of theirs (Rotspawn's need 841px); show the full list for the positional under the cursor.
-- [ ] On Sevens, the empty Pitch list still says "No images in sprites/pitch/", but the folder is `sprites/pitch-sevens/`. Not in the Phase 16 design (3 new texts only); needs a size-aware hint text.
+- [x] On Sevens, the empty Pitch list still says "No images in sprites/pitch/", but the folder is `sprites/pitch-sevens/`. Not in the Phase 16 design (3 new texts only); needs a size-aware hint text. Built as Phase 17 D1.
+- [x] Phase 17: `save_team_setup` in session now asserts its team setups folder exists (`_save_problem` guarantees it), so `_taken` can build the clashing path; this also clears one mypy backlog error (37 to 36).
+- [ ] Setup, team setup and settings files gained keys under `version: 1` with `extra="forbid"`, so builds before Phase 16 reject files saved after it (review finding 9, declined in sevens-fixes.md). Revisit if the formats ever need a migration story.
 - [ ] `rosters/example.csv` uses Second Season Human stats (Catcher ST 2/PA 5+, Thrower PA 2+, Blitzer without Tackle, Ogre Loner (4+)) and gives its Halfling no PA. These differ from the Third Season race database.
 - [x] Add the five block dice PNGs to `sprites/dice/` (names in the README). The folder doesn't exist until then, so every block face shows its name.
 - [x] `sprites/home/sprite-names.txt` and `sprites/away/sprite-names.txt` list `default.png` and the 125 position file names (force-added; a position shared by races is listed under its first race).
@@ -178,7 +198,7 @@ Design: [sevens.md](sevens.md). Requirements: PRD §3.14.
 - [ ] `app._run_frames` (61 lines) and `render._draw_pieces` (63) are over NASA rule 4's 60 (both were before Phase 12); split them with their next change.
 - [x] `/sc:analyze` follow-up: the four file modules shared copies of `_first_error` and the temp-file + `os.replace` write; both now live in `bb_sandbox/_files.py` (`first_error`, `write_atomic`). A temp file that can't be removed no longer hides the write's own error, and JSON files are written with `
 ` line endings on every platform.
-- [ ] `mypy src scripts` reports 37 errors (36 + `clear_marks` in Phase 13's `_press_sandbox`), all `X | None` fields (`Session._board`/`_interaction`/`_builder`, `Interaction._grab`/`_menu`/`_pos`) that the current screen guarantees are set; none is a real bug. Narrow them (asserts or per-screen state) so mypy can run clean.
+- [ ] `mypy src scripts` reports 36 errors (37 after Phase 13's `clear_marks` in `_press_sandbox`; Phase 17 cleared `save_team_setup`'s `free_path` one), all `X | None` fields (`Session._board`/`_interaction`/`_builder`, `Interaction._grab`/`_menu`/`_pos`) that the current screen guarantees are set; none is a real bug. Narrow them (asserts or per-screen state) so mypy can run clean.
 - [ ] `names.free_path` checks `exists()` and the save then `os.replace`s, so a file created between the two is overwritten; "never overwrites" holds only for this app's own saves.
 - [ ] A team loaded from a saved setup keeps its stored name, so Save team setup creates `rosters/<name>/` even when no such roster exists, or attaches to an unrelated roster that now has that name.
 - [ ] `session.py` (1,346 lines) and `render.py` (1,412) each cover every screen; consider splitting them per screen with `Session` as a router.

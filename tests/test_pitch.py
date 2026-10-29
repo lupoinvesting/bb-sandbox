@@ -67,3 +67,21 @@ def test_pitch_format_contains_its_corners():
 @pytest.mark.parametrize("column,row", [(20, 0), (0, 11), (25, 14)])
 def test_squares_off_sevens(column, row):
     assert not PitchFormat.SEVENS.contains(Square(column, row))
+
+
+@pytest.mark.parametrize(
+    "fmt,square",
+    [
+        (PitchFormat.SEVENS, Square(19, 10)),
+        (PitchFormat.STANDARD, Square(25, 14)),
+        (PitchFormat.SEVENS, Square(0, 0)),
+        (PitchFormat.STANDARD, Square(0, 0)),
+    ],
+)
+def test_check_passes_a_square_on_the_pitch(fmt, square):
+    fmt.check(square)
+
+
+def test_check_rejects_a_square_off_the_pitch():
+    with pytest.raises(ValueError, match=r"square \(20, 3\) is off the sevens pitch"):
+        PitchFormat.SEVENS.check(Square(20, 3))

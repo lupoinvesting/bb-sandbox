@@ -111,6 +111,7 @@ class Text(StrEnum):
     NAME_TOO_LONG = "name.too_long"
     NAME_RESERVED = "name.reserved"
     NAME_EXISTS = "name.exists"
+    NAME_EXISTS_OTHER_PITCH = "name.exists_other_pitch"
     FOLDER_EXISTS = "name.folder_exists"
     LOADED_TEAM = "message.loaded_team"
     LOADED = "message.loaded"

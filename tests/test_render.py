@@ -892,6 +892,37 @@ def test_options_without_images_highlights_the_drawn_pitch_and_shows_a_hint(font
     assert not _has_text(surface, layout.option_row(2))
 
 
+def _labels(monkeypatch):
+    drawn = []
+    original = render._draw_label
+
+    def spy(surface, font, text, box, *args, **kwargs):
+        drawn.append(text)
+        return original(surface, font, text, box, *args, **kwargs)
+
+    monkeypatch.setattr(render, "_draw_label", spy)
+    return drawn
+
+
+def test_an_empty_sevens_list_names_its_folder_in_the_hint(font, monkeypatch):
+    drawn = _labels(monkeypatch)
+    options = OptionsView(
+        (),
+        0,
+        None,
+        pitch_format=PitchFormat.SEVENS,
+        pitch_folder="sprites/pitch-sevens/",
+    )
+    _draw_options(font, options)
+    assert "No images in sprites/pitch-sevens/" in drawn
+
+
+def test_a_list_with_images_draws_no_hint(font, monkeypatch):
+    drawn = _labels(monkeypatch)
+    _draw_options(font, OptionsView(("a.png",), 0, None, pitch_folder="sprites/pitch/"))
+    assert not any(text.startswith("No images") for text in drawn)
+
+
 def test_options_draws_more_after_the_last_visible_pitch(font):
     surface, layout = _draw_options(font, OptionsView(("a.png",), 3, None))
     assert _has_text(surface, layout.option_row(2))

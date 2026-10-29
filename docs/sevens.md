@@ -39,6 +39,8 @@ It builds on commit `a430eaa` (Phase 15, Language Fixes, plus the Italian langua
   - An older build of the app rejects the new key (`extra="forbid"`). That is acceptable, since the app has only one user.
 - **List filtering:** `list_setups` and `list_team_setups` read each file's `pitch` key.
   - A file whose key can't be read (broken JSON, a bad value) is listed for both sizes, so loading it shows the real error, and it can be renamed or deleted.
+- **Shared names** (added by [sevens-fixes.md](sevens-fixes.md) D2): both sizes keep their files in the same folders, so a name is taken whichever size uses it. A save or rename onto a readable setup or team setup of the other size, which the lists hide, says `<name> already exists for the other pitch size`; any other clash keeps `<name> already exists`.
+- **Empty Pitch list** (added by [sevens-fixes.md](sevens-fixes.md) D1): the hint names the folder the list reads, `No images in sprites/pitch-sevens/` on Sevens.
 - **Loading the other size's file** (only possible if a file changes between a rescan and a click): it is refused with a file error, `<file>: made for the sevens pitch, not standard`. File error details are untranslated, as §3.13 requires.
 - **Bounds in files:** a square outside the file's own pitch is a schema error. Examples: `(20, 0)` in a Sevens file, or `(26, 0)` anywhere.
 - **Away mirror:** `column → columns - 1 - column`, which is `19 - column` on Sevens.

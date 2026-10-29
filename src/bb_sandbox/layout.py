@@ -6,7 +6,7 @@ later drag-and-drop snapping) can share one source of truth for positions.
 
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Any, NamedTuple
+from typing import NamedTuple, TypedDict
 
 from bb_sandbox.pitch import (
     DUGOUT_CAPACITY,
@@ -921,7 +921,21 @@ def _name_box(window_size: tuple[int, int], square_size: int) -> tuple[Box, Box]
     return box, field
 
 
-def _pitch_geometry(pitch: PitchFormat, square_size: int) -> dict[str, Any]:
+class _PitchGeometry(TypedDict):
+    """The Layout fields that depend on the pitch size, keyed by field name.
+
+    Typed like the fields, so mypy checks the `**` spreads into Layout(...)
+    and replace(...).
+    """
+
+    pitch_format: PitchFormat
+    pitch: Box
+    line_of_scrimmage_x: int
+    wide_zones: tuple[Box, Box]
+    endzones: tuple[Box, Box]
+
+
+def _pitch_geometry(pitch: PitchFormat, square_size: int) -> _PitchGeometry:
     """
     Compute the pitch fields of a Layout for one pitch size.
 
@@ -930,7 +944,7 @@ def _pitch_geometry(pitch: PitchFormat, square_size: int) -> dict[str, Any]:
         square_size (int): Side of one grid square in pixels.
 
     Returns:
-        dict[str, Any]: pitch_format, pitch, line_of_scrimmage_x, wide_zones
+        _PitchGeometry: pitch_format, pitch, line_of_scrimmage_x, wide_zones
             and endzones, keyed by Layout field name.
     """
     # Reason: the screen always reserves the standard pitch's room, so nothing

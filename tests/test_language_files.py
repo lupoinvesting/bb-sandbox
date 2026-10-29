@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from bb_sandbox.language import Text, load_languages
+from bb_sandbox.language import Message, Text, load_languages
 from bb_sandbox.races import RACES_FILE, load_races
 
 LANGUAGES_DIR = Path(__file__).parent.parent / "languages"
@@ -42,3 +42,15 @@ def test_the_pitch_size_texts_are_in_english_and_italian():
     italian = next(t for t in load_languages(LANGUAGES_DIR).all if t.code == "it")
     assert italian[Text.PITCH_FORMAT] == "Dimensione campo"
     assert italian[Text.STANDARD] == "Standard"
+
+
+def test_the_sevens_fixes_texts_are_in_english_and_italian():
+    assert EN["texts"]["name.exists_other_pitch"] == (
+        "{name} already exists for the other pitch size"
+    )
+    assert "{folder}" in EN["texts"]["options.no_pitches"]
+    italian = next(t for t in load_languages(LANGUAGES_DIR).all if t.code == "it")
+    folder = Message(Text.NO_PITCHES, {"folder": "sprites/pitch-sevens/"})
+    assert italian.say(folder) == "Nessuna immagine in sprites/pitch-sevens/"
+    clash = Message(Text.NAME_EXISTS_OTHER_PITCH, {"name": "kickoff"})
+    assert italian.say(clash) == "kickoff esiste già per l'altra dimensione del campo"

@@ -75,22 +75,6 @@ class Board:
         if key not in self._locations:
             raise ValueError(f"Unknown player {key}")
 
-    def _check_square(self, square: Square) -> None:
-        """
-        Reject a square that is off this board's pitch.
-
-        Args:
-            square (Square): The square to check.
-
-        Raises:
-            ValueError: If the square is off the pitch.
-        """
-        if not self._pitch.contains(square):
-            raise ValueError(
-                f"square ({square.column}, {square.row}) is off the "
-                f"{self._pitch.value} pitch"
-            )
-
     @property
     def pitch(self) -> PitchFormat:
         """PitchFormat: The pitch size this board is played on."""
@@ -236,7 +220,7 @@ class Board:
             ValueError: If the key is unknown or the square is off the pitch.
         """
         self._check(key)
-        self._check_square(square)
+        self._pitch.check(square)
         occupant = self.player_at(square)
         if occupant is not None and occupant != key:
             return False
@@ -333,5 +317,5 @@ class Board:
         Raises:
             ValueError: If the square is off the pitch.
         """
-        self._check_square(square)
+        self._pitch.check(square)
         self._ball = square

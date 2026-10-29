@@ -10,7 +10,8 @@ from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from bb_sandbox._files import first_error, stored_pitch, write_atomic
+from bb_sandbox._files import first_error, write_atomic
+from bb_sandbox._pitch_tag import pitch_mismatch, stored_pitch
 from bb_sandbox.board import Board
 from bb_sandbox.pitch import (
     PITCH_COLUMNS,
@@ -93,11 +94,7 @@ class _SetupData(_Frozen):
         entries = (e for team in (self.home, self.away) for e in team.players)
         squares = [self.ball, *(e.square for e in entries if e.square is not None)]
         for square in squares:
-            if not self.pitch.contains(Square(square.column, square.row)):
-                raise ValueError(
-                    f"square ({square.column}, {square.row}) is off the "
-                    f"{self.pitch.value} pitch"
-                )
+            self.pitch.check(Square(square.column, square.row))
         return self
 
 
@@ -217,10 +214,9 @@ def load_setup(path: Path, pitch: PitchFormat) -> Board:
         raise SetupFileError(f"{path.name}: {error}") from error
     except ValidationError as error:
         raise SetupFileError(f"{path.name}: {first_error(error)}") from error
-    if data.pitch is not pitch:
-        raise SetupFileError(
-            f"{path.name}: made for the {data.pitch.value} pitch, not {pitch.value}"
-        )
+    mismatch = pitch_mismatch(path, data.pitch, pitch)
+    if mismatch is not None:
+        raise SetupFileError(mismatch)
 
     teams = {
         side: Team(

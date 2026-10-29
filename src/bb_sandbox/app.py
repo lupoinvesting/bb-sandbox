@@ -98,11 +98,9 @@ def _perform(session: Session, request: FileRequest | None) -> None:
             session.rename(path, name)
             session.rescan()
         case SaveSettings():
+            # Reason: a pitch size switch relists its own images and setups,
+            # so no rescan is needed here.
             session.save_settings()
-            # Reason: a pitch size switch changes which image folder and
-            # which setups the lists show; after a pitch or language pick
-            # the rescan is harmless.
-            session.rescan()
         case OpenTeamSetups():
             session.open_team_setups()
         case DeployTeamSetup(side=side, path=path):

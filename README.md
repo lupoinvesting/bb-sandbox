@@ -170,8 +170,10 @@ The third Options column, **Pitch size**, picks **Standard** (26 x 15) or **Seve
   It has 1-column endzones, 2-row wide zones, and the ball starts mid-pitch just right of the line of scrimmage.
 - Sevens has its own image folder, `sprites/pitch-sevens/`, stretched to 640 x 352 pixels, so a 20:11 image looks best.
   The Pitch list shows the current size's folder, and each size remembers its own image.
+  An empty list names the folder it reads, e.g. "No images in sprites/pitch-sevens/".
 - Saved setups and team setups record their pitch size; the lists only show the current size's files.
   Files saved before pitch sizes existed count as Standard.
+  Both sizes share the file names in a folder, so a name a hidden file of the other size has is refused with `<name> already exists for the other pitch size`.
 - Sevens roster limits (11 players, 600k gp) are not enforced; rosters work on both sizes.
 
 ## Languages

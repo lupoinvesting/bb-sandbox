@@ -11,7 +11,8 @@ from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from bb_sandbox._files import first_error, stored_pitch, write_atomic
+from bb_sandbox._files import first_error, write_atomic
+from bb_sandbox._pitch_tag import pitch_mismatch, stored_pitch
 from bb_sandbox.board import Board
 from bb_sandbox.names import name_problem
 from bb_sandbox.pitch import (
@@ -77,24 +78,8 @@ class _TeamSetupData(_Frozen):
             ValueError: Naming the first square off the pitch.
         """
         for entry in self.players:
-            square = Square(entry.square.column, entry.square.row)
-            if not self.pitch.contains(square):
-                raise ValueError(_off_pitch(square, self.pitch))
+            self.pitch.check(Square(entry.square.column, entry.square.row))
         return self
-
-
-def _off_pitch(square: Square, pitch: PitchFormat) -> str:
-    """
-    Describe a square that is off a pitch.
-
-    Args:
-        square (Square): The square.
-        pitch (PitchFormat): The pitch it is off.
-
-    Returns:
-        str: E.g. "square (20, 3) is off the sevens pitch".
-    """
-    return f"square ({square.column}, {square.row}) is off the {pitch.value} pitch"
 
 
 def _oriented(square: Square, side: Side, pitch: PitchFormat) -> Square:
@@ -258,9 +243,8 @@ def save_team_setup(setup: TeamSetup, pitch: PitchFormat, path: Path) -> None:
     """
     if not setup:
         raise ValueError("A team setup lists at least one player")
-    for square in setup.values():
-        if not pitch.contains(square):
-            raise ValueError(_off_pitch(square, pitch))
+    # Reason: _TeamSetupData checks every square is on the pitch; its
+    # ValidationError is a ValueError, as documented above.
     data = _TeamSetupData(
         version=VERSION,
         pitch=pitch,
@@ -298,10 +282,9 @@ def load_team_setup(path: Path, pitch: PitchFormat) -> TeamSetup:
         raise TeamSetupError(f"{path.name}: {error}") from error
     except ValidationError as error:
         raise TeamSetupError(f"{path.name}: {first_error(error)}") from error
-    if data.pitch is not pitch:
-        raise TeamSetupError(
-            f"{path.name}: made for the {data.pitch.value} pitch, not {pitch.value}"
-        )
+    mismatch = pitch_mismatch(path, data.pitch, pitch)
+    if mismatch is not None:
+        raise TeamSetupError(mismatch)
     setup: TeamSetup = {}
     for entry in data.players:
         square = Square(entry.square.column, entry.square.row)

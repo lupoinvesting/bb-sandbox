@@ -707,3 +707,22 @@ def test_a_restart_restores_sevens_and_loads_its_image_at_its_size(in_tmp, monke
     monkeypatch.setattr(app, "load_pitch_sprite", load)
     assert run(max_frames=1) == 1
     assert calls == [(Path("sprites") / "pitch-sevens" / "nurgle7.png", (640, 352))]
+
+
+def test_a_language_click_saves_without_a_rescan(in_tmp, monkeypatch):
+    layout = build_layout()
+    session = _session(layout, in_tmp, in_tmp, RACES, **_files(in_tmp))
+    session.rescan()
+    calls = []
+    real = session_module.list_rosters
+
+    def counting(folder):
+        calls.append(folder)
+        return real(folder)
+
+    monkeypatch.setattr(session_module, "list_rosters", counting)
+    handle_event(session, _click(layout.options_button))
+    handle_event(session, _click(layout.language_row(1)))
+    assert session.texts.code == "it"
+    assert '"language": "it"' in (in_tmp / "settings.json").read_text()
+    assert calls == []

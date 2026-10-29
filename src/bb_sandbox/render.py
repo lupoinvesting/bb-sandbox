@@ -749,7 +749,8 @@ def draw_options(
         if options.hidden:
             _draw_label(surface, font, _more(texts, options.hidden), last)
         elif not options.pitches:
-            _draw_label(surface, font, texts[Text.NO_PITCHES], last)
+            hint = Message(Text.NO_PITCHES, {"folder": options.pitch_folder})
+            _draw_label(surface, font, texts.say(hint), last)
     _draw_languages(surface, layout, font, texts, options)
     _draw_pitch_formats(surface, layout, font, texts, options)
     _draw_label(surface, font, message, layout.menu_message_line)

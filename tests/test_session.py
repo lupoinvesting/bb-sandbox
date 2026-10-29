@@ -692,7 +692,10 @@ def test_options_button_opens_the_options_screen_and_clears_the_message(session)
 def test_options_lists_the_pitch_images_with_the_drawn_pitch_chosen(tmp_path):
     session = _options(tmp_path, "b.jpg", "a.png", "notes.txt")
     view = session.options_view()
-    assert view == OptionsView(("a.png", "b.jpg"), 0, None, ("English",), 0, 0)
+    folder = f"{(tmp_path / 'pitch').as_posix()}/"
+    assert view == OptionsView(
+        ("a.png", "b.jpg"), 0, None, ("English",), 0, 0, PitchFormat.STANDARD, folder
+    )
     assert session.pitch is None and session.pitch_path is None
 
 
@@ -738,7 +741,8 @@ def test_a_missing_file_stays_chosen_and_listed_files_follow_the_folder(tmp_path
     session.press(_option(1))
     (tmp_path / "pitch" / "a.png").unlink()
     session.rescan()
-    assert session.options_view() == OptionsView((), 0, "a.png", ("English",))
+    view = session.options_view()
+    assert view._replace(pitch_folder="") == OptionsView((), 0, "a.png", ("English",))
 
 
 def test_an_invalid_settings_file_keeps_the_drawn_pitch_with_a_message(tmp_path):
@@ -1416,14 +1420,13 @@ def test_each_size_keeps_its_own_image_and_the_current_size_saves_nothing(tmp_pa
     (sevens / "s.png").write_bytes(b"")
     session.press(_option(1))
     assert session.press(_pitch_size(0)) is None
+    # The switch lists the new size's images itself, without a rescan.
     session.press(_pitch_size(1))
-    session.rescan()
     assert session.options_view().pitches == ("s.png",)
     assert session.pitch is None
     session.press(_option(1))
     assert session.pitch_path == sevens / "s.png"
     session.press(_pitch_size(0))
-    session.rescan()
     assert session.pitch == "a.png" and session.options_view().pitches == ("a.png",)
     assert session.press(_pitch_size(LAYOUT.option_rows - 1)) is None
 
@@ -1450,7 +1453,6 @@ def test_the_menu_lists_only_the_current_sizes_setups(session, tmp_path):
     assert len(session.menu_view().setups) == 1
     session.press(_click(LAYOUT.options_button))
     session.press(_pitch_size(1))
-    session.rescan()
     assert session.menu_view().setups == ()
 
 
@@ -1467,3 +1469,67 @@ def test_loading_a_setup_saved_for_the_other_size_shows_the_file_error(
     session.load_setup(path)
     assert session.screen is Screen.MENU
     assert session.message == f"{path.name}: made for the standard pitch, not sevens"
+
+
+def test_the_pitch_folder_follows_the_size(tmp_path):
+    session = _options(tmp_path)
+    assert session.options_view().pitch_folder.endswith("/pitch/")
+    session.press(_pitch_size(1))
+    assert session.options_view().pitch_folder.endswith("/pitch-sevens/")
+    session.press(_pitch_size(0))
+    assert session.options_view().pitch_folder.endswith("/pitch/")
+
+
+def _to_sevens(session):
+    session.press(_click(LAYOUT.options_button))
+    session.press(_pitch_size(1))
+    session.press(_click(LAYOUT.back_button))
+
+
+def _standard_kickoff_then_sevens(session):
+    _sandbox(session)
+    session.save_setup("kickoff")
+    session.press(_click(LAYOUT.menu_button))
+    _to_sevens(session)
+    _sandbox(session)
+
+
+def test_a_setup_name_taken_by_the_other_size_says_so(session, tmp_path):
+    _standard_kickoff_then_sevens(session)
+    assert session.board.pitch is PitchFormat.SEVENS
+    session.save_setup("kickoff")
+    assert session.message == "kickoff already exists for the other pitch size"
+
+
+def test_a_rename_onto_the_other_sizes_setup_says_so(session, tmp_path):
+    _standard_kickoff_then_sevens(session)
+    session.save_setup("mine")
+    session.rename(tmp_path / "setups" / "mine.json", "kickoff")
+    assert session.message == "kickoff already exists for the other pitch size"
+    assert (tmp_path / "setups" / "mine.json").exists()
+
+
+def test_a_team_setup_name_taken_by_the_other_size_says_so(session, tmp_path):
+    _team_setup_file(tmp_path, "kickoff", {0: Square(1, 1)})
+    _to_sevens(session)
+    _team_setups(session)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(1, 1))
+    session.save_team_setup(Side.HOME, "kickoff")
+    assert session.message == "kickoff already exists for the other pitch size"
+
+
+def test_a_clash_with_an_unreadable_setup_stays_already_exists(session, tmp_path):
+    (tmp_path / "setups").mkdir()
+    (tmp_path / "setups" / "kickoff.json").write_text("{broken", encoding="utf-8")
+    _to_sevens(session)
+    _sandbox(session)
+    session.save_setup("kickoff")
+    assert session.message == "kickoff already exists"
+
+
+def test_a_clash_with_a_same_size_setup_stays_already_exists(session):
+    _to_sevens(session)
+    _sandbox(session)
+    session.save_setup("kickoff")
+    session.save_setup("kickoff")
+    assert session.message == "kickoff already exists"

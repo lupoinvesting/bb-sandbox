@@ -148,13 +148,14 @@ Design: [languages.md](languages.md).
 ### 3.14. Sevens Pitch
 
 * **Pitch Size Option:** The Options screen has a **Pitch size** column: Standard (26 × 15) or Sevens (20 × 11). A click switches at once and is saved in `settings.json`; the next Start opens the sandbox on that pitch.
-* **Sevens Geometry:** 1-column endzones, 2-row wide zones, and the line of scrimmage between columns 9 and 10. The ball starts at (10, 5). Clicks, drags, marks and team setups all work within the 20 × 11 grid.
+* **Sevens Geometry:** 1-column endzones and 2-row wide zones. There is no halfway line: between the endzones the 18 columns form 3 zones of 6 columns, with a line of scrimmage on each edge of the middle zone (before columns 7 and 13). The ball starts at (10, 5). Clicks, drags, marks and team setups all work within the 20 × 11 grid.
 * **Same Screen:** The window, panel, dugouts and menus don't change; the Sevens pitch is centred where the standard pitch is drawn.
-* **Tagged Files:** Saved setups and team setups record their pitch size; files without one are Standard. The main menu and Team setups lists show only the current size's files. On Sevens, Away team setups are mirrored across the Sevens line of scrimmage.
-* **Sevens Images:** Sevens pitch images live in `sprites/pitch-sevens/`, and each size remembers its own chosen image.
+* **Tagged Files:** Saved setups and team setups record their pitch size; files without one are Standard. The main menu and Team setups lists show only the current size's files. On Sevens, Away team setups are mirrored across the pitch's centre.
+* **Sevens Images:** Sevens pitch images live in `sprites/pitch-sevens/`, and each size remembers its own chosen image. An empty Pitch list names the folder it reads.
+* **Shared Names:** Both sizes share one set of file names. A name taken by the other size's file is refused, and the message says so.
 * **Out of Scope:** Sevens roster limits; rosters and the builder are unchanged.
 
-Design: [sevens.md](sevens.md).
+Design: [sevens.md](sevens.md); fixes: [sevens-fixes.md](sevens-fixes.md); zones: [sevens-zones.md](sevens-zones.md).
 
 ## 4. Implementation Phases
 
@@ -249,3 +250,13 @@ Design: [sevens.md](sevens.md).
 * Add `PitchFormat` (Standard, Sevens) and give the board, layout and drawing a pitch size.
 * Add the Pitch size column to the Options screen, saved in `settings.json`, with a separate Sevens image folder.
 * Tag saved setups and team setups with their pitch size and filter the lists by it.
+
+**Phase 17: Sevens Fixes**
+
+* Name the current size's image folder in the empty Pitch list hint; say when a refused name belongs to the other size's file.
+* List the new size's files inside the session when the size changes, not through the app's rescan.
+* Keep the off-pitch and pitch-tag rules in one place each, and type the layout's pitch fields.
+
+**Phase 18: Sevens Zones**
+
+* Replace the Sevens halfway line with two lines of scrimmage that split the pitch between the endzones into 3 zones of 6 columns.
