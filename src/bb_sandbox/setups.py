@@ -8,14 +8,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from bb_sandbox._files import first_error, write_atomic
+from bb_sandbox._files import first_error, stored_pitch, write_atomic
 from bb_sandbox.board import Board
 from bb_sandbox.pitch import (
     PITCH_COLUMNS,
     PITCH_ROWS,
     Dugout,
+    PitchFormat,
     PlayerKey,
     Side,
     Square,
@@ -69,12 +70,35 @@ class _TeamData(_Frozen):
 
 
 class _SetupData(_Frozen):
-    """The whole file."""
+    """The whole file. Files saved before pitch sizes existed have no pitch,
+    which means Standard."""
 
     version: Literal[1]
+    pitch: PitchFormat = PitchFormat.STANDARD
     ball: _SquareData
     home: _TeamData
     away: _TeamData
+
+    @model_validator(mode="after")
+    def _squares_on_pitch(self) -> "_SetupData":
+        """
+        Reject a square that fits the largest pitch but not this file's pitch.
+
+        Returns:
+            _SetupData: The file, unchanged.
+
+        Raises:
+            ValueError: Naming the first square off the pitch.
+        """
+        entries = (e for team in (self.home, self.away) for e in team.players)
+        squares = [self.ball, *(e.square for e in entries if e.square is not None)]
+        for square in squares:
+            if not self.pitch.contains(Square(square.column, square.row)):
+                raise ValueError(
+                    f"square ({square.column}, {square.row}) is off the "
+                    f"{self.pitch.value} pitch"
+                )
+        return self
 
 
 def _team_data(board: Board, side: Side) -> _TeamData:
@@ -118,6 +142,7 @@ def save_setup(board: Board, path: Path) -> None:
     """
     data = _SetupData(
         version=VERSION,
+        pitch=board.pitch,
         ball=_SquareData(**vars(board.ball)),
         home=_team_data(board, Side.HOME),
         away=_team_data(board, Side.AWAY),
@@ -168,19 +193,22 @@ def _place_team(board: Board, side: Side, data: _TeamData, name: str) -> None:
         board.set_status(key, entry.status)
 
 
-def load_setup(path: Path) -> Board:
+def load_setup(path: Path, pitch: PitchFormat) -> Board:
     """
     Read and validate a setup file, rebuilding the board through its public API.
 
     Args:
         path (Path): The JSON file.
+        pitch (PitchFormat): The pitch size being played; the file must be
+            saved for it.
 
     Returns:
-        Board: The restored board.
+        Board: The restored board, on that pitch.
 
     Raises:
         SetupFileError: If the file can't be read, doesn't match the schema,
-            breaks a stat limit, or breaks a board invariant.
+            breaks a stat limit, is for the other pitch size, or breaks a
+            board invariant.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -189,6 +217,10 @@ def load_setup(path: Path) -> Board:
         raise SetupFileError(f"{path.name}: {error}") from error
     except ValidationError as error:
         raise SetupFileError(f"{path.name}: {first_error(error)}") from error
+    if data.pitch is not pitch:
+        raise SetupFileError(
+            f"{path.name}: made for the {data.pitch.value} pitch, not {pitch.value}"
+        )
 
     teams = {
         side: Team(
@@ -198,26 +230,36 @@ def load_setup(path: Path) -> Board:
         )
         for side, team in ((Side.HOME, data.home), (Side.AWAY, data.away))
     }
-    board = Board(teams[Side.HOME], teams[Side.AWAY])
+    board = Board(teams[Side.HOME], teams[Side.AWAY], data.pitch)
     _place_team(board, Side.HOME, data.home, path.name)
     _place_team(board, Side.AWAY, data.away, path.name)
     board.move_ball(Square(data.ball.column, data.ball.row))
     return board
 
 
-def list_setups(folder: Path) -> tuple[Path, ...]:
+def list_setups(folder: Path, pitch: PitchFormat) -> tuple[Path, ...]:
     """
-    List the setup JSON files in a folder.
+    List the setup JSON files in a folder that are for one pitch size.
 
     Args:
         folder (Path): Folder to scan.
+        pitch (PitchFormat): The pitch size being played.
 
     Returns:
-        tuple[Path, ...]: Sorted JSON paths; empty if the folder is missing.
+        tuple[Path, ...]: Sorted JSON paths saved for that size, plus any whose
+            size can't be read; empty if the folder is missing.
     """
     if not folder.is_dir():
         return ()
-    return tuple(sorted(p for p in folder.glob("*.json") if p.is_file()))
+    # Reason: an unreadable file is listed for both sizes, so loading it
+    # shows the real error and it can still be renamed or deleted.
+    return tuple(
+        sorted(
+            p
+            for p in folder.glob("*.json")
+            if p.is_file() and stored_pitch(p) in (pitch, None)
+        )
+    )
 
 
 def new_setup_path(folder: Path, board: Board, when: datetime) -> Path:

@@ -10,7 +10,7 @@ from bb_sandbox import session as session_module
 from bb_sandbox.annotations import Arrow
 from bb_sandbox.app import _draw, handle_event, run
 from bb_sandbox.layout import MenuList, build_layout
-from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import Dugout, PitchFormat, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, RaceError, load_races
 from bb_sandbox.render import (
     BACKGROUND,
@@ -41,7 +41,11 @@ def in_tmp(tmp_path, monkeypatch):
 
 
 def _files(folder):
-    return {"pitches_dir": folder / "pitch", "settings_file": folder / "settings.json"}
+    return {
+        "pitches_dir": folder / "pitch",
+        "sevens_pitches_dir": folder / "pitch-sevens",
+        "settings_file": folder / "settings.json",
+    }
 
 
 def _session(*args, **kwargs):
@@ -666,3 +670,40 @@ def test_run_without_a_languages_folder_opens_in_english_and_says_why(
     texts, message = drawn[0]
     assert texts.code == "en"
     assert message == "languages/en.json: file not found"
+
+
+def test_options_sevens_then_start_opens_a_sevens_sandbox(in_tmp):
+    rosters = in_tmp / "rosters"
+    rosters.mkdir()
+    (rosters / "orcs.csv").write_text(CSV)
+    layout = build_layout()
+    session = _session(layout, rosters, in_tmp / "setups", RACES, **_files(in_tmp))
+    session.rescan()
+    handle_event(session, _click(layout.options_button))
+    handle_event(session, _click(layout.pitch_format_row(1)))
+    saved = (in_tmp / "settings.json").read_text()
+    assert '"pitch_format": "sevens"' in saved
+    handle_event(session, _click(layout.back_button))
+    for which in (MenuList.HOME_ROSTERS, MenuList.AWAY_ROSTERS):
+        handle_event(session, _click(layout.menu_row(which, 0)))
+    handle_event(session, _click(layout.start_button))
+    assert session.screen is Screen.SANDBOX
+    assert session.board.pitch is PitchFormat.SEVENS
+    assert session.layout.pitch.width == 20 * layout.square_size
+    assert session.interaction is not None
+
+
+def test_a_restart_restores_sevens_and_loads_its_image_at_its_size(in_tmp, monkeypatch):
+    (in_tmp / "settings.json").write_text(
+        '{"version": 1, "pitch": "grass.png", "pitch_format": "sevens",'
+        ' "sevens_pitch": "nurgle7.png"}'
+    )
+    calls = []
+
+    def load(path, size):
+        calls.append((path, size))
+        return PitchSprite()
+
+    monkeypatch.setattr(app, "load_pitch_sprite", load)
+    assert run(max_frames=1) == 1
+    assert calls == [(Path("sprites") / "pitch-sevens" / "nurgle7.png", (640, 352))]

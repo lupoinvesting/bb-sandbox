@@ -1,9 +1,16 @@
 """The sandbox state: where every player and the ball are, and each player's status."""
 
-from bb_sandbox.pitch import DUGOUT_CAPACITY, Dugout, PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import (
+    DUGOUT_CAPACITY,
+    Dugout,
+    PitchFormat,
+    PlayerKey,
+    Side,
+    Square,
+    Status,
+)
 from bb_sandbox.roster import Player, Team
 
-BALL_START = Square(13, 7)
 MAX_COMMENT_LENGTH = 4
 
 
@@ -26,17 +33,22 @@ class Board:
 
     Invariants: every player is either on one square or in one dugout box; no two
     players share a square; no box holds more than its DUGOUT_CAPACITY; a player
-    off the pitch is standing; the ball is on the pitch.
+    off the pitch is standing; the ball is on the pitch; every square used is
+    on the board's pitch.
     """
 
-    def __init__(self, home: Team, away: Team) -> None:
+    def __init__(
+        self, home: Team, away: Team, pitch: PitchFormat = PitchFormat.STANDARD
+    ) -> None:
         """
         Start with everyone in Reserve and standing, and the ball mid-pitch.
 
         Args:
             home (Team): The home team.
             away (Team): The away team.
+            pitch (PitchFormat): The pitch size; Standard by default.
         """
+        self._pitch = pitch
         self._teams = {Side.HOME: home, Side.AWAY: away}
         # Reason: one dict is the single source of truth; player_at scans it
         # (at most 32 entries) instead of keeping a second index in sync.
@@ -45,7 +57,7 @@ class Board:
             for side, team in self._teams.items()
             for index in range(len(team.players))
         }
-        self._ball = BALL_START
+        self._ball = pitch.ball_start
         # Reason: kept apart from _locations, so place, bench and set_status
         # carry a comment along without knowing about it.
         self._comments: dict[PlayerKey, str] = {}
@@ -62,6 +74,27 @@ class Board:
         """
         if key not in self._locations:
             raise ValueError(f"Unknown player {key}")
+
+    def _check_square(self, square: Square) -> None:
+        """
+        Reject a square that is off this board's pitch.
+
+        Args:
+            square (Square): The square to check.
+
+        Raises:
+            ValueError: If the square is off the pitch.
+        """
+        if not self._pitch.contains(square):
+            raise ValueError(
+                f"square ({square.column}, {square.row}) is off the "
+                f"{self._pitch.value} pitch"
+            )
+
+    @property
+    def pitch(self) -> PitchFormat:
+        """PitchFormat: The pitch size this board is played on."""
+        return self._pitch
 
     @property
     def ball(self) -> Square:
@@ -200,9 +233,10 @@ class Board:
             bool: False, with nothing changed, if another player is there.
 
         Raises:
-            ValueError: If the key is unknown.
+            ValueError: If the key is unknown or the square is off the pitch.
         """
         self._check(key)
+        self._check_square(square)
         occupant = self.player_at(square)
         if occupant is not None and occupant != key:
             return False
@@ -295,5 +329,9 @@ class Board:
 
         Args:
             square (Square): The target square.
+
+        Raises:
+            ValueError: If the square is off the pitch.
         """
+        self._check_square(square)
         self._ball = square

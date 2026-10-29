@@ -18,7 +18,7 @@ from bb_sandbox.layout import (
     MenuList,
     build_layout,
 )
-from bb_sandbox.pitch import DUGOUT_CAPACITY, Dugout, Side, Square
+from bb_sandbox.pitch import DUGOUT_CAPACITY, Dugout, PitchFormat, Side, Square
 from bb_sandbox.races import MAX_POSITIONALS, MAX_RACES
 from bb_sandbox.roster import MAX_TEAM_SIZE
 
@@ -669,3 +669,87 @@ def test_name_box_is_centred_at_square_size_32():
     assert box.width == 480
     assert abs(2 * box.x + box.width - width) <= 1
     assert abs(2 * box.y + box.height - height) <= 1
+
+
+def test_build_layout_is_for_the_standard_pitch():
+    layout = build_layout(32)
+    assert layout.pitch_format is PitchFormat.STANDARD
+    assert layout.for_pitch(PitchFormat.STANDARD) == layout
+
+
+def test_sevens_pitch_is_centred_in_the_standard_room():
+    sevens = build_layout(32).for_pitch(PitchFormat.SEVENS)
+    assert sevens.pitch_format is PitchFormat.SEVENS
+    assert sevens.pitch == Box(16 + 96, 16 + 64, 640, 352)
+    assert sevens.line_of_scrimmage_x == sevens.pitch.x + 320
+    top, bottom = sevens.wide_zones
+    assert top == sevens.pitch._replace(height=64)
+    assert bottom == sevens.pitch._replace(y=sevens.pitch.y + 352 - 64, height=64)
+    left, right = sevens.endzones
+    assert left == sevens.pitch._replace(width=32)
+    assert right == sevens.pitch._replace(x=sevens.pitch.x + 640 - 32, width=32)
+
+
+def test_sevens_keeps_every_field_outside_the_pitch():
+    standard = build_layout(32)
+    sevens = standard.for_pitch(PitchFormat.SEVENS)
+    pitch_fields = {
+        "pitch_format",
+        "pitch",
+        "line_of_scrimmage_x",
+        "wide_zones",
+        "endzones",
+    }
+    for field in vars(standard):
+        if field not in pitch_fields:
+            assert getattr(sevens, field) == getattr(standard, field), field
+
+
+def test_square_at_inverts_square_on_sevens_corners():
+    layout = build_layout(32).for_pitch(PitchFormat.SEVENS)
+    for column, row in ((0, 0), (19, 0), (0, 10), (19, 10)):
+        box = layout.square(column, row)
+        assert layout.square_at((box.x, box.y)) == Square(column, row)
+        corner = (box.x + box.width - 1, box.y + box.height - 1)
+        assert layout.square_at(corner) == Square(column, row)
+
+
+def test_square_at_in_the_strip_around_sevens_is_none():
+    standard = build_layout(32)
+    layout = standard.for_pitch(PitchFormat.SEVENS)
+    # Reason: these standard squares lie in the strip the Sevens pitch leaves.
+    for column, row in ((0, 0), (25, 14), (2, 7), (23, 1)):
+        box = standard.square(column, row)
+        assert layout.square_at((box.x + 2, box.y + 2)) is None
+
+
+@pytest.mark.parametrize("column,row", [(20, 0), (0, 11)])
+def test_square_off_sevens_raises(column, row):
+    layout = build_layout(32).for_pitch(PitchFormat.SEVENS)
+    with pytest.raises(ValueError):
+        layout.square(column, row)
+
+
+def test_pitch_format_row_at_inverts_pitch_format_row():
+    layout = build_layout(32)
+    column = layout.menu_columns[2]
+    for index in range(layout.option_rows):
+        row = layout.pitch_format_row(index)
+        assert row.x == column.x and row.y + row.height <= column.y + column.height
+        assert layout.pitch_format_row_at((row.x + 2, row.y + 2)) == index
+
+
+def test_pitch_format_row_at_misses_the_caption_and_the_language_column():
+    layout = build_layout(32)
+    column = layout.menu_columns[2]
+    assert layout.pitch_format_row_at((column.x + 2, column.y + 2)) is None
+    language = layout.language_row(0)
+    assert layout.pitch_format_row_at((language.x + 2, language.y + 2)) is None
+
+
+@pytest.mark.parametrize("offset", [-1, 0])
+def test_pitch_format_row_out_of_range_raises(offset):
+    layout = build_layout(32)
+    index = offset if offset < 0 else layout.option_rows
+    with pytest.raises(ValueError):
+        layout.pitch_format_row(index)

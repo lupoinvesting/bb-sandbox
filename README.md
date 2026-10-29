@@ -162,6 +162,18 @@ The pitch is drawn in green unless you pick an image for it. Put images in `spri
   An invalid `settings.json` puts its error on the message line and starts with the drawn pitch; the next pick replaces it.
 - Neither the images nor `settings.json` are committed: `.gitignore` ignores both.
 
+### Pitch size (Sevens)
+
+The third Options column, **Pitch size**, picks **Standard** (26 x 15) or **Sevens** (20 x 11).
+- A click switches at once and is saved in `settings.json`; the next Start opens the sandbox on that pitch.
+- The Sevens pitch is centred where the standard one is drawn; the window, panel and dugouts don't move.
+  It has 1-column endzones, 2-row wide zones, and the ball starts mid-pitch just right of the line of scrimmage.
+- Sevens has its own image folder, `sprites/pitch-sevens/`, stretched to 640 x 352 pixels, so a 20:11 image looks best.
+  The Pitch list shows the current size's folder, and each size remembers its own image.
+- Saved setups and team setups record their pitch size; the lists only show the current size's files.
+  Files saved before pitch sizes existed count as Standard.
+- Sevens roster limits (11 players, 600k gp) are not enforced; rosters work on both sizes.
+
 ## Languages
 
 Every word the app shows can be switched to another language, including race, position and skill names.

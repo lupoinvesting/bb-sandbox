@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import NamedTuple
 
+# Reason: the standard pitch is the largest one, so these bound every Square
+# (a square on some pitch) and size the room the screen reserves for the pitch.
 PITCH_COLUMNS = 26
 PITCH_ROWS = 15
 
@@ -29,6 +31,45 @@ class Square:
         """
         if not (0 <= self.column < PITCH_COLUMNS and 0 <= self.row < PITCH_ROWS):
             raise ValueError(f"Square ({self.column}, {self.row}) is outside the pitch")
+
+
+class PitchFormat(Enum):
+    """A pitch size; the value is the string stored in files."""
+
+    STANDARD = "standard"
+    SEVENS = "sevens"
+
+    @property
+    def columns(self) -> int:
+        """int: Columns across the pitch, endzones included."""
+        return PITCH_COLUMNS if self is PitchFormat.STANDARD else 20
+
+    @property
+    def rows(self) -> int:
+        """int: Rows down the pitch."""
+        return PITCH_ROWS if self is PitchFormat.STANDARD else 11
+
+    @property
+    def wide_zone_rows(self) -> int:
+        """int: Rows in each wide zone, at the top and at the bottom."""
+        return 4 if self is PitchFormat.STANDARD else 2
+
+    @property
+    def ball_start(self) -> Square:
+        """Square: Just right of the line of scrimmage, mid-pitch."""
+        return Square(self.columns // 2, self.rows // 2)
+
+    def contains(self, square: Square) -> bool:
+        """
+        Tell whether a square is on this pitch.
+
+        Args:
+            square (Square): Any square.
+
+        Returns:
+            bool: True if the square fits this pitch's columns and rows.
+        """
+        return square.column < self.columns and square.row < self.rows
 
 
 class Side(Enum):

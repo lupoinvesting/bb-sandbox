@@ -4,21 +4,20 @@ Pure arithmetic with no Pygame dependency, so every other module (rendering,
 later drag-and-drop snapping) can share one source of truth for positions.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from bb_sandbox.pitch import (
     DUGOUT_CAPACITY,
     PITCH_COLUMNS,
     PITCH_ROWS,
     Dugout,
+    PitchFormat,
     Side,
     Square,
 )
 
-# Reason: Blood Bowl wide zones are the 4 outermost rows on each sideline.
-WIDE_ZONE_ROWS = 4
 # Reason: each team scores in the single outermost column at its end of the pitch.
 ENDZONE_COLUMNS = 1
 DEFAULT_SQUARE_SIZE = 32
@@ -98,10 +97,13 @@ class Layout:
     Attributes:
         square_size (int): Side of one grid square in pixels.
         window_size (tuple[int, int]): Total window (width, height).
-        pitch (Box): The 26x15 grid area.
+        pitch_format (PitchFormat): The pitch size the pitch fields are for.
+        pitch (Box): The grid area: 26x15 squares on Standard, or 20x11
+            centred in the same room on Sevens.
         line_of_scrimmage_x (int): Screen x of the halfway line.
         wide_zones (tuple[Box, Box]): Top and bottom wide zone areas.
-        endzones (tuple[Box, Box]): Left (column 0) and right (column 25) endzones.
+        endzones (tuple[Box, Box]): Left (column 0) and right (last column)
+            endzones.
         dugout_areas (tuple[Box, Box]): Left (home) and right (away) halves
             under the pitch, each holding that team's three dugout boxes.
         dugouts (tuple[Box, ...]): The six dugout boxes: home Reserve, KO,
@@ -156,6 +158,7 @@ class Layout:
 
     square_size: int
     window_size: tuple[int, int]
+    pitch_format: PitchFormat
     pitch: Box
     line_of_scrimmage_x: int
     wide_zones: tuple[Box, Box]
@@ -188,13 +191,27 @@ class Layout:
     name_box: Box
     name_field: Box
 
+    def for_pitch(self, pitch: PitchFormat) -> "Layout":
+        """
+        Return the same layout for another pitch size.
+
+        Args:
+            pitch (PitchFormat): The pitch size.
+
+        Returns:
+            Layout: This layout with pitch_format, pitch, line_of_scrimmage_x,
+                wide_zones and endzones for that size; every other field is
+                unchanged.
+        """
+        return replace(self, **_pitch_geometry(pitch, self.square_size))
+
     def square(self, column: int, row: int) -> Box:
         """
         Return the screen box of one pitch square.
 
         Args:
-            column (int): Zero-based column, 0..25.
-            row (int): Zero-based row, 0..14.
+            column (int): Zero-based column, below pitch_format.columns.
+            row (int): Zero-based row, below pitch_format.rows.
 
         Returns:
             Box: The square's screen rectangle.
@@ -202,7 +219,8 @@ class Layout:
         Raises:
             ValueError: If the coordinates fall outside the pitch.
         """
-        if not (0 <= column < PITCH_COLUMNS and 0 <= row < PITCH_ROWS):
+        fmt = self.pitch_format
+        if not (0 <= column < fmt.columns and 0 <= row < fmt.rows):
             raise ValueError(f"Square ({column}, {row}) is outside the pitch")
         return Box(
             self.pitch.x + column * self.square_size,
@@ -219,7 +237,8 @@ class Layout:
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
-            Square | None: The square, or None off the pitch.
+            Square | None: The square, or None off the pitch, including the
+                strip around a pitch smaller than the standard one.
         """
         if not self.pitch.contains(pos):
             return None
@@ -459,7 +478,8 @@ class Layout:
         Return one row of an Options screen column, below its caption.
 
         Args:
-            column (int): Index into menu_columns: 0 Pitch, 1 Language.
+            column (int): Index into menu_columns: 0 Pitch, 1 Language,
+                2 Pitch size.
             index (int): Zero-based row, 0..option_rows-1.
             what (str): The row's name in the error message, e.g. "Option".
 
@@ -481,7 +501,8 @@ class Layout:
         Find the row of an Options screen column under a point.
 
         Args:
-            column (int): Index into menu_columns: 0 Pitch, 1 Language.
+            column (int): Index into menu_columns: 0 Pitch, 1 Language,
+                2 Pitch size.
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
@@ -549,6 +570,34 @@ class Layout:
             int | None: The row index, or None off the rows.
         """
         return self._option_column_row_at(1, pos)
+
+    def pitch_format_row(self, index: int) -> Box:
+        """
+        Return one row of the Options screen's Pitch size column,
+        menu_columns[2], below its caption.
+
+        Args:
+            index (int): Zero-based row, 0..option_rows-1.
+
+        Returns:
+            Box: The row's screen rectangle.
+
+        Raises:
+            ValueError: If index is outside 0..option_rows-1.
+        """
+        return self._option_column_row(2, index, "Pitch size")
+
+    def pitch_format_row_at(self, pos: tuple[int, int]) -> int | None:
+        """
+        Find the Pitch size row under a point (inverse of pitch_format_row).
+
+        Args:
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            int | None: The row index, or None off the rows.
+        """
+        return self._option_column_row_at(2, pos)
 
     def team_setup_column(self, side: Side) -> Box:
         """
@@ -872,6 +921,47 @@ def _name_box(window_size: tuple[int, int], square_size: int) -> tuple[Box, Box]
     return box, field
 
 
+def _pitch_geometry(pitch: PitchFormat, square_size: int) -> dict[str, Any]:
+    """
+    Compute the pitch fields of a Layout for one pitch size.
+
+    Args:
+        pitch (PitchFormat): The pitch size.
+        square_size (int): Side of one grid square in pixels.
+
+    Returns:
+        dict[str, Any]: pitch_format, pitch, line_of_scrimmage_x, wide_zones
+            and endzones, keyed by Layout field name.
+    """
+    # Reason: the screen always reserves the standard pitch's room, so nothing
+    # else moves; a smaller pitch is centred in it on whole squares.
+    offset_x = (PITCH_COLUMNS - pitch.columns) // 2 * square_size
+    offset_y = (PITCH_ROWS - pitch.rows) // 2 * square_size
+    box = Box(
+        MARGIN + offset_x,
+        MARGIN + offset_y,
+        pitch.columns * square_size,
+        pitch.rows * square_size,
+    )
+    wide_zone_height = pitch.wide_zone_rows * square_size
+    endzone_width = ENDZONE_COLUMNS * square_size
+    return {
+        "pitch_format": pitch,
+        "pitch": box,
+        "line_of_scrimmage_x": box.x + (pitch.columns // 2) * square_size,
+        "wide_zones": (
+            box._replace(height=wide_zone_height),
+            box._replace(
+                y=box.y + box.height - wide_zone_height, height=wide_zone_height
+            ),
+        ),
+        "endzones": (
+            box._replace(width=endzone_width),
+            box._replace(x=box.x + box.width - endzone_width, width=endzone_width),
+        ),
+    }
+
+
 def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     """
     Compute the full screen layout from the size of one grid square.
@@ -880,7 +970,8 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         square_size (int): Side of one grid square in pixels.
 
     Returns:
-        Layout: Positions of the pitch, markings, reserves, panel and main menu.
+        Layout: Positions of the pitch, markings, reserves, panel and main
+            menu, for the standard pitch.
 
     Raises:
         ValueError: If square_size is not positive.
@@ -888,25 +979,9 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     if square_size <= 0:
         raise ValueError(f"square_size must be positive, got {square_size}")
 
+    # Reason: everything around the pitch is placed by the standard pitch's
+    # room, whichever size is drawn in it.
     pitch = Box(MARGIN, MARGIN, PITCH_COLUMNS * square_size, PITCH_ROWS * square_size)
-    wide_zone_height = WIDE_ZONE_ROWS * square_size
-    wide_zones = (
-        Box(pitch.x, pitch.y, pitch.width, wide_zone_height),
-        Box(
-            pitch.x,
-            pitch.y + pitch.height - wide_zone_height,
-            pitch.width,
-            wide_zone_height,
-        ),
-    )
-
-    endzone_width = ENDZONE_COLUMNS * square_size
-    endzones = (
-        Box(pitch.x, pitch.y, endzone_width, pitch.height),
-        Box(
-            pitch.x + pitch.width - endzone_width, pitch.y, endzone_width, pitch.height
-        ),
-    )
 
     # Two dugout areas side by side under the pitch, one per team, each split
     # into Reserve, KO and Injured boxes.
@@ -979,10 +1054,7 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     return Layout(
         square_size=square_size,
         window_size=(window_width, window_height),
-        pitch=pitch,
-        line_of_scrimmage_x=pitch.x + (PITCH_COLUMNS // 2) * square_size,
-        wide_zones=wide_zones,
-        endzones=endzones,
+        **_pitch_geometry(PitchFormat.STANDARD, square_size),
         dugout_areas=dugout_areas,
         dugouts=dugouts,
         panel=panel,

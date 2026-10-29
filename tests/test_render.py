@@ -8,13 +8,13 @@ import pytest
 
 from bb_sandbox import render
 from bb_sandbox.annotations import Arrow, Marks
-from bb_sandbox.board import BALL_START, Board
+from bb_sandbox.board import Board
 from bb_sandbox.builder import RosterBuilder
 from bb_sandbox.dice import DICE, BlockFace, Roll
 from bb_sandbox.interaction import BALL, CommentEdit, Drag, InteractionView, MenuItem
 from bb_sandbox.language import Text, load_languages
 from bb_sandbox.layout import Box, MenuList, build_layout
-from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import Dugout, PitchFormat, PlayerKey, Side, Square, Status
 from bb_sandbox.races import RACES_FILE, Positional, Race, load_races
 from bb_sandbox.roster import Player, Team
 from bb_sandbox.session import (
@@ -266,7 +266,7 @@ def test_token_rotates_with_status(font, status, left_edge, bottom_edge):
 def test_ball_drawn_and_hidden_at_origin_while_dragged(font):
     board = Board(_team(1), _team(1))
     surface, layout = _sandbox(board)
-    ball_box = layout.ball_box(BALL_START, carried=False)
+    ball_box = layout.ball_box(PitchFormat.STANDARD.ball_start, carried=False)
     centre = (ball_box.x + 8, ball_box.y + 8)
     assert surface.get_at(centre)[:3] == render.BALL_FILL
 
@@ -279,10 +279,12 @@ def test_ball_drawn_and_hidden_at_origin_while_dragged(font):
 def test_carried_ball_drawn_with_dragged_carrier(font):
     board = Board(_team(1), _team(1))
     key = PlayerKey(Side.HOME, 0)
-    board.place(key, BALL_START)
+    board.place(key, PitchFormat.STANDARD.ball_start)
     layout = build_layout(32)
-    corner = layout.ball_box(BALL_START, carried=True)
-    token = layout.square(BALL_START.column, BALL_START.row)
+    corner = layout.ball_box(PitchFormat.STANDARD.ball_start, carried=True)
+    token = layout.square(
+        PitchFormat.STANDARD.ball_start.column, PitchFormat.STANDARD.ball_start.row
+    )
     drag = Drag(key, token._replace(y=token.y + 96), corner._replace(y=corner.y + 96))
     surface, _ = _sandbox(board, InteractionView(None, drag, ()))
     assert surface.get_at((corner.x + 8, corner.y + 8))[:3] != render.BALL_FILL
@@ -1287,3 +1289,37 @@ def test_every_draw_works_without_en_json(font, tmp_path):
     )
     roll = Roll(1, DICE[6], (BlockFace.POW,) * 3)
     render.draw_dice(surface, layout, font, keys, font, roll, {})
+
+
+def test_options_draws_the_pitch_size_column_with_the_size_highlighted(font):
+    options = OptionsView((), 0, None, pitch_format=PitchFormat.SEVENS)
+    surface, layout = _draw_options(font, options)
+    for index, fill in enumerate((render.PANEL_FILL, render.HIGHLIGHT)):
+        row = layout.pitch_format_row(index)
+        assert surface.get_at((row.x + row.width - 3, row.y + 3))[:3] == fill
+    caption = layout.menu_columns[2]._replace(height=layout.square_size)
+    assert _has_text(surface, caption)
+    assert _has_text(surface, layout.pitch_format_row(1))
+    assert not _has_text(surface, layout.pitch_format_row(2))
+
+
+def test_a_sevens_sandbox_draws_its_grid_in_the_centred_pitch(font):
+    standard = build_layout(32)
+    layout = standard.for_pitch(PitchFormat.SEVENS)
+    board = Board(_team(1), _team(1), PitchFormat.SEVENS)
+    board.place(PlayerKey(Side.HOME, 0), Square(19, 10))
+    surface = pygame.Surface(layout.window_size)
+    render.draw_sandbox(
+        surface, layout, font, EN, font, board, EMPTY_VIEW, NO_SPRITES, None, ""
+    )
+    square = layout.square(19, 10)
+    assert surface.get_at((square.x + 5, square.y + 27))[:3] == (
+        render.TEAM_COLOURS[Side.HOME]
+    )
+    # The strip the Sevens pitch leaves is plain background.
+    strip = standard.square(0, 7)
+    assert surface.get_at(_center_of(strip))[:3] == render.BACKGROUND
+    assert surface.get_at(_center_of(layout.square(5, 1)))[:3] == (
+        render.WIDE_ZONE_GREEN
+    )
+    assert surface.get_at(_center_of(layout.square(5, 2)))[:3] == render.PITCH_GREEN

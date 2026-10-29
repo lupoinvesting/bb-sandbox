@@ -5,8 +5,8 @@ from datetime import datetime
 
 import pytest
 
-from bb_sandbox.board import BALL_START, Board
-from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
+from bb_sandbox.board import Board
+from bb_sandbox.pitch import Dugout, PitchFormat, PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
 from bb_sandbox.team_setups import (
     TeamSetupError,
@@ -19,6 +19,8 @@ from bb_sandbox.team_setups import (
     save_team_setup,
     team_setups_folder,
 )
+
+STANDARD, SEVENS = PitchFormat.STANDARD, PitchFormat.SEVENS
 
 
 def _team(name, count):
@@ -140,9 +142,9 @@ def test_deploy_leaves_the_ball_the_other_team_and_comments_alone(board):
     board.set_comment(_home(0), "MB2")
     board.set_comment(_away(0), "!?")
     away = _positions(board, Side.AWAY)
-    deploy(board, Side.HOME, {1: BALL_START, 0: Square(3, 3)})
+    deploy(board, Side.HOME, {1: PitchFormat.STANDARD.ball_start, 0: Square(3, 3)})
     assert _positions(board, Side.AWAY) == away
-    assert board.ball == BALL_START
+    assert board.ball == PitchFormat.STANDARD.ball_start
     # The player landing on the ball's square carries it, as after any drop.
     assert board.player_at(board.ball) == _home(1)
     assert board.comment_of(_home(0)) == "MB2"
@@ -152,16 +154,17 @@ def test_deploy_leaves_the_ball_the_other_team_and_comments_alone(board):
 def test_round_trip_restores_the_setup(tmp_path):
     setup = {0: Square(12, 7), 15: Square(0, 14), 3: Square(9, 2)}
     path = tmp_path / "orcs" / "Cage.json"
-    save_team_setup(setup, path)
-    assert load_team_setup(path) == setup
+    save_team_setup(setup, STANDARD, path)
+    assert load_team_setup(path, STANDARD) == setup
     assert list(path.parent.iterdir()) == [path]
 
 
 def test_the_file_stores_shirt_numbers_and_home_squares(tmp_path):
     path = tmp_path / "Cage.json"
-    save_team_setup({3: Square(9, 2), 0: Square(12, 7)}, path)
+    save_team_setup({3: Square(9, 2), 0: Square(12, 7)}, STANDARD, path)
     assert json.loads(path.read_text()) == {
         "version": 1,
+        "pitch": "standard",
         "players": [
             {"number": 1, "square": {"column": 12, "row": 7}},
             {"number": 4, "square": {"column": 9, "row": 2}},
@@ -172,8 +175,8 @@ def test_the_file_stores_shirt_numbers_and_home_squares(tmp_path):
 def test_save_replaces_an_existing_file(tmp_path):
     path = tmp_path / "Cage.json"
     path.write_text("old")
-    save_team_setup({0: Square(1, 1)}, path)
-    assert load_team_setup(path) == {0: Square(1, 1)}
+    save_team_setup({0: Square(1, 1)}, STANDARD, path)
+    assert load_team_setup(path, STANDARD) == {0: Square(1, 1)}
 
 
 def test_save_failure_raises_and_leaves_no_temp(tmp_path):
@@ -181,13 +184,13 @@ def test_save_failure_raises_and_leaves_no_temp(tmp_path):
     path = tmp_path / "Cage.json"
     path.mkdir()
     with pytest.raises(TeamSetupError, match="Cage.json"):
-        save_team_setup({0: Square(1, 1)}, path)
+        save_team_setup({0: Square(1, 1)}, STANDARD, path)
     assert not (tmp_path / "Cage.json.tmp").exists()
 
 
 def test_save_of_an_empty_setup_is_refused(tmp_path):
     with pytest.raises(ValueError):
-        save_team_setup({}, tmp_path / "Cage.json")
+        save_team_setup({}, STANDARD, tmp_path / "Cage.json")
     assert not list(tmp_path.iterdir())
 
 
@@ -228,7 +231,7 @@ def _player(number, column=1, row=1):
 )
 def test_load_rejects_invalid_files(tmp_path, data, message):
     with pytest.raises(TeamSetupError, match=message):
-        load_team_setup(_write(tmp_path, data))
+        load_team_setup(_write(tmp_path, data), STANDARD)
 
 
 @pytest.mark.parametrize("content", [b"{not json", b"\xff\xfe"])
@@ -236,12 +239,12 @@ def test_load_rejects_malformed_files(tmp_path, content):
     path = tmp_path / "Cage.json"
     path.write_bytes(content)
     with pytest.raises(TeamSetupError, match="^Cage.json: [^:]"):
-        load_team_setup(path)
+        load_team_setup(path, STANDARD)
 
 
 def test_load_of_a_missing_file_raises(tmp_path):
     with pytest.raises(TeamSetupError, match="missing.json"):
-        load_team_setup(tmp_path / "missing.json")
+        load_team_setup(tmp_path / "missing.json", STANDARD)
 
 
 def test_team_setups_folder_is_named_after_the_roster(tmp_path):
@@ -259,8 +262,11 @@ def test_list_team_setups_lists_sorted_json_files_only(tmp_path):
     for name in ("b.json", "a.json", "notes.txt"):
         (tmp_path / name).write_text("{}")
     (tmp_path / "dir.json").mkdir()
-    assert list_team_setups(tmp_path) == (tmp_path / "a.json", tmp_path / "b.json")
-    assert list_team_setups(tmp_path / "missing") == ()
+    assert list_team_setups(tmp_path, STANDARD) == (
+        tmp_path / "a.json",
+        tmp_path / "b.json",
+    )
+    assert list_team_setups(tmp_path / "missing", STANDARD) == ()
 
 
 def test_new_team_setup_path_uses_the_time(tmp_path):
@@ -272,14 +278,14 @@ def test_new_team_setup_path_uses_the_time(tmp_path):
 def test_delete_team_setups_removes_the_files_and_the_folder(tmp_path):
     folder = tmp_path / "orcs"
     for name in ("a", "b"):
-        save_team_setup({0: Square(1, 1)}, folder / f"{name}.json")
+        save_team_setup({0: Square(1, 1)}, STANDARD, folder / f"{name}.json")
     delete_team_setups(folder)
     assert list(tmp_path.iterdir()) == []
 
 
 def test_delete_team_setups_keeps_other_files_and_their_folder(tmp_path):
     folder = tmp_path / "orcs"
-    save_team_setup({0: Square(1, 1)}, folder / "a.json")
+    save_team_setup({0: Square(1, 1)}, STANDARD, folder / "a.json")
     (folder / "notes.txt").write_text("keep")
     delete_team_setups(folder)
     assert [p.name for p in folder.iterdir()] == ["notes.txt"]
@@ -294,7 +300,7 @@ def test_delete_team_setups_of_a_missing_folder_does_nothing(tmp_path):
 
 def test_delete_team_setups_names_a_file_it_cant_delete(tmp_path, monkeypatch):
     folder = tmp_path / "orcs"
-    save_team_setup({0: Square(1, 1)}, folder / "Cage.json")
+    save_team_setup({0: Square(1, 1)}, STANDARD, folder / "Cage.json")
 
     def refuse(self, missing_ok=False):
         raise PermissionError(13, "Access is denied")
@@ -307,7 +313,7 @@ def test_delete_team_setups_names_a_file_it_cant_delete(tmp_path, monkeypatch):
 
 def test_delete_team_setups_names_a_folder_it_cant_delete(tmp_path, monkeypatch):
     folder = tmp_path / "orcs"
-    save_team_setup({0: Square(1, 1)}, folder / "Cage.json")
+    save_team_setup({0: Square(1, 1)}, STANDARD, folder / "Cage.json")
 
     def refuse(self):
         raise PermissionError(13, "Access is denied")
@@ -316,3 +322,69 @@ def test_delete_team_setups_names_a_folder_it_cant_delete(tmp_path, monkeypatch)
     with pytest.raises(TeamSetupError, match="Couldn't delete orcs: Access"):
         delete_team_setups(folder)
     assert not (folder / "Cage.json").exists()
+
+
+@pytest.fixture
+def sevens_board():
+    return Board(_team("orcs", 4), _team("humans", 3), SEVENS)
+
+
+def test_away_capture_and_deploy_on_sevens_mirror_by_its_columns(sevens_board):
+    sevens_board.place(_away(0), Square(10, 5))
+    sevens_board.place(_away(1), Square(19, 0))
+    setup = capture(sevens_board, Side.AWAY)
+    assert setup == {0: Square(9, 5), 1: Square(0, 0)}
+    assert deploy(sevens_board, Side.AWAY, {2: Square(9, 10)}) == 0
+    assert sevens_board.square_of(_away(2)) == Square(10, 10)
+    assert sevens_board.square_of(_away(0)) is None
+
+
+def test_sevens_round_trip_and_the_stored_pitch(tmp_path):
+    setup = {0: Square(9, 5), 3: Square(0, 10)}
+    path = tmp_path / "Cage.json"
+    save_team_setup(setup, SEVENS, path)
+    assert json.loads(path.read_text())["pitch"] == "sevens"
+    assert load_team_setup(path, SEVENS) == setup
+
+
+def test_list_team_setups_filters_by_size_and_old_files_are_standard(tmp_path):
+    save_team_setup({0: Square(1, 1)}, SEVENS, tmp_path / "seven.json")
+    _write(tmp_path, {"version": 1, "players": [_player(1)]})
+    (tmp_path / "broken.json").write_text("{")
+    assert set(list_team_setups(tmp_path, SEVENS)) == {
+        tmp_path / "broken.json",
+        tmp_path / "seven.json",
+    }
+    assert set(list_team_setups(tmp_path, STANDARD)) == {
+        tmp_path / "Cage.json",
+        tmp_path / "broken.json",
+    }
+    assert load_team_setup(tmp_path / "Cage.json", STANDARD)
+
+
+def test_load_rejects_a_square_off_the_files_pitch(tmp_path):
+    path = _write(
+        tmp_path, {"version": 1, "pitch": "sevens", "players": [_player(1, 20)]}
+    )
+    with pytest.raises(TeamSetupError, match=r"square \(20, 1\) is off the sevens"):
+        load_team_setup(path, SEVENS)
+
+
+def test_load_refuses_a_team_setup_for_the_other_size(tmp_path):
+    save_team_setup({0: Square(1, 1)}, SEVENS, tmp_path / "Cage.json")
+    with pytest.raises(TeamSetupError, match="made for the sevens pitch, not standard"):
+        load_team_setup(tmp_path / "Cage.json", STANDARD)
+
+
+def test_save_of_a_square_off_the_pitch_raises(tmp_path):
+    with pytest.raises(ValueError, match="off the sevens pitch"):
+        save_team_setup({0: Square(20, 0)}, SEVENS, tmp_path / "Cage.json")
+    assert not (tmp_path / "Cage.json").exists()
+
+
+def test_delete_team_setups_removes_both_sizes(tmp_path):
+    folder = tmp_path / "orcs"
+    save_team_setup({0: Square(1, 1)}, SEVENS, folder / "a.json")
+    save_team_setup({0: Square(1, 1)}, STANDARD, folder / "b.json")
+    delete_team_setups(folder)
+    assert not folder.exists()

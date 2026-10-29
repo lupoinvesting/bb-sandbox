@@ -51,6 +51,7 @@ ROSTERS_DIR = Path("rosters")
 SETUPS_DIR = Path("setups")
 PLAYER_SPRITES_DIR = Path("sprites")
 PITCH_SPRITES_DIR = PLAYER_SPRITES_DIR / "pitch"
+SEVENS_PITCH_SPRITES_DIR = PLAYER_SPRITES_DIR / "pitch-sevens"
 SETTINGS_FILE = Path("settings.json")
 LANGUAGES_DIR = Path("languages")
 LEFT_BUTTON = 1
@@ -98,6 +99,10 @@ def _perform(session: Session, request: FileRequest | None) -> None:
             session.rescan()
         case SaveSettings():
             session.save_settings()
+            # Reason: a pitch size switch changes which image folder and
+            # which setups the lists show; after a pitch or language pick
+            # the rescan is harmless.
+            session.rescan()
         case OpenTeamSetups():
             session.open_team_setups()
         case DeployTeamSetup(side=side, path=path):
@@ -216,20 +221,18 @@ def _draw(
         draw_name_box(surface, layout, font, texts, session.name_view)
 
 
-def _load_pitch(session: Session, layout: Layout) -> PitchSprite:
+def _load_pitch(session: Session) -> PitchSprite:
     """
-    Load the session's chosen pitch image, stretched to the pitch.
+    Load the session's chosen pitch image, stretched to the chosen size's pitch.
 
     Args:
-        session (Session): Holds the chosen pitch.
-        layout (Layout): Screen geometry; the pitch's size.
+        session (Session): Holds the chosen pitch and its layout.
 
     Returns:
         PitchSprite: The image, or no image and why.
     """
-    return load_pitch_sprite(
-        session.pitch_path, (layout.pitch.width, layout.pitch.height)
-    )
+    pitch = session.layout.pitch
+    return load_pitch_sprite(session.pitch_path, (pitch.width, pitch.height))
 
 
 def _run_frames(
@@ -240,7 +243,8 @@ def _run_frames(
 
     Args:
         screen (pygame.Surface): The window surface; the display mode is set.
-        layout (Layout): Screen geometry.
+        layout (Layout): Screen geometry for the window, fonts and sprites;
+            each frame is drawn with session.layout, the chosen pitch size's.
         session (Session): The session to drive and draw.
         max_frames (int | None): Stop after this many frames; None runs until
             the window is closed.
@@ -261,7 +265,7 @@ def _run_frames(
     sprites = load_block_sprites(DICE_SPRITES_DIR, layout.die_boxes[0].width)
     # Reason: player and pitch images are user files, so a broken one never raises.
     player_sprites = load_player_sprites(PLAYER_SPRITES_DIR, layout.square_size)
-    pitch_sprite, loaded_pitch = _load_pitch(session, layout), session.pitch
+    pitch_sprite, loaded_pitch = _load_pitch(session), session.pitch_path
     clock = pygame.time.Clock()
     frames = 0
     running = True
@@ -272,15 +276,15 @@ def _run_frames(
         for event in events:
             running = handle_event(session, event) and running
         # Reason: one reload per frame, however many events arrived: everything
-        # on a focus event, else the pitch alone when its choice changed.
+        # on a focus event, else the pitch alone when its image or size changed.
         focused = any(event.type == pygame.WINDOWFOCUSGAINED for event in events)
         if focused:
             player_sprites = load_player_sprites(PLAYER_SPRITES_DIR, layout.square_size)
-        if focused or session.pitch != loaded_pitch:
-            pitch_sprite, loaded_pitch = _load_pitch(session, layout), session.pitch
+        if focused or session.pitch_path != loaded_pitch:
+            pitch_sprite, loaded_pitch = _load_pitch(session), session.pitch_path
         _draw(
             screen,
-            layout,
+            session.layout,
             font,
             die_font,
             comment_font,
@@ -324,6 +328,7 @@ def run(max_frames: int | None = None) -> int:
         SETUPS_DIR,
         races,
         pitches_dir=PITCH_SPRITES_DIR,
+        sevens_pitches_dir=SEVENS_PITCH_SPRITES_DIR,
         settings_file=SETTINGS_FILE,
         languages_dir=LANGUAGES_DIR,
     )

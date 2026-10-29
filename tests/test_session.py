@@ -15,7 +15,7 @@ from bb_sandbox.interaction import EditKey
 from bb_sandbox.language import Text, raw
 from bb_sandbox.layout import MenuList, build_layout
 from bb_sandbox.names import FileNameError, rename_file
-from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square
+from bb_sandbox.pitch import Dugout, PitchFormat, PlayerKey, Side, Square
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE
 from bb_sandbox.session import (
@@ -88,7 +88,11 @@ def _row(which, index):
 
 
 def _files(folder):
-    return {"pitches_dir": folder / "pitch", "settings_file": folder / "settings.json"}
+    return {
+        "pitches_dir": folder / "pitch",
+        "sevens_pitches_dir": folder / "pitch-sevens",
+        "settings_file": folder / "settings.json",
+    }
 
 
 def _session(*args, **kwargs):
@@ -824,7 +828,7 @@ def test_keys_on_the_main_menu_are_ignored(session):
 
 def _team_setup_file(tmp_path, name, setup, team="orcs"):
     path = tmp_path / team / f"{name}.json"
-    save_team_setup(setup, path)
+    save_team_setup(setup, PitchFormat.STANDARD, path)
     return path
 
 
@@ -886,7 +890,7 @@ def test_save_home_writes_the_team_setup_into_the_rosters_folder(session, tmp_pa
     assert session.key(EditKey.ENTER) == SaveTeamSetup(Side.HOME, default)
     session.save_team_setup(Side.HOME, default)
     path = tmp_path / "orcs" / f"{default}.json"
-    assert load_team_setup(path) == {0: Square(12, 7)}
+    assert load_team_setup(path, PitchFormat.STANDARD) == {0: Square(12, 7)}
     assert session.message == f"Saved {default}" and session.name_view is None
     assert session.screen is Screen.TEAM_SETUPS
     session.rescan()
@@ -901,7 +905,7 @@ def test_save_away_stores_the_squares_as_if_home(session, tmp_path):
     request = session.key(EditKey.ENTER)
     session.save_team_setup(request.side, request.name)
     saved = tmp_path / "orcs" / f"{request.name}.json"
-    assert load_team_setup(saved) == {0: Square(12, 2)}
+    assert load_team_setup(saved, PitchFormat.STANDARD) == {0: Square(12, 2)}
 
 
 def test_back_keeps_the_board_and_the_roll_and_closes_the_menu(session):
@@ -1386,3 +1390,80 @@ def test_language_problems_are_reported(tmp_path):
     )
     assert "it.json" in session.language_problem
     assert session.texts[Text.START] == "Start"
+
+
+def _pitch_size(index):
+    return _click(LAYOUT.pitch_format_row(index))
+
+
+def test_picking_sevens_switches_the_layout_and_start_builds_a_sevens_board(session):
+    session.press(_click(LAYOUT.options_button))
+    assert session.press(_pitch_size(1)) == SaveSettings()
+    assert session.pitch_format is PitchFormat.SEVENS
+    assert session.layout == LAYOUT.for_pitch(PitchFormat.SEVENS)
+    assert session.options_view().pitch_format is PitchFormat.SEVENS
+    session.press(_click(LAYOUT.back_button))
+    _sandbox(session)
+    assert session.screen is Screen.SANDBOX
+    assert session.board.pitch is PitchFormat.SEVENS
+    assert session.board.ball == Square(10, 5)
+
+
+def test_each_size_keeps_its_own_image_and_the_current_size_saves_nothing(tmp_path):
+    session = _options(tmp_path, "a.png")
+    sevens = tmp_path / "pitch-sevens"
+    sevens.mkdir()
+    (sevens / "s.png").write_bytes(b"")
+    session.press(_option(1))
+    assert session.press(_pitch_size(0)) is None
+    session.press(_pitch_size(1))
+    session.rescan()
+    assert session.options_view().pitches == ("s.png",)
+    assert session.pitch is None
+    session.press(_option(1))
+    assert session.pitch_path == sevens / "s.png"
+    session.press(_pitch_size(0))
+    session.rescan()
+    assert session.pitch == "a.png" and session.options_view().pitches == ("a.png",)
+    assert session.press(_pitch_size(LAYOUT.option_rows - 1)) is None
+
+
+def test_settings_restore_the_size_and_both_images(tmp_path):
+    session = _options(tmp_path, "a.png")
+    session.press(_option(1))
+    session.press(_pitch_size(1))
+    session.save_settings()
+    data = json.loads((tmp_path / "settings.json").read_text())
+    assert data["pitch_format"] == "sevens" and data["pitch"] == "a.png"
+    restored = _session(LAYOUT, tmp_path, tmp_path, RACES, **_files(tmp_path))
+    restored.load_settings()
+    assert restored.pitch_format is PitchFormat.SEVENS
+    assert restored.layout.pitch_format is PitchFormat.SEVENS
+    assert restored.pitch is None
+
+
+def test_the_menu_lists_only_the_current_sizes_setups(session, tmp_path):
+    _sandbox(session)
+    _save_setup(session)
+    session.press(_click(LAYOUT.menu_button))
+    session.rescan()
+    assert len(session.menu_view().setups) == 1
+    session.press(_click(LAYOUT.options_button))
+    session.press(_pitch_size(1))
+    session.rescan()
+    assert session.menu_view().setups == ()
+
+
+def test_loading_a_setup_saved_for_the_other_size_shows_the_file_error(
+    session, tmp_path
+):
+    _sandbox(session)
+    _save_setup(session)
+    (path,) = (tmp_path / "setups").glob("*.json")
+    session.press(_click(LAYOUT.menu_button))
+    session.press(_click(LAYOUT.options_button))
+    session.press(_pitch_size(1))
+    session.press(_click(LAYOUT.back_button))
+    session.load_setup(path)
+    assert session.screen is Screen.MENU
+    assert session.message == f"{path.name}: made for the standard pitch, not sevens"

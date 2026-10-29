@@ -34,3 +34,11 @@ def test_it_json_translates_every_key_of_en_json():
     italian = next(t for t in load_languages(LANGUAGES_DIR).all if t.code == "it")
     assert italian[Text.START] == "Inizia"
     assert italian.skill("Loner (4+)") == "Solitario (4+)"
+
+
+def test_the_pitch_size_texts_are_in_english_and_italian():
+    assert EN["texts"]["options.pitch_format"] == "Pitch size"
+    assert EN["texts"]["options.sevens"] == "Sevens"
+    italian = next(t for t in load_languages(LANGUAGES_DIR).all if t.code == "it")
+    assert italian[Text.PITCH_FORMAT] == "Dimensione campo"
+    assert italian[Text.STANDARD] == "Standard"

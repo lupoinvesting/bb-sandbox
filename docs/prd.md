@@ -145,6 +145,17 @@ Design: [annotations.md](annotations.md).
 
 Design: [languages.md](languages.md).
 
+### 3.14. Sevens Pitch
+
+* **Pitch Size Option:** The Options screen has a **Pitch size** column: Standard (26 × 15) or Sevens (20 × 11). A click switches at once and is saved in `settings.json`; the next Start opens the sandbox on that pitch.
+* **Sevens Geometry:** 1-column endzones, 2-row wide zones, and the line of scrimmage between columns 9 and 10. The ball starts at (10, 5). Clicks, drags, marks and team setups all work within the 20 × 11 grid.
+* **Same Screen:** The window, panel, dugouts and menus don't change; the Sevens pitch is centred where the standard pitch is drawn.
+* **Tagged Files:** Saved setups and team setups record their pitch size; files without one are Standard. The main menu and Team setups lists show only the current size's files. On Sevens, Away team setups are mirrored across the Sevens line of scrimmage.
+* **Sevens Images:** Sevens pitch images live in `sprites/pitch-sevens/`, and each size remembers its own chosen image.
+* **Out of Scope:** Sevens roster limits; rosters and the builder are unchanged.
+
+Design: [sevens.md](sevens.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -232,3 +243,9 @@ Design: [languages.md](languages.md).
 * Lock raw error text, require every English placeholder in a translation, and reject NUL characters in language files.
 * Read language files only at startup and on focus; report a chosen language whose file is gone.
 * Share the Options row geometry between both columns, and keep `Texts` a black box.
+
+**Phase 16: Sevens Pitch**
+
+* Add `PitchFormat` (Standard, Sevens) and give the board, layout and drawing a pitch size.
+* Add the Pitch size column to the Options screen, saved in `settings.json`, with a separate Sevens image folder.
+* Tag saved setups and team setups with their pitch size and filter the lists by it.

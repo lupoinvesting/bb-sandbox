@@ -1,4 +1,4 @@
-"""App settings: the chosen pitch image and language, to and from settings.json.
+"""App settings: the chosen pitch size, images and language, to and from settings.json.
 
 Callers only see Settings and SettingsError; pydantic stays inside.
 """
@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from bb_sandbox._files import first_error, write_atomic
 from bb_sandbox.language import ENGLISH
+from bb_sandbox.pitch import PitchFormat
 
 SETTINGS_VERSION: Final = 1
 
@@ -23,10 +24,13 @@ class Settings(BaseModel):
 
     Attributes:
         version (Literal[1]): The file format version.
-        pitch (str | None): A file name in the pitch image folder; None for
-            the drawn pitch.
+        pitch (str | None): A file name in the Standard pitch image folder;
+            None for the drawn pitch.
         language (str): A language code: the stem of a file in the languages
             folder.
+        pitch_format (PitchFormat): The pitch size the next game is played on.
+        sevens_pitch (str | None): A file name in the Sevens pitch image
+            folder; None for the drawn pitch.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -34,15 +38,19 @@ class Settings(BaseModel):
     version: Literal[1] = SETTINGS_VERSION
     pitch: str | None = None
     language: str = ENGLISH
+    # Reason: both are optional, so files saved before pitch sizes existed
+    # still load, as Standard.
+    pitch_format: PitchFormat = PitchFormat.STANDARD
+    sevens_pitch: str | None = None
 
-    @field_validator("pitch", "language")
+    @field_validator("pitch", "language", "sevens_pitch")
     @classmethod
     def _bare_file_name(cls, value: str | None) -> str | None:
         """
         Accept a bare file name only, so the setting can't point outside the folder.
 
         Args:
-            value (str | None): The pitch file name, or the language code.
+            value (str | None): A pitch file name, or the language code.
 
         Returns:
             str | None: The same value.

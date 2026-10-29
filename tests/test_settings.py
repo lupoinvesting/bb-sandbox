@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from bb_sandbox.pitch import PitchFormat
 from bb_sandbox.settings import Settings, SettingsError, load_settings, save_settings
 
 
@@ -15,6 +16,8 @@ def test_save_then_load_round_trips(tmp_path):
         "version": 1,
         "pitch": "astrogranite.png",
         "language": "pt-br",
+        "pitch_format": "standard",
+        "sevens_pitch": None,
     }
     assert load_settings(path) == settings
 
@@ -41,6 +44,8 @@ def test_a_missing_file_gives_the_defaults(tmp_path):
         '{"version": 2}',
         '{"version": 1, "language": "../x"}',
         '{"version": 1, "language": ""}',
+        '{"version": 1, "pitch_format": "huge"}',
+        '{"version": 1, "sevens_pitch": "../x.png"}',
     ],
 )
 def test_a_bad_file_raises_naming_it(tmp_path, text):
@@ -62,3 +67,24 @@ def test_a_failed_save_raises_naming_the_file(tmp_path):
     (tmp_path / "blocked").write_text("")
     with pytest.raises(SettingsError, match=r"^settings\.json: "):
         save_settings(tmp_path / "blocked" / "settings.json", Settings())
+
+
+def test_pitch_format_and_sevens_pitch_round_trip(tmp_path):
+    path = tmp_path / "settings.json"
+    settings = Settings(
+        pitch="astrogranite.png",
+        pitch_format=PitchFormat.SEVENS,
+        sevens_pitch="nurgle7.png",
+    )
+    save_settings(path, settings)
+    data = json.loads(path.read_text())
+    assert data["pitch_format"] == "sevens" and data["sevens_pitch"] == "nurgle7.png"
+    assert load_settings(path) == settings
+
+
+def test_an_old_file_is_standard_with_the_drawn_sevens_pitch(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text('{"version": 1, "pitch": "astrogranite.png", "language": "en"}')
+    settings = load_settings(path)
+    assert settings.pitch_format is PitchFormat.STANDARD
+    assert settings.sevens_pitch is None

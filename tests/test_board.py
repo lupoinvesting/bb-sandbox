@@ -2,8 +2,16 @@
 
 import pytest
 
-from bb_sandbox.board import BALL_START, Board
-from bb_sandbox.pitch import DUGOUT_CAPACITY, Dugout, PlayerKey, Side, Square, Status
+from bb_sandbox.board import Board
+from bb_sandbox.pitch import (
+    DUGOUT_CAPACITY,
+    Dugout,
+    PitchFormat,
+    PlayerKey,
+    Side,
+    Square,
+    Status,
+)
 from bb_sandbox.roster import Player, Team
 
 HOME_A = PlayerKey(Side.HOME, 0)
@@ -29,7 +37,7 @@ def test_everyone_starts_in_reserve_and_standing(board):
         assert board.square_of(key) is None
         assert board.dugout_of(key) is Dugout.RESERVE
         assert board.status_of(key) is Status.STANDING
-    assert board.ball == BALL_START
+    assert board.ball == PitchFormat.STANDARD.ball_start
     assert board.team(Side.AWAY).name == "away"
     assert board.player(HOME_B).name == "P"
     assert board.dugout_players(Side.HOME, Dugout.RESERVE) == (HOME_A, HOME_B)
@@ -152,3 +160,26 @@ def test_comment_with_unknown_key_raises(board):
         board.set_comment(PlayerKey(Side.AWAY, 1), "X")
     with pytest.raises(ValueError):
         board.comment_of(PlayerKey(Side.AWAY, 1))
+
+
+def test_board_defaults_to_the_standard_pitch(board):
+    assert board.pitch is PitchFormat.STANDARD
+
+
+def test_sevens_board_starts_the_ball_mid_pitch_and_places_on_its_corner():
+    board = Board(_team("home", 1), _team("away", 1), PitchFormat.SEVENS)
+    assert board.pitch is PitchFormat.SEVENS
+    assert board.ball == Square(10, 5)
+    assert board.place(HOME_A, Square(19, 10))
+    board.move_ball(Square(19, 10))
+    assert board.ball == Square(19, 10)
+
+
+def test_place_and_move_ball_off_the_sevens_pitch_raise():
+    board = Board(_team("home", 1), _team("away", 1), PitchFormat.SEVENS)
+    with pytest.raises(ValueError, match="off the sevens pitch"):
+        board.place(HOME_A, Square(20, 0))
+    with pytest.raises(ValueError):
+        board.move_ball(Square(0, 11))
+    assert board.square_of(HOME_A) is None
+    assert board.ball == Square(10, 5)

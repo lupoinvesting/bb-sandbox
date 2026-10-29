@@ -20,8 +20,8 @@ from bb_sandbox.dice import BLOCK_DIE, DICE, BlockFace, Dice, Roll
 from bb_sandbox.images import list_images
 from bb_sandbox.interaction import BALL, InteractionView, MenuItem
 from bb_sandbox.language import Message, Text, Texts
-from bb_sandbox.layout import PITCH_COLUMNS, PITCH_ROWS, Box, Layout, MenuList
-from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
+from bb_sandbox.layout import Box, Layout, MenuList
+from bb_sandbox.pitch import Dugout, PitchFormat, PlayerKey, Side, Square, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
 from bb_sandbox.session import (
@@ -103,6 +103,10 @@ MENU_CAPTIONS = {
     MenuList.SETUPS: Text.SAVED_SETUPS,
 }
 TEAM_CAPTIONS = {Side.HOME: Text.HOME_CAPTION, Side.AWAY: Text.AWAY_CAPTION}
+PITCH_FORMAT_TEXTS = {
+    PitchFormat.STANDARD: Text.STANDARD,
+    PitchFormat.SEVENS: Text.SEVENS,
+}
 FACE_TEXTS = {
     BlockFace.PLAYER_DOWN: Text.PLAYER_DOWN,
     BlockFace.BOTH_DOWN: Text.BOTH_DOWN,
@@ -277,10 +281,10 @@ def _draw_pitch(
     # Reason: pygame.draw.line includes its end point, so stop on the last pixel
     # inside the pitch rather than one past it.
     bottom, right = pitch.y + pitch.height - 1, pitch.x + pitch.width - 1
-    for column in range(PITCH_COLUMNS + 1):
+    for column in range(layout.pitch_format.columns + 1):
         x = pitch.x + column * layout.square_size
         pygame.draw.line(surface, GRID_LINE, (x, pitch.y), (x, bottom))
-    for row in range(PITCH_ROWS + 1):
+    for row in range(layout.pitch_format.rows + 1):
         y = pitch.y + row * layout.square_size
         pygame.draw.line(surface, GRID_LINE, (pitch.x, y), (right, y))
 
@@ -676,6 +680,36 @@ def _draw_languages(
     surface.set_clip(None)
 
 
+def _draw_pitch_formats(
+    surface: pygame.Surface,
+    layout: Layout,
+    font: pygame.font.Font,
+    texts: Texts,
+    options: OptionsView,
+) -> None:
+    """
+    Draw the Options screen's Pitch size column: caption, then one row per
+    size, the chosen one highlighted.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry.
+        font (pygame.font.Font): Font for all text.
+        texts (Texts): The language to draw in.
+        options (OptionsView): The chosen pitch size.
+    """
+    column = layout.menu_columns[2]
+    # Reason: a long translated caption is clipped to the column.
+    surface.set_clip(_rect(column))
+    _draw_label(surface, font, texts[Text.PITCH_FORMAT], column)
+    for index, size in enumerate(tuple(PitchFormat)[: layout.option_rows]):
+        row = layout.pitch_format_row(index)
+        if size is options.pitch_format:
+            pygame.draw.rect(surface, HIGHLIGHT, _rect(row))
+        _draw_label(surface, font, texts[PITCH_FORMAT_TEXTS[size]], row)
+    surface.set_clip(None)
+
+
 def draw_options(
     surface: pygame.Surface,
     layout: Layout,
@@ -686,15 +720,15 @@ def draw_options(
 ) -> None:
     """
     Draw the Options screen: the pitch list in the first column, the language
-    list in the second, message line and Back.
+    list in the second, the pitch sizes in the third, message line and Back.
 
     Args:
         surface (pygame.Surface): Target surface, sized to layout.window_size.
         layout (Layout): Screen geometry.
         font (pygame.font.Font): Font for all text.
         texts (Texts): The language to draw in.
-        options (OptionsView): The pitch image and language names and the
-            chosen ones.
+        options (OptionsView): The pitch image and language names, and the
+            chosen ones and pitch size.
         message (str): Status message, '' for none.
     """
     surface.fill(BACKGROUND)
@@ -717,6 +751,7 @@ def draw_options(
         elif not options.pitches:
             _draw_label(surface, font, texts[Text.NO_PITCHES], last)
     _draw_languages(surface, layout, font, texts, options)
+    _draw_pitch_formats(surface, layout, font, texts, options)
     _draw_label(surface, font, message, layout.menu_message_line)
     _draw_button(surface, font, layout.back_button, texts[Text.BACK])
 

@@ -127,6 +127,20 @@ Design: [language-fixes.md](language-fixes.md). Fixes the 9 `/code-review high` 
 - [x] app: focus handler calls `load_languages()` then `rescan()`; startup reads languages once, comment fixed + test_app
 - [x] Docs: languages.md (Decisions, file format, Keys without `common.raw`, Invariants), README "Languages" (keep every placeholder), status line in language-fixes.md
 
+## Phase 16: Sevens Pitch
+Design: [sevens.md](sevens.md). Requirements: PRD §3.14.
+- [x] pitch: `PitchFormat` (`columns`, `rows`, `wide_zone_rows`, `ball_start`, `contains`) + test_pitch
+- [x] board: `Board(home, away, pitch)`, `board.pitch`, ball on `pitch.ball_start`, off-pitch `ValueError` in `place`/`move_ball`; drop `BALL_START` + test_board
+- [x] layout: `_pitch_geometry`, `Layout.pitch_format`, `for_pitch`, `square`/`square_at` bounds, `pitch_format_row`/`_at` (column 2) + test_layout
+- [x] _files: `stored_pitch(path)` + test_files
+- [x] setups and team_setups: `pitch` key + bounds validator; `load_*`/`list_*`/`save_team_setup` take the pitch; mirror by `board.pitch.columns` + their tests
+- [x] settings: `pitch_format`, `sevens_pitch` + test_settings
+- [x] language: `options.pitch_format`, `options.standard`, `options.sevens` in `Text`, `en.json`, `it.json`
+- [x] session: size + per-size images and folders, `layout`, Options column, Start/load/list/deploy/save by size + test_session
+- [x] render: `_draw_pitch` loops over the layout's pitch, Pitch size column in `draw_options` + test_render; headless screenshots
+- [x] app: `SEVENS_PITCH_SPRITES_DIR`, draw with `session.layout`, reload on `pitch_path`, rescan after `SaveSettings` + test_app
+- [x] Docs: README Pitch size + `sprites/pitch-sevens/` (20:11 images); force-add its `.gitkeep`; status line in sevens.md
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -144,6 +158,7 @@ Design: [language-fixes.md](language-fixes.md). Fixes the 9 `/code-review high` 
 - [ ] Setup files saved before race/position existed no longer load (no saves had shipped, so the format stayed at version 1).
 - [ ] `build_layout` is 137 lines (108 before Phase 5), over NASA rule 4's 60; split it, e.g. into pitch, panel and menu regions.
 - [ ] Builder rows clip long skill lists at about 250px, so Big Guys lose most of theirs (Rotspawn's need 841px); show the full list for the positional under the cursor.
+- [ ] On Sevens, the empty Pitch list still says "No images in sprites/pitch/", but the folder is `sprites/pitch-sevens/`. Not in the Phase 16 design (3 new texts only); needs a size-aware hint text.
 - [ ] `rosters/example.csv` uses Second Season Human stats (Catcher ST 2/PA 5+, Thrower PA 2+, Blitzer without Tackle, Ogre Loner (4+)) and gives its Halfling no PA. These differ from the Third Season race database.
 - [x] Add the five block dice PNGs to `sprites/dice/` (names in the README). The folder doesn't exist until then, so every block face shows its name.
 - [x] `sprites/home/sprite-names.txt` and `sprites/away/sprite-names.txt` list `default.png` and the 125 position file names (force-added; a position shared by races is listed under its first race).

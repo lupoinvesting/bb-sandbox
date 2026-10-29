@@ -39,7 +39,7 @@ from bb_sandbox.names import (
     rename_file,
     rename_folder,
 )
-from bb_sandbox.pitch import Side
+from bb_sandbox.pitch import PitchFormat, Side
 from bb_sandbox.races import Race
 from bb_sandbox.roster import (
     MAX_TEAM_SIZE,
@@ -305,6 +305,8 @@ class OptionsView(NamedTuple):
         languages_hidden (int): Languages that didn't fit (drawn as "+N more").
         language (int): Index of the chosen language in languages; -1 if it
             is hidden.
+        pitch_format (PitchFormat): The chosen pitch size; pitches, hidden and
+            selected are that size's.
     """
 
     pitches: tuple[str, ...]
@@ -313,6 +315,7 @@ class OptionsView(NamedTuple):
     languages: tuple[str, ...] = ()
     languages_hidden: int = 0
     language: int = 0
+    pitch_format: PitchFormat = PitchFormat.STANDARD
 
 
 class TeamSetupList(NamedTuple):
@@ -376,15 +379,18 @@ class Session:
         clock: Callable[[], datetime] | None = None,
         *,
         pitches_dir: Path,
+        sevens_pitches_dir: Path,
         settings_file: Path,
         languages_dir: Path = Path("languages"),
     ) -> None:
         """
-        Start on the main menu with the drawn pitch, in English. No disk I/O:
-        call load_languages(), load_settings() and rescan() to read the files.
+        Start on the main menu on the standard pitch, drawn, in English. No
+        disk I/O: call load_languages(), load_settings() and rescan() to read
+        the files.
 
         Args:
-            layout (Layout): Screen geometry for hit tests.
+            layout (Layout): Screen geometry for hit tests, for any pitch size;
+                the session uses it .for_pitch() the chosen size.
             rosters_dir (Path): Folder holding the roster CSV files.
             setups_dir (Path): Folder holding the saved setup JSON files.
             races (tuple[Race, ...]): The races the race menu offers.
@@ -392,11 +398,16 @@ class Session:
                 None makes a fresh one. Tests pass a seeded one.
             clock (Callable[[], datetime] | None): The time for default save
                 names; None means datetime.now. Tests pass a fixed one.
-            pitches_dir (Path): Folder holding the pitch images.
+            pitches_dir (Path): Folder holding the Standard pitch images.
+            sevens_pitches_dir (Path): Folder holding the Sevens pitch images.
             settings_file (Path): The settings JSON file.
             languages_dir (Path): Folder holding the language JSON files.
         """
-        self._layout = layout
+        self._pitch_format = PitchFormat.STANDARD
+        # Reason: kept to rebuild _layout when the size changes; _layout is
+        # what every hit test and the Interaction use.
+        self._base_layout = layout
+        self._layout = layout.for_pitch(self._pitch_format)
         self._rosters_dir = rosters_dir
         self._setups_dir = setups_dir
         self._races = races
@@ -407,10 +418,15 @@ class Session:
         self._rosters: tuple[Path, ...] = ()
         self._roster_entries: tuple[RosterEntry, ...] = ()
         self._setups: tuple[Path, ...] = ()
-        self._pitches_dir = pitches_dir
+        self._pitch_dirs = {
+            PitchFormat.STANDARD: pitches_dir,
+            PitchFormat.SEVENS: sevens_pitches_dir,
+        }
         self._settings_file = settings_file
+        # Reason: the current size's image folder; each size remembers its
+        # own image, so a switch and back keeps the first pick.
         self._pitches: tuple[Path, ...] = ()
-        self._pitch: str | None = None
+        self._pitch_images: dict[PitchFormat, str | None] = dict.fromkeys(PitchFormat)
         self._teams: dict[Side, Team | None] = {Side.HOME: None, Side.AWAY: None}
         self._team_setups: dict[Side, tuple[Path, ...]] = {side: () for side in Side}
         self._screen = Screen.MENU
@@ -480,14 +496,27 @@ class Session:
         return self._last_roll
 
     @property
+    def pitch_format(self) -> PitchFormat:
+        """PitchFormat: The chosen pitch size; the next Start plays on it."""
+        return self._pitch_format
+
+    @property
+    def layout(self) -> Layout:
+        """Layout: The screen geometry for the chosen pitch size."""
+        return self._layout
+
+    @property
     def pitch(self) -> str | None:
-        """str | None: The chosen pitch image file name; None for the drawn pitch."""
-        return self._pitch
+        """str | None: The chosen size's pitch image file name; None for the
+        drawn pitch."""
+        return self._pitch_images[self._pitch_format]
 
     @property
     def pitch_path(self) -> Path | None:
-        """Path | None: The chosen pitch image file; None for the drawn pitch."""
-        return None if self._pitch is None else self._pitches_dir / self._pitch
+        """Path | None: The chosen size's pitch image file, in that size's
+        folder; None for the drawn pitch."""
+        pitch = self.pitch
+        return None if pitch is None else self._pitch_dirs[self._pitch_format] / pitch
 
     @property
     def name_view(self) -> NameView | None:
@@ -667,7 +696,7 @@ class Session:
 
         Returns:
             OptionsView: Visible pitch image and language names, the hidden
-                counts and the chosen pitch and language.
+                counts and the chosen pitch, language and pitch size.
         """
         shown = self._visible_pitches()
         languages = self._visible_languages()
@@ -676,10 +705,11 @@ class Session:
         return OptionsView(
             pitches=tuple(path.name for path in shown),
             hidden=len(self._pitches) - len(shown),
-            selected=self._pitch,
+            selected=self.pitch,
             languages=tuple(texts.name for texts in languages),
             languages_hidden=len(self._languages.all) - len(languages),
             language=codes.index(code) if code in codes else -1,
+            pitch_format=self._pitch_format,
         )
 
     def _visible_languages(self) -> tuple[Texts, ...]:
@@ -968,15 +998,16 @@ class Session:
 
     def _press_options(self, pos: tuple[int, int]) -> FileRequest | None:
         """
-        Handle an Options click: a pitch row picks that pitch, a language row
-        that language, Back the main menu.
+        Handle an Options click: a pitch row picks that image for the chosen
+        size, a language row that language, a Pitch size row that size, Back
+        the main menu.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
 
         Returns:
-            FileRequest | None: SaveSettings if the pitch or the language
-                changed, else None.
+            FileRequest | None: SaveSettings if the pitch, the language or the
+                size changed, else None.
         """
         if self._layout.back_button.contains(pos):
             self._screen, self._message = Screen.MENU, NO_MESSAGE
@@ -984,6 +1015,9 @@ class Session:
         language = self._layout.language_row_at(pos)
         if language is not None:
             return self._press_language(language)
+        size = self._layout.pitch_format_row_at(pos)
+        if size is not None:
+            return self._press_pitch_format(size)
         index = self._layout.option_row_at(pos)
         shown = self._visible_pitches()
         # Reason: row 0 is "Drawn pitch"; rows past the visible names are the
@@ -991,12 +1025,45 @@ class Session:
         if index is None or index > len(shown):
             return None
         pitch = None if index == 0 else shown[index - 1].name
-        if pitch == self._pitch:
+        if pitch == self.pitch:
             return None
         # Reason: the save that follows replaces any settings file whose
         # error the message was showing.
-        self._pitch, self._message = pitch, NO_MESSAGE
+        self._pitch_images[self._pitch_format], self._message = pitch, NO_MESSAGE
         return SaveSettings()
+
+    def _press_pitch_format(self, index: int) -> FileRequest | None:
+        """
+        Pick the pitch size on a Pitch size row.
+
+        Args:
+            index (int): The row clicked.
+
+        Returns:
+            FileRequest | None: SaveSettings if the size changed, else None.
+        """
+        # Reason: rows past the sizes are empty.
+        if index >= len(PitchFormat):
+            return None
+        size = tuple(PitchFormat)[index]
+        if size is self._pitch_format:
+            return None
+        # Reason: Options opens only from the main menu, so no board exists
+        # whose layout could go out of step. The app's rescan after the save
+        # lists the new size's images and setups.
+        self._set_pitch_format(size)
+        self._message = NO_MESSAGE
+        return SaveSettings()
+
+    def _set_pitch_format(self, size: PitchFormat) -> None:
+        """
+        Choose the pitch size and rebuild the layout for it.
+
+        Args:
+            size (PitchFormat): The new size.
+        """
+        self._pitch_format = size
+        self._layout = self._base_layout.for_pitch(size)
 
     def _press_language(self, index: int) -> FileRequest | None:
         """
@@ -1072,7 +1139,7 @@ class Session:
         if home is None or away is None:
             self._message = Message(Text.PICK_ROSTERS)
             return
-        self._open_sandbox(Board(home, away), NO_MESSAGE)
+        self._open_sandbox(Board(home, away, self._pitch_format), NO_MESSAGE)
 
     def _open_sandbox(self, board: Board, message: Message) -> None:
         """
@@ -1159,23 +1226,29 @@ class Session:
         Re-list the roster, setup, pitch image and team setup files, reading
         each roster's race. Language files are read by load_languages only.
 
-        A chosen pitch or language whose file has gone stays chosen, so it is
-        used again when the file comes back. The team setups listed are the
-        board's teams'; with no board, none are.
+        Images and setups are the chosen pitch size's. A chosen pitch or
+        language whose file has gone stays chosen, so it is used again when
+        the file comes back. The team setups listed are the board's teams',
+        for the board's pitch; with no board, none are.
         """
         self._rosters = list_rosters(self._rosters_dir)
         self._roster_entries = tuple(
             RosterEntry(path.stem, _race_or_none(path)) for path in self._rosters
         )
-        self._setups = list_setups(self._setups_dir)
-        self._pitches = list_images(self._pitches_dir)
+        self._setups = list_setups(self._setups_dir, self._pitch_format)
+        self._pitches = list_images(self._pitch_dirs[self._pitch_format])
         self._list_team_setups()
 
     def _list_team_setups(self) -> None:
         """List both teams' setup files; a team without a folder lists none."""
         for side in Side:
             folder = self._team_folder(side)
-            self._team_setups[side] = () if folder is None else list_team_setups(folder)
+            # Reason: a folder exists only with a board, so its pitch is there.
+            self._team_setups[side] = (
+                ()
+                if folder is None or self._board is None
+                else list_team_setups(folder, self._board.pitch)
+            )
 
     def load_languages(self) -> None:
         """Read the language files; their first problem becomes language_problem."""
@@ -1183,26 +1256,37 @@ class Session:
 
     def load_settings(self) -> None:
         """
-        Read the chosen pitch and language from the settings file; a failure
-        becomes the message.
+        Read the chosen pitch size, pitch images and language from the
+        settings file; a failure becomes the message.
 
-        A missing file keeps the drawn pitch and English; so does an invalid one.
+        A missing file keeps the standard drawn pitch and English; so does an
+        invalid one.
         """
         try:
             settings = read_settings(self._settings_file)
         except SettingsError as error:
             self._message = raw(str(error))
             return
-        self._pitch, self._language = settings.pitch, settings.language
+        self._set_pitch_format(settings.pitch_format)
+        self._pitch_images = {
+            PitchFormat.STANDARD: settings.pitch,
+            PitchFormat.SEVENS: settings.sevens_pitch,
+        }
+        self._language = settings.language
 
     def save_settings(self) -> None:
         """
-        Write the chosen pitch and language to the settings file; a failure
-        becomes the message.
+        Write the chosen pitch size, pitch images and language to the
+        settings file; a failure becomes the message.
 
         The choice still applies for this run if the write fails.
         """
-        settings = Settings(pitch=self._pitch, language=self._language)
+        settings = Settings(
+            pitch=self._pitch_images[PitchFormat.STANDARD],
+            language=self._language,
+            pitch_format=self._pitch_format,
+            sevens_pitch=self._pitch_images[PitchFormat.SEVENS],
+        )
         try:
             write_settings(self._settings_file, settings)
         except SettingsError as error:
@@ -1230,10 +1314,11 @@ class Session:
         Load a saved setup and open it in the sandbox; a failure becomes the message.
 
         Args:
-            path (Path): The JSON file.
+            path (Path): The JSON file; one saved for another pitch size is a
+                failure.
         """
         try:
-            board = read_setup(path)
+            board = read_setup(path, self._pitch_format)
         except SetupFileError as error:
             self._message = raw(str(error))
             return
@@ -1332,7 +1417,7 @@ class Session:
         if self._board is None:
             raise ValueError("No sandbox board to deploy on")
         try:
-            setup = load_team_setup(path)
+            setup = load_team_setup(path, self._board.pitch)
         except TeamSetupError as error:
             self._message = raw(str(error))
             return
@@ -1369,7 +1454,7 @@ class Session:
             return
         try:
             path = free_path(self._team_folder(side), name, ".json")
-            write_team_setup(capture(self._board, side), path)
+            write_team_setup(capture(self._board, side), self._board.pitch, path)
         except FileNameError as error:
             self._report(error.message)
             return

@@ -3,7 +3,7 @@
 import pytest
 
 from bb_sandbox.annotations import Arrow, Marks
-from bb_sandbox.board import BALL_START, Board
+from bb_sandbox.board import Board
 from bb_sandbox.interaction import (
     BALL,
     MENU_ACTIONS,
@@ -13,7 +13,7 @@ from bb_sandbox.interaction import (
 )
 from bb_sandbox.language import Text
 from bb_sandbox.layout import Box, build_layout
-from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import Dugout, PitchFormat, PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
 
 LAYOUT = build_layout(32)
@@ -155,7 +155,7 @@ def test_hover_finds_packed_dugout_slot(interaction, board):
 
 
 def test_ball_drag(interaction, board):
-    ball_box = LAYOUT.ball_box(BALL_START, carried=False)
+    ball_box = LAYOUT.ball_box(PitchFormat.STANDARD.ball_start, carried=False)
     _drag(interaction, _centre(ball_box), _centre(_square(20, 3)))
     assert board.ball == Square(20, 3)
 
@@ -181,46 +181,67 @@ def test_non_carrier_drag_carries_no_ball(interaction, board):
 
 
 def test_prone_carrier_takes_the_ball(interaction, board):
-    board.place(HOME0, BALL_START)
+    board.place(HOME0, PitchFormat.STANDARD.ball_start)
     board.set_status(HOME0, Status.PRONE)
     _drag(
-        interaction, _at(_square(BALL_START.column, BALL_START.row)), _at(_square(3, 3))
+        interaction,
+        _at(
+            _square(
+                PitchFormat.STANDARD.ball_start.column,
+                PitchFormat.STANDARD.ball_start.row,
+            )
+        ),
+        _at(_square(3, 3)),
     )
     assert board.ball == Square(3, 3)
 
 
 def test_benched_carrier_leaves_the_ball(interaction, board):
-    board.place(HOME0, BALL_START)
+    board.place(HOME0, PitchFormat.STANDARD.ball_start)
     _drag(
         interaction,
-        _at(_square(BALL_START.column, BALL_START.row)),
+        _at(
+            _square(
+                PitchFormat.STANDARD.ball_start.column,
+                PitchFormat.STANDARD.ball_start.row,
+            )
+        ),
         _at(_reserve(HOME0)),
     )
     assert board.dugout_of(HOME0) is Dugout.RESERVE
-    assert board.ball == BALL_START
+    assert board.ball == PitchFormat.STANDARD.ball_start
 
 
 @pytest.mark.parametrize("target", ["occupied", "off_pitch"])
 def test_refused_carrier_drop_keeps_player_and_ball(interaction, board, target):
-    board.place(HOME0, BALL_START)
+    board.place(HOME0, PitchFormat.STANDARD.ball_start)
     board.place(AWAY0, Square(3, 3))
     end = _at(_square(3, 3)) if target == "occupied" else _at(LAYOUT.panel, 40, 40)
-    _drag(interaction, _at(_square(BALL_START.column, BALL_START.row)), end)
-    assert board.square_of(HOME0) == BALL_START
-    assert board.ball == BALL_START
+    _drag(
+        interaction,
+        _at(
+            _square(
+                PitchFormat.STANDARD.ball_start.column,
+                PitchFormat.STANDARD.ball_start.row,
+            )
+        ),
+        end,
+    )
+    assert board.square_of(HOME0) == PitchFormat.STANDARD.ball_start
+    assert board.ball == PitchFormat.STANDARD.ball_start
 
 
 def test_carried_ball_is_picked_before_player(interaction, board):
-    board.place(HOME0, BALL_START)
-    corner = LAYOUT.ball_box(BALL_START, carried=True)
+    board.place(HOME0, PitchFormat.STANDARD.ball_start)
+    corner = LAYOUT.ball_box(PitchFormat.STANDARD.ball_start, carried=True)
     interaction.press(_centre(corner))
     assert interaction.view().dragged.item is BALL
 
 
 def test_ball_dropped_off_pitch_stays(interaction, board):
-    ball_box = LAYOUT.ball_box(BALL_START, carried=False)
+    ball_box = LAYOUT.ball_box(PitchFormat.STANDARD.ball_start, carried=False)
     _drag(interaction, _centre(ball_box), _at(LAYOUT.panel, 40, 40))
-    assert board.ball == BALL_START
+    assert board.ball == PitchFormat.STANDARD.ball_start
 
 
 def test_press_on_nothing_and_stray_release_do_nothing(interaction, board):

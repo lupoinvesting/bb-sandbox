@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 from bb_sandbox.board import Board
-from bb_sandbox.pitch import Dugout, PlayerKey, Side, Square, Status
+from bb_sandbox.pitch import Dugout, PitchFormat, PlayerKey, Side, Square, Status
 from bb_sandbox.roster import Player, Team
 from bb_sandbox.setups import (
     SetupFileError,
@@ -15,6 +15,8 @@ from bb_sandbox.setups import (
     new_setup_path,
     save_setup,
 )
+
+STANDARD, SEVENS = PitchFormat.STANDARD, PitchFormat.SEVENS
 
 
 def _team(name, count=2):
@@ -75,7 +77,7 @@ def _tamper(path, change):
 def test_round_trip_restores_everything(board, tmp_path):
     path = tmp_path / "new" / "a.json"
     save_setup(board, path)
-    assert _snapshot(load_setup(path)) == _snapshot(board)
+    assert _snapshot(load_setup(path, STANDARD)) == _snapshot(board)
     assert not list(path.parent.glob("*.tmp"))
 
 
@@ -83,7 +85,11 @@ def test_file_stores_positions_next_to_players(board, tmp_path):
     path = tmp_path / "a.json"
     save_setup(board, path)
     data = json.loads(path.read_text())
-    assert data["version"] == 1 and data["ball"] == {"column": 3, "row": 7}
+    assert (
+        data["version"] == 1
+        and data["pitch"] == "standard"
+        and data["ball"] == {"column": 3, "row": 7}
+    )
     first = data["home"]["players"][0]
     assert first["square"] == {"column": 3, "row": 7}
     assert first["status"] == "prone"
@@ -96,7 +102,7 @@ def test_save_replaces_existing_file(board, tmp_path):
     path = tmp_path / "a.json"
     path.write_text("old")
     save_setup(board, path)
-    assert load_setup(path).ball == Square(3, 7)
+    assert load_setup(path, STANDARD).ball == Square(3, 7)
 
 
 def test_save_failure_raises_and_leaves_no_temp(board, tmp_path):
@@ -127,7 +133,7 @@ def test_load_rejects_schema_violations(board, tmp_path, change, message):
     save_setup(board, path)
     _tamper(path, change)
     with pytest.raises(SetupFileError, match=message):
-        load_setup(path)
+        load_setup(path, STANDARD)
 
 
 def test_load_old_file_without_dugout_puts_benched_players_in_reserve(board, tmp_path):
@@ -140,7 +146,7 @@ def test_load_old_file_without_dugout_puts_benched_players_in_reserve(board, tmp
                 entry.pop("dugout")
 
     _tamper(path, drop_dugouts)
-    loaded = load_setup(path)
+    loaded = load_setup(path, STANDARD)
     assert loaded.dugout_of(PlayerKey(Side.HOME, 1)) is Dugout.RESERVE
     assert loaded.dugout_of(PlayerKey(Side.AWAY, 0)) is Dugout.RESERVE
     assert loaded.square_of(PlayerKey(Side.HOME, 0)) == Square(3, 7)
@@ -151,7 +157,7 @@ def test_load_rejects_square_and_dugout_together(board, tmp_path):
     save_setup(board, path)
     _tamper(path, lambda d: d["home"]["players"][0].update(dugout="ko"))
     with pytest.raises(SetupFileError, match="both a square and a dugout box"):
-        load_setup(path)
+        load_setup(path, STANDARD)
 
 
 def test_load_rejects_overfull_dugout_box(tmp_path):
@@ -165,7 +171,7 @@ def test_load_rejects_overfull_dugout_box(tmp_path):
 
     _tamper(path, all_ko)
     with pytest.raises(SetupFileError, match="home ko box is full"):
-        load_setup(path)
+        load_setup(path, STANDARD)
 
 
 def test_load_rejects_two_players_on_one_square(board, tmp_path):
@@ -178,7 +184,7 @@ def test_load_rejects_two_players_on_one_square(board, tmp_path):
         ),
     )
     with pytest.raises(SetupFileError, match=r"two players on square \(3, 7\)"):
-        load_setup(path)
+        load_setup(path, STANDARD)
 
 
 def test_load_rejects_benched_player_not_standing(board, tmp_path):
@@ -186,7 +192,7 @@ def test_load_rejects_benched_player_not_standing(board, tmp_path):
     save_setup(board, path)
     _tamper(path, lambda d: d["home"]["players"][1].update(status="prone"))
     with pytest.raises(SetupFileError, match="benched but prone"):
-        load_setup(path)
+        load_setup(path, STANDARD)
 
 
 @pytest.mark.parametrize("content", [b"{not json", b"\xff\xfe"])
@@ -194,20 +200,20 @@ def test_load_rejects_malformed_files(tmp_path, content):
     path = tmp_path / "a.json"
     path.write_bytes(content)
     with pytest.raises(SetupFileError, match="a.json"):
-        load_setup(path)
+        load_setup(path, STANDARD)
 
 
 def test_load_missing_file_raises(tmp_path):
     with pytest.raises(SetupFileError, match="missing.json"):
-        load_setup(tmp_path / "missing.json")
+        load_setup(tmp_path / "missing.json", STANDARD)
 
 
 def test_list_setups_sorted_json_only(tmp_path):
     for name in ("b.json", "a.json", "c.csv"):
         (tmp_path / name).write_text("{}")
     (tmp_path / "dir.json").mkdir()
-    assert list_setups(tmp_path) == (tmp_path / "a.json", tmp_path / "b.json")
-    assert list_setups(tmp_path / "missing") == ()
+    assert list_setups(tmp_path, STANDARD) == (tmp_path / "a.json", tmp_path / "b.json")
+    assert list_setups(tmp_path / "missing", STANDARD) == ()
 
 
 def test_new_setup_path_uses_teams_and_time(board, tmp_path):
@@ -241,7 +247,7 @@ def test_load_old_file_without_comments_has_none(board, tmp_path):
                 entry.pop("comment")
 
     _tamper(path, drop_comments)
-    loaded = load_setup(path)
+    loaded = load_setup(path, STANDARD)
     assert all(loaded.comment_of(key) == "" for key in loaded.keys())
 
 
@@ -251,4 +257,78 @@ def test_load_rejects_a_bad_comment(board, tmp_path, comment):
     save_setup(board, path)
     _tamper(path, lambda d: d["away"]["players"][2].update(comment=comment))
     with pytest.raises(SetupFileError, match="a.json: away player 3 comment"):
-        load_setup(path)
+        load_setup(path, STANDARD)
+
+
+@pytest.fixture
+def sevens_board():
+    board = Board(_team("orcs"), _team("humans"), SEVENS)
+    board.place(PlayerKey(Side.HOME, 0), Square(9, 5))
+    board.place(PlayerKey(Side.AWAY, 1), Square(19, 10))
+    return board
+
+
+def test_sevens_round_trip_keeps_the_pitch(sevens_board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(sevens_board, path)
+    assert json.loads(path.read_text())["pitch"] == "sevens"
+    loaded = load_setup(path, SEVENS)
+    assert loaded.pitch is SEVENS
+    assert _snapshot(loaded) == _snapshot(sevens_board)
+
+
+def test_list_setups_filters_by_pitch_size(sevens_board, board, tmp_path):
+    save_setup(sevens_board, tmp_path / "seven.json")
+    save_setup(board, tmp_path / "standard.json")
+    assert list_setups(tmp_path, SEVENS) == (tmp_path / "seven.json",)
+    assert list_setups(tmp_path, STANDARD) == (tmp_path / "standard.json",)
+
+
+def test_an_unreadable_file_is_listed_for_both_sizes(tmp_path):
+    (tmp_path / "broken.json").write_text("{not json")
+    for pitch in PitchFormat:
+        assert list_setups(tmp_path, pitch) == (tmp_path / "broken.json",)
+
+
+def test_an_old_file_without_pitch_loads_as_standard(board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(board, path)
+    _tamper(path, lambda data: data.pop("pitch"))
+    assert load_setup(path, STANDARD).pitch is STANDARD
+    assert list_setups(tmp_path, SEVENS) == ()
+
+
+def test_load_rejects_a_square_off_the_sevens_pitch(sevens_board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(sevens_board, path)
+    _tamper(
+        path,
+        lambda data: data["home"]["players"][0].update(square={"column": 20, "row": 3}),
+    )
+    with pytest.raises(SetupFileError, match=r"square \(20, 3\) is off the sevens"):
+        load_setup(path, SEVENS)
+
+
+def test_load_rejects_a_ball_off_the_sevens_pitch(sevens_board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(sevens_board, path)
+    _tamper(path, lambda data: data.update(ball={"column": 0, "row": 11}))
+    with pytest.raises(SetupFileError, match="off the sevens pitch"):
+        load_setup(path, SEVENS)
+
+
+def test_load_refuses_a_file_for_the_other_size(sevens_board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(sevens_board, path)
+    with pytest.raises(
+        SetupFileError, match="a.json: made for the sevens pitch, not standard"
+    ):
+        load_setup(path, STANDARD)
+
+
+def test_load_rejects_an_unknown_pitch(board, tmp_path):
+    path = tmp_path / "a.json"
+    save_setup(board, path)
+    _tamper(path, lambda data: data.update(pitch="huge"))
+    with pytest.raises(SetupFileError, match="pitch"):
+        load_setup(path, STANDARD)
