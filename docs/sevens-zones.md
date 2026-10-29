@@ -7,7 +7,7 @@ The Sevens pitch ([sevens.md](sevens.md)) draws one line of scrimmage at the hal
 
 This fix only changes what is drawn and the geometry that drives it. Boards, files, mirroring and the Options screen don't change.
 
-Status: designed, not built (Phase 18 in [task.md](task.md)); the requirement is the corrected "Sevens Geometry" in §3.14 of the [PRD](prd.md).
+Status: built (Phase 18 in [task.md](task.md)), after Phase 17, so `_PitchGeometry` carries `scrimmage_lines_x`; the requirement is the corrected "Sevens Geometry" in §3.14 of the [PRD](prd.md).
 It builds on commit `4a2670e` (Phase 16, Sevens Pitch), and it can be built before or after Phase 17 ([sevens-fixes.md](sevens-fixes.md)):
 - if Phase 17 is built first, its `_PitchGeometry` TypedDict renames its `line_of_scrimmage_x: int` key to `scrimmage_lines_x: tuple[int, ...]`;
 - if this phase is built first, Phase 17 writes that key with the new name.

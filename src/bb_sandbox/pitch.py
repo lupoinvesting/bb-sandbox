@@ -8,6 +8,9 @@ from typing import NamedTuple
 # (a square on some pitch) and size the room the screen reserves for the pitch.
 PITCH_COLUMNS = 26
 PITCH_ROWS = 15
+# Width of each of the 3 zones between the Sevens endzones; Sevens has no
+# halfway line.
+SEVENS_ZONE_COLUMNS = 6
 
 
 @dataclass(frozen=True)
@@ -55,8 +58,18 @@ class PitchFormat(Enum):
         return 4 if self is PitchFormat.STANDARD else 2
 
     @property
+    def scrimmage_columns(self) -> tuple[int, ...]:
+        """tuple[int, ...]: Grid lines drawn as lines of scrimmage (each the
+        left edge of that column), left to right: the halfway line on
+        Standard, the two edges of the middle zone on Sevens."""
+        if self is PitchFormat.STANDARD:
+            return (PITCH_COLUMNS // 2,)
+        # Reason: one endzone column, then one zone, then the middle zone.
+        return (1 + SEVENS_ZONE_COLUMNS, 1 + 2 * SEVENS_ZONE_COLUMNS)
+
+    @property
     def ball_start(self) -> Square:
-        """Square: Just right of the line of scrimmage, mid-pitch."""
+        """Square: Mid-pitch, the square just right of the pitch's centre."""
         return Square(self.columns // 2, self.rows // 2)
 
     def contains(self, square: Square) -> bool:

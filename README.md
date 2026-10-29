@@ -154,7 +154,7 @@ The pitch is drawn in green unless you pick an image for it. Put images in `spri
   Click a row to use it at once; the current one is highlighted. Back returns to the main menu.
 - Formats: `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif` (first frame) and `.webp`, in any case.
 - The image is stretched to the whole pitch (832 x 480 pixels), so a 26:15 image looks best.
-  The grid, wide-zone lines and line of scrimmage are still drawn on top.
+  The grid, wide-zone lines and lines of scrimmage are still drawn on top.
 - The choice is saved in `settings.json` in the folder you launch from, and restored on the next start.
 - The list and the chosen image reload when the window regains focus.
 - If the chosen image is missing or can't be loaded, the drawn pitch shows and the message line names the file
@@ -167,7 +167,8 @@ The pitch is drawn in green unless you pick an image for it. Put images in `spri
 The third Options column, **Pitch size**, picks **Standard** (26 x 15) or **Sevens** (20 x 11).
 - A click switches at once and is saved in `settings.json`; the next Start opens the sandbox on that pitch.
 - The Sevens pitch is centred where the standard one is drawn; the window, panel and dugouts don't move.
-  It has 1-column endzones, 2-row wide zones, and the ball starts mid-pitch just right of the line of scrimmage.
+  It has 1-column endzones, 2-row wide zones, and no halfway line: two lines of scrimmage cut the squares between
+  the endzones into three 6-square zones. The ball starts mid-pitch, in the middle zone.
 - Sevens has its own image folder, `sprites/pitch-sevens/`, stretched to 640 x 352 pixels, so a 20:11 image looks best.
   The Pitch list shows the current size's folder, and each size remembers its own image.
   An empty list names the folder it reads, e.g. "No images in sprites/pitch-sevens/".

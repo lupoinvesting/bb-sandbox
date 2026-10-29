@@ -256,7 +256,7 @@ def _draw_pitch(
     surface: pygame.Surface, layout: Layout, image: pygame.Surface | None
 ) -> None:
     """
-    Draw the pitch grid, wide zones, endzones and line of scrimmage.
+    Draw the pitch grid, wide zones, endzones and lines of scrimmage.
 
     Args:
         surface (pygame.Surface): Target surface.
@@ -293,8 +293,8 @@ def _draw_pitch(
     for y in (top_zone.y + top_zone.height, bottom_zone.y):
         pygame.draw.line(surface, WIDE_ZONE_LINE, (pitch.x, y), (right, y), 2)
 
-    los_x = layout.line_of_scrimmage_x
-    pygame.draw.line(surface, SCRIMMAGE_LINE, (los_x, pitch.y), (los_x, bottom), 3)
+    for x in layout.scrimmage_lines_x:
+        pygame.draw.line(surface, SCRIMMAGE_LINE, (x, pitch.y), (x, bottom), 3)
     pygame.draw.rect(surface, BORDER, _rect(pitch), 2)
 
 

@@ -100,7 +100,9 @@ class Layout:
         pitch_format (PitchFormat): The pitch size the pitch fields are for.
         pitch (Box): The grid area: 26x15 squares on Standard, or 20x11
             centred in the same room on Sevens.
-        line_of_scrimmage_x (int): Screen x of the halfway line.
+        scrimmage_lines_x (tuple[int, ...]): Screen x of each line of
+            scrimmage, left to right: the halfway line on Standard, the two
+            edges of the middle zone on Sevens.
         wide_zones (tuple[Box, Box]): Top and bottom wide zone areas.
         endzones (tuple[Box, Box]): Left (column 0) and right (last column)
             endzones.
@@ -160,7 +162,7 @@ class Layout:
     window_size: tuple[int, int]
     pitch_format: PitchFormat
     pitch: Box
-    line_of_scrimmage_x: int
+    scrimmage_lines_x: tuple[int, ...]
     wide_zones: tuple[Box, Box]
     endzones: tuple[Box, Box]
     dugout_areas: tuple[Box, Box]
@@ -199,7 +201,7 @@ class Layout:
             pitch (PitchFormat): The pitch size.
 
         Returns:
-            Layout: This layout with pitch_format, pitch, line_of_scrimmage_x,
+            Layout: This layout with pitch_format, pitch, scrimmage_lines_x,
                 wide_zones and endzones for that size; every other field is
                 unchanged.
         """
@@ -930,7 +932,7 @@ class _PitchGeometry(TypedDict):
 
     pitch_format: PitchFormat
     pitch: Box
-    line_of_scrimmage_x: int
+    scrimmage_lines_x: tuple[int, ...]
     wide_zones: tuple[Box, Box]
     endzones: tuple[Box, Box]
 
@@ -944,7 +946,7 @@ def _pitch_geometry(pitch: PitchFormat, square_size: int) -> _PitchGeometry:
         square_size (int): Side of one grid square in pixels.
 
     Returns:
-        _PitchGeometry: pitch_format, pitch, line_of_scrimmage_x, wide_zones
+        _PitchGeometry: pitch_format, pitch, scrimmage_lines_x, wide_zones
             and endzones, keyed by Layout field name.
     """
     # Reason: the screen always reserves the standard pitch's room, so nothing
@@ -962,7 +964,9 @@ def _pitch_geometry(pitch: PitchFormat, square_size: int) -> _PitchGeometry:
     return {
         "pitch_format": pitch,
         "pitch": box,
-        "line_of_scrimmage_x": box.x + (pitch.columns // 2) * square_size,
+        "scrimmage_lines_x": tuple(
+            box.x + column * square_size for column in pitch.scrimmage_columns
+        ),
         "wide_zones": (
             box._replace(height=wide_zone_height),
             box._replace(

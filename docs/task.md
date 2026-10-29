@@ -153,11 +153,11 @@ Design: [sevens-fixes.md](sevens-fixes.md). Fixes `/code-review high` findings 1
 
 ## Phase 18: Sevens Zones
 Design: [sevens-zones.md](sevens-zones.md). Requirements: PRD §3.14 (Sevens Geometry). No halfway line on Sevens; 3 zones of 6 columns.
-- [ ] pitch: `SEVENS_ZONE_COLUMNS = 6`, `PitchFormat.scrimmage_columns` ((13,) / (7, 13)), `ball_start` docstring + test_pitch
-- [ ] layout: `scrimmage_lines_x: tuple[int, ...]` replaces `line_of_scrimmage_x` (also in `_PitchGeometry` if Phase 17 is in) + test_layout
-- [ ] render: `_draw_pitch` draws one `SCRIMMAGE_LINE` per entry; none at Sevens' halfway + test_render; headless screenshot
-- [ ] team_setups: mirror docstring says "across the pitch's centre"
-- [ ] Docs: README Pitch size (three 6-square zones, two lines); sevens.md Geometry default and "line of scrimmage" mentions; status line in sevens-zones.md
+- [x] pitch: `SEVENS_ZONE_COLUMNS = 6`, `PitchFormat.scrimmage_columns` ((13,) / (7, 13)), `ball_start` docstring + test_pitch
+- [x] layout: `scrimmage_lines_x: tuple[int, ...]` replaces `line_of_scrimmage_x` (also in `_PitchGeometry` if Phase 17 is in) + test_layout
+- [x] render: `_draw_pitch` draws one `SCRIMMAGE_LINE` per entry; none at Sevens' halfway + test_render; headless screenshot
+- [x] team_setups: mirror docstring says "across the pitch's centre"
+- [x] Docs: README Pitch size (three 6-square zones, two lines); sevens.md Geometry default and "line of scrimmage" mentions; status line in sevens-zones.md
 
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.

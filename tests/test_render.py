@@ -51,7 +51,8 @@ def test_line_of_scrimmage_is_drawn(drawn):
     surface, layout = drawn
     mid_y = layout.pitch.y + layout.pitch.height // 2
     assert (
-        surface.get_at((layout.line_of_scrimmage_x, mid_y))[:3] == render.SCRIMMAGE_LINE
+        surface.get_at((layout.scrimmage_lines_x[0], mid_y))[:3]
+        == render.SCRIMMAGE_LINE
     )
 
 
@@ -861,7 +862,7 @@ def test_a_pitch_image_replaces_the_fills_under_the_lines(font):
     grid_x = layout.square(5, 7).x
     mid_y = _center_of(layout.square(5, 7))[1]
     assert surface.get_at((grid_x, mid_y))[:3] == render.GRID_LINE
-    los = (layout.line_of_scrimmage_x, mid_y)
+    los = (layout.scrimmage_lines_x[0], mid_y)
     assert surface.get_at(los)[:3] == render.SCRIMMAGE_LINE
 
 
@@ -1354,3 +1355,30 @@ def test_a_sevens_sandbox_draws_its_grid_in_the_centred_pitch(font):
         render.WIDE_ZONE_GREEN
     )
     assert surface.get_at(_center_of(layout.square(5, 2)))[:3] == render.PITCH_GREEN
+
+
+def _draw_sevens_scene(font, image=None):
+    layout = build_layout(32).for_pitch(PitchFormat.SEVENS)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_scene(surface, layout, font, EN, image)
+    return surface, layout, layout.pitch.y + layout.pitch.height // 2
+
+
+def test_a_sevens_pitch_draws_both_lines_of_scrimmage(font):
+    surface, layout, mid_y = _draw_sevens_scene(font)
+    for x in (layout.pitch.x + 224, layout.pitch.x + 416):
+        assert surface.get_at((x, mid_y))[:3] == render.SCRIMMAGE_LINE
+
+
+def test_a_sevens_pitch_image_keeps_both_lines_on_top(font):
+    image = pygame.Surface((640, 352))
+    image.fill(SPRITE_COLOUR)
+    surface, layout, mid_y = _draw_sevens_scene(font, image)
+    for x in layout.scrimmage_lines_x:
+        assert surface.get_at((x, mid_y))[:3] == render.SCRIMMAGE_LINE
+
+
+def test_a_sevens_pitch_has_no_halfway_line(font):
+    surface, layout, mid_y = _draw_sevens_scene(font)
+    halfway = (layout.pitch.x + 320, mid_y)
+    assert surface.get_at(halfway)[:3] == render.GRID_LINE

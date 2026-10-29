@@ -1,10 +1,13 @@
 """Tests for bb_sandbox.pitch."""
 
+from itertools import pairwise
+
 import pytest
 
 from bb_sandbox.pitch import (
     PITCH_COLUMNS,
     PITCH_ROWS,
+    SEVENS_ZONE_COLUMNS,
     PitchFormat,
     PlayerKey,
     Side,
@@ -52,6 +55,32 @@ def test_player_key_fields():
 def test_pitch_format_dimensions(fmt, columns, rows, wide, ball):
     assert (fmt.columns, fmt.rows, fmt.wide_zone_rows) == (columns, rows, wide)
     assert fmt.ball_start == ball
+
+
+@pytest.mark.parametrize(
+    "fmt,columns",
+    [(PitchFormat.STANDARD, (13,)), (PitchFormat.SEVENS, (7, 13))],
+)
+def test_scrimmage_columns(fmt, columns):
+    assert fmt.scrimmage_columns == columns
+
+
+def test_sevens_lines_cut_three_zones_of_six_columns():
+    edges = (1, *PitchFormat.SEVENS.scrimmage_columns, PitchFormat.SEVENS.columns - 1)
+    widths = [right - left for left, right in pairwise(edges)]
+    assert widths == [SEVENS_ZONE_COLUMNS] * 3
+
+
+@pytest.mark.parametrize("fmt", list(PitchFormat))
+def test_mirroring_maps_the_scrimmage_columns_onto_themselves(fmt):
+    columns = fmt.scrimmage_columns
+    assert tuple(sorted(fmt.columns - c for c in columns)) == columns
+    assert all(1 <= c <= fmt.columns - 1 for c in columns)
+
+
+def test_sevens_has_no_halfway_line():
+    halfway = PitchFormat.SEVENS.columns // 2
+    assert halfway not in PitchFormat.SEVENS.scrimmage_columns
 
 
 def test_pitch_format_values_are_the_file_strings():

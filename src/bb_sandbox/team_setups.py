@@ -92,8 +92,8 @@ def _oriented(square: Square, side: Side, pitch: PitchFormat) -> Square:
         pitch (PitchFormat): The pitch size being played.
 
     Returns:
-        Square: The same square for Home; for Away, mirrored across the line
-            of scrimmage, keeping the row. Mirroring twice gives it back.
+        Square: The same square for Home; for Away, mirrored across the
+            pitch's centre, keeping the row. Mirroring twice gives it back.
     """
     if side is Side.HOME:
         return square

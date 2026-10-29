@@ -24,9 +24,9 @@ It builds on commit `a430eaa` (Phase 15, Language Fixes, plus the Italian langua
   - Sevens is 20 columns × 11 rows.
   - Each endzone is 1 column, as on the standard pitch.
   - The wide zones are the 2 outermost rows at the top and at the bottom (4 on the standard pitch).
-  - The line of scrimmage is the halfway line, between columns 9 and 10.
+  - ~~The line of scrimmage is the halfway line, between columns 9 and 10.~~ Superseded by [sevens-zones.md](sevens-zones.md): Sevens has no halfway line; two lines, before columns 7 and 13, cut 3 zones of 6 columns.
 - **Centring:** the Sevens pitch sits 3 squares right of and 2 squares below the standard pitch's corner, so it stays on whole squares. The uncovered strip around it is plain window background.
-- **Ball start:** the square just right of the line of scrimmage, mid-pitch: `(columns // 2, rows // 2)`. That is (13, 7) on the standard pitch, as today, and (10, 5) on Sevens.
+- **Ball start:** the square just right of the pitch's centre, mid-pitch: `(columns // 2, rows // 2)`. That is (13, 7) on the standard pitch, as today, and (10, 5) on Sevens.
 - **Options screen:** the third menu column (empty until now) is captioned **Pitch size**. Row 0 is "Standard" and row 1 is "Sevens". The current size is highlighted. A click switches at once, with no Apply button, like the other two columns.
 - **When the size changes:** the Pitch column re-lists the new size's folder and highlights that size's remembered image. The main menu's setups list is re-filtered. Options is only reachable from the main menu, so no board is ever open during a switch. The next Start builds the board for the new size.
 - **Image per size:** each size remembers its own image. Switching to Sevens and back keeps the Standard pick.
@@ -102,7 +102,7 @@ board.place(key, square) / board.move_ball(square)
 # layout.py
 Layout.pitch_format: PitchFormat        # build_layout gives STANDARD
 def Layout.for_pitch(self, pitch: PitchFormat) -> Layout
-                                        # same layout, with pitch, line_of_scrimmage_x,
+                                        # same layout, with pitch, scrimmage_lines_x,
                                         # wide_zones, endzones and pitch_format for that size
 def Layout.pitch_format_row(index: int) -> Box   # column 2; ValueError outside 0..option_rows-1
 def Layout.pitch_format_row_at(pos) -> int | None
@@ -159,7 +159,7 @@ OptionsView.pitch_format: PitchFormat   # new field; pitches/hidden/selected fol
 
 ## Rendering
 
-- `_draw_pitch` loops `range(layout.pitch_format.columns + 1)` and `range(rows + 1)`. Everything else it uses (`pitch`, `wide_zones`, `endzones`, `line_of_scrimmage_x`) already comes from the layout.
+- `_draw_pitch` loops `range(layout.pitch_format.columns + 1)` and `range(rows + 1)`. Everything else it uses (`pitch`, `wide_zones`, `endzones`, `scrimmage_lines_x`) already comes from the layout.
 - `draw_sandbox` and the hover panel take `session.layout` from app, so pieces, marks and the ball land on the centred grid with no change.
 - `draw_options` draws column 2: the caption `Pitch size`, then `Standard` and `Sevens`, with the current one highlighted the way the Language column highlights.
 - app loads the pitch image at `(session.layout.pitch.width, session.layout.pitch.height)`, so a Sevens image is stretched to 640 × 352 at square size 32. It reloads when `session.pitch_path` changes, which covers both an image pick and a size switch, and on focus as before.

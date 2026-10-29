@@ -31,7 +31,7 @@ def test_pitch_is_26_by_15_squares():
 
 def test_line_of_scrimmage_splits_pitch_in_half():
     layout = build_layout(32)
-    assert layout.line_of_scrimmage_x - layout.pitch.x == 13 * 32
+    assert layout.scrimmage_lines_x == (layout.pitch.x + 13 * 32,)
 
 
 def test_wide_zones_are_four_rows_on_each_sideline():
@@ -681,7 +681,7 @@ def test_sevens_pitch_is_centred_in_the_standard_room():
     sevens = build_layout(32).for_pitch(PitchFormat.SEVENS)
     assert sevens.pitch_format is PitchFormat.SEVENS
     assert sevens.pitch == Box(16 + 96, 16 + 64, 640, 352)
-    assert sevens.line_of_scrimmage_x == sevens.pitch.x + 320
+    assert sevens.scrimmage_lines_x == (sevens.pitch.x + 224, sevens.pitch.x + 416)
     top, bottom = sevens.wide_zones
     assert top == sevens.pitch._replace(height=64)
     assert bottom == sevens.pitch._replace(y=sevens.pitch.y + 352 - 64, height=64)
@@ -696,7 +696,7 @@ def test_sevens_keeps_every_field_outside_the_pitch():
     pitch_fields = {
         "pitch_format",
         "pitch",
-        "line_of_scrimmage_x",
+        "scrimmage_lines_x",
         "wide_zones",
         "endzones",
     }
