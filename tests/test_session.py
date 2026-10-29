@@ -2,6 +2,8 @@
 
 import json
 import random
+import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -39,6 +41,10 @@ from bb_sandbox.session import (
 from bb_sandbox.team_setups import TeamSetupError, load_team_setup, save_team_setup
 
 LANGUAGES_DIR = Path(__file__).parent.parent / "languages"
+# Reason: the shipped folder grows as languages are added (it.json, ...), so
+# the default session reads a copy of en.json alone and its lists stay fixed.
+ENGLISH_ONLY_DIR = Path(tempfile.mkdtemp())
+shutil.copy(LANGUAGES_DIR / "en.json", ENGLISH_ONLY_DIR)
 CSV = (
     "race,Orc\nname,position,MA,ST,AG,PA,AV,skills\n"
     "Grishnak,Blitzer,5,3,3+,4+,10+,Block\n"
@@ -88,7 +94,7 @@ def _files(folder):
 def _session(*args, **kwargs):
     # Reason: the tests compare English messages, so they read the shipped
     # en.json; app does the same before load_settings.
-    kwargs.setdefault("languages_dir", LANGUAGES_DIR)
+    kwargs.setdefault("languages_dir", ENGLISH_ONLY_DIR)
     session = Session(*args, **kwargs)
     session.load_languages()
     return session

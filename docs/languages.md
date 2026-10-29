@@ -10,7 +10,7 @@ Status: built (Phase 14 in [task.md](task.md)), tightened by [language-fixes.md]
 
 **Confirmed with the user**
 1. **Scope: everything the player reads.** That covers buttons, captions, hints, status messages, the player menu, the block die faces and the stat labels. It also covers **race, position and skill names**.
-2. Language files live in **`languages/` at the project root**, next to `rosters/`, `setups/` and `sprites/`. `en.json` ships there and is committed.
+2. Language files live in **`languages/` at the project root**, next to `rosters/`, `setups/` and `sprites/`. `en.json` ships there and is committed; so does `it.json` (Italian).
 3. **A key missing from a language file falls back to English**, one key at a time, so a half-done translation works.
 4. **Picker:** a **Language** column on the Options screen, next to **Pitch**. A click switches at once, with no restart, and is saved in `settings.json`. The list shows each file's own display name, e.g. "Italiano".
 

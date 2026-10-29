@@ -1,4 +1,4 @@
-"""Tests for the shipped languages/en.json."""
+"""Tests for the shipped language files in languages/."""
 
 import json
 from pathlib import Path
@@ -24,3 +24,13 @@ def test_en_json_lists_every_race_position_and_skill():
     assert set(EN["skills"]) == skills
     for section in ("races", "positions", "skills"):
         assert all(key == value for key, value in EN[section].items())
+
+
+def test_it_json_translates_every_key_of_en_json():
+    it = json.loads((LANGUAGES_DIR / "it.json").read_text(encoding="utf-8"))
+    assert it["name"] == "Italiano"
+    for section in ("texts", "races", "positions", "skills"):
+        assert set(it[section]) == set(EN[section])
+    italian = next(t for t in load_languages(LANGUAGES_DIR).all if t.code == "it")
+    assert italian[Text.START] == "Inizia"
+    assert italian.skill("Loner (4+)") == "Solitario (4+)"

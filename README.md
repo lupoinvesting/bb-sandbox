@@ -166,6 +166,7 @@ The pitch is drawn in green unless you pick an image for it. Put images in `spri
 
 Every word the app shows can be switched to another language, including race, position and skill names.
 On **Options**, the Language list (next to Pitch) shows each language by its own name, English first.
+English and Italian (`languages/it.json`) ship with the app.
 Click one to switch at once; the choice is saved in `settings.json`. Team, player and file names, comments
 and the details of file errors are never translated, and saved files keep the English names.
 
