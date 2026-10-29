@@ -23,7 +23,6 @@ EN = {
         "message.saved": "Saved {name}",
         "message.loaded_team": "Loaded {team} as {side}",
         "side.home": "home",
-        "common.raw": "{text}",
     },
     "races": {"Human": "Human"},
     "positions": {"Lineman": "Lineman"},
@@ -175,3 +174,55 @@ def test_at_most_max_languages_files_are_read(folder):
     languages = load_languages(folder)
     assert len(languages.all) == MAX_LANGUAGES
     assert f"more than {MAX_LANGUAGES}" in languages.problem
+
+
+@pytest.mark.parametrize("template", ["Errore: {text}", ""])
+def test_a_translated_common_raw_is_ignored(folder, template):
+    _write(folder, "it.json", {**IT, "texts": {"common.raw": template}})
+    languages = load_languages(folder)
+    italian = languages.all[1]
+    assert languages.problem == ""
+    assert italian.say(raw("x")) == "x"
+    assert italian.say(raw("")) == ""
+
+
+def test_raw_text_with_braces_is_never_formatted(folder):
+    english, italian = load_languages(folder).all
+    assert english.say(raw("{")) == "{"
+    assert italian.say(raw("{name}")) == "{name}"
+
+
+def test_without_en_json_raw_text_still_shows(tmp_path):
+    english = load_languages(tmp_path).all[0]
+    assert english.say(raw("broken")) == "broken"
+
+
+def test_a_placeholder_used_twice_is_kept(folder):
+    _write(folder, "it.json", {**IT, "texts": {"message.saved": "{name}, {name}"}})
+    languages = load_languages(folder)
+    assert languages.problem == ""
+    assert languages.all[1].say(Message(Text.SAVED, {"name": "x"})) == "x, x"
+
+
+def test_a_text_that_leaves_out_a_placeholder_is_dropped(folder):
+    _write(folder, "it.json", {**IT, "texts": {"message.saved": "Salvato"}})
+    languages = load_languages(folder)
+    assert languages.all[1].say(Message(Text.SAVED, {"name": "x"})) == "Saved x"
+    assert "message.saved" in languages.problem
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {**IT, "name": "Ital\x00iano"},
+        {**IT, "texts": {"menu.start": "Ini\x00zia"}},
+        {**IT, "races": {"Human": "Uma\x00ni"}},
+        {**IT, "skills": {"Dodge": "\x00"}},
+    ],
+)
+def test_a_null_character_skips_the_file(folder, data):
+    _write(folder, "it.json", data)
+    languages = load_languages(folder)
+    assert [texts.code for texts in languages.all] == [ENGLISH]
+    assert languages.problem.startswith(f"{folder.as_posix()}/it.json: ")
+    assert "null character" in languages.problem

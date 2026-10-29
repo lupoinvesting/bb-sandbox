@@ -172,7 +172,7 @@ and the details of file errors are never translated, and saved files keep the En
 To add a language:
 1. Copy `languages/en.json` to `languages/<code>.json`, e.g. `it.json` or `pt-br.json`. The file name is the code `settings.json` stores.
 2. Set `"name"` to the language's own name, e.g. `"Italiano"`, and translate the values. Never change the keys.
-   - `texts` holds the app's texts. Keep `{placeholders}` such as `{name}` as they are; you may reorder them or leave some out.
+   - `texts` holds the app's texts. Keep every `{placeholder}` such as `{name}`; you may reorder or repeat them, but not leave one out.
      Write `{{` and `}}` for literal braces.
    - `races`, `positions` and `skills` map the English names in `races.csv` to yours. A skill such as `Loner (4+)`
      is translated through `Loner`, and keeps its `(4+)`.
@@ -181,7 +181,7 @@ To add a language:
 Anything you leave out, or leave as copied, shows in English, so a half-done translation works.
 Keep each text about as long as the English one: buttons and columns are sized for English, and a much longer text overflows.
 The default font draws Latin-script languages (Italian, French, German, Spanish, Portuguese…); other scripts show boxes.
-A broken file is skipped and named on the message line, as is a text whose `{placeholders}` don't match the English one
+A broken file is skipped and named on the message line, as is a text whose `{placeholders}` aren't exactly the English ones
 (that text then shows in English). Language files are only ever read.
 
 ## Layout

@@ -119,6 +119,14 @@ Design: [languages.md](languages.md).
 - [x] app: `LANGUAGES_DIR`, `load_languages` before `load_settings`, `session.texts` to every draw, `language_problem` on the message line + tests
 - [x] README "Languages" section (adding a language, keep texts about as long as English); status line in languages.md; replace todo.md item 11
 
+## Phase 15: Language Fixes
+Design: [language-fixes.md](language-fixes.md). Fixes the 9 `/code-review high` findings on commit e70814b.
+- [x] language: `Text.RAW` never read from a file (`say(raw(x)) == x`), `common.raw` removed from `en.json`; placeholders must equal the English ones; `_Drawable` rejects NUL in `name` and every value; `_load_english` returns the English map and `_names` builds the names dict (no `Texts._english` access) + test_language, test_language_files
+- [x] layout: `option_row`/`language_row` and their `_at` inverses share `_option_column_row` / `_option_column_row_at` (existing tests unchanged)
+- [x] session: `rescan` no longer calls `load_languages`; `language_problem` reports a chosen code with no file + test_session
+- [x] app: focus handler calls `load_languages()` then `rescan()`; startup reads languages once, comment fixed + test_app
+- [x] Docs: languages.md (Decisions, file format, Keys without `common.raw`, Invariants), README "Languages" (keep every placeholder), status line in language-fixes.md
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).
@@ -163,3 +171,4 @@ Design: [languages.md](languages.md).
 - [x] A single right-click (not a double one) toggles a ring, on any pitch square, as on chess.com; dropped the double-click clock from `Interaction`.
 - [x] Phase 14: `Message.values` also take a `Text` or a `Message`, so a side ("home") or a name problem inside a sentence is translated too; `common.both` ("{first}; {second}") joins the two problems of a failed roster rename roll-back. Neither was in the design's key list.
 - [ ] Phase 14: clicking a Language row clears the status message, as a pitch row does, so the "the current message turns Italian at once" check is only seen for messages set after the switch.
+- [ ] Language fixes design: a NUL character also crashes `font.render` (lone surrogates do too, but pydantic rejects those). Check whether roster CSV, setup and team setup files can carry one into a team, player or file name on screen.

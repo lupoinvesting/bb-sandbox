@@ -454,6 +454,47 @@ class Layout:
                 return which, index
         return None
 
+    def _option_column_row(self, column: int, index: int, what: str) -> Box:
+        """
+        Return one row of an Options screen column, below its caption.
+
+        Args:
+            column (int): Index into menu_columns: 0 Pitch, 1 Language.
+            index (int): Zero-based row, 0..option_rows-1.
+            what (str): The row's name in the error message, e.g. "Option".
+
+        Returns:
+            Box: The row's screen rectangle.
+
+        Raises:
+            ValueError: If index is outside 0..option_rows-1.
+        """
+        if not 0 <= index < self.option_rows:
+            raise ValueError(f"{what} row {index} is outside 0..{self.option_rows - 1}")
+        box = self.menu_columns[column]
+        return box._replace(
+            y=box.y + (index + 1) * self.square_size, height=self.square_size
+        )
+
+    def _option_column_row_at(self, column: int, pos: tuple[int, int]) -> int | None:
+        """
+        Find the row of an Options screen column under a point.
+
+        Args:
+            column (int): Index into menu_columns: 0 Pitch, 1 Language.
+            pos (tuple[int, int]): Screen (x, y).
+
+        Returns:
+            int | None: The row index, or None off the rows.
+        """
+        box = self.menu_columns[column]
+        if not box.contains(pos):
+            return None
+        index = (pos[1] - box.y) // self.square_size - 1
+        if 0 <= index < self.option_rows:
+            return index
+        return None
+
     def option_row(self, index: int) -> Box:
         """
         Return one row of the Options screen's column, below its caption.
@@ -467,12 +508,7 @@ class Layout:
         Raises:
             ValueError: If index is outside 0..option_rows-1.
         """
-        if not 0 <= index < self.option_rows:
-            raise ValueError(f"Option row {index} is outside 0..{self.option_rows - 1}")
-        column = self.menu_columns[0]
-        return column._replace(
-            y=column.y + (index + 1) * self.square_size, height=self.square_size
-        )
+        return self._option_column_row(0, index, "Option")
 
     def option_row_at(self, pos: tuple[int, int]) -> int | None:
         """
@@ -484,13 +520,7 @@ class Layout:
         Returns:
             int | None: The row index, or None off the rows.
         """
-        column = self.menu_columns[0]
-        if not column.contains(pos):
-            return None
-        index = (pos[1] - column.y) // self.square_size - 1
-        if 0 <= index < self.option_rows:
-            return index
-        return None
+        return self._option_column_row_at(0, pos)
 
     def language_row(self, index: int) -> Box:
         """
@@ -506,14 +536,7 @@ class Layout:
         Raises:
             ValueError: If index is outside 0..option_rows-1.
         """
-        if not 0 <= index < self.option_rows:
-            raise ValueError(
-                f"Language row {index} is outside 0..{self.option_rows - 1}"
-            )
-        column = self.menu_columns[1]
-        return column._replace(
-            y=column.y + (index + 1) * self.square_size, height=self.square_size
-        )
+        return self._option_column_row(1, index, "Language")
 
     def language_row_at(self, pos: tuple[int, int]) -> int | None:
         """
@@ -525,13 +548,7 @@ class Layout:
         Returns:
             int | None: The row index, or None off the rows.
         """
-        column = self.menu_columns[1]
-        if not column.contains(pos):
-            return None
-        index = (pos[1] - column.y) // self.square_size - 1
-        if 0 <= index < self.option_rows:
-            return index
-        return None
+        return self._option_column_row_at(1, pos)
 
     def team_setup_column(self, side: Side) -> Box:
         """

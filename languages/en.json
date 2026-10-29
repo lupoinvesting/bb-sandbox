@@ -4,7 +4,6 @@
   "texts": {
     "common.back": "Back",
     "common.more": "+{count} more",
-    "common.raw": "{text}",
     "common.both": "{first}; {second}",
     "side.home": "home",
     "side.away": "away",

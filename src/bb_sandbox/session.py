@@ -443,8 +443,14 @@ class Session:
 
     @property
     def language_problem(self) -> str:
-        """str: The first language file problem, '' for none."""
-        return self._languages.problem
+        """str: The first language file problem, else the chosen language's
+        missing file, else ''."""
+        if self._languages.problem:
+            return self._languages.problem
+        # Reason: a saved language whose file is gone shows English; say why.
+        if all(texts.code != self._language for texts in self._languages.all):
+            return f"{self._languages_dir.as_posix()}/{self._language}.json: file not found"
+        return ""
 
     @property
     def races(self) -> tuple[Race, ...]:
@@ -1151,13 +1157,12 @@ class Session:
     def rescan(self) -> None:
         """
         Re-list the roster, setup, pitch image and team setup files, reading
-        each roster's race, and read the language files again.
+        each roster's race. Language files are read by load_languages only.
 
         A chosen pitch or language whose file has gone stays chosen, so it is
         used again when the file comes back. The team setups listed are the
         board's teams'; with no board, none are.
         """
-        self.load_languages()
         self._rosters = list_rosters(self._rosters_dir)
         self._roster_entries = tuple(
             RosterEntry(path.stem, _race_or_none(path)) for path in self._rosters

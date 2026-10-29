@@ -1307,7 +1307,7 @@ def test_a_name_box_caption_and_problem_are_translated(tmp_path):
     assert session.name_view.problem == "Vuoto"
 
 
-def test_a_deleted_language_file_falls_back_to_english_on_rescan(tmp_path):
+def test_a_deleted_language_file_falls_back_to_english_on_reload(tmp_path):
     folder = _languages(tmp_path)
     session = _session(
         LAYOUT, tmp_path, tmp_path, RACES, languages_dir=folder, **_files(tmp_path)
@@ -1316,10 +1316,54 @@ def test_a_deleted_language_file_falls_back_to_english_on_rescan(tmp_path):
     session.press(_click(LAYOUT.options_button))
     session.press(_language(1))
     (folder / "it.json").unlink()
-    session.rescan()
+    session.load_languages()
     assert session.texts.code == "en"
     assert session.options_view().languages == ("English",)
     assert session.options_view().language == 0
+
+
+def _saved_italian(tmp_path):
+    folder = _languages(tmp_path)
+    (folder / "it.json").unlink()
+    (tmp_path / "settings.json").write_text('{"version": 1, "language": "it"}')
+    session = _session(
+        LAYOUT, tmp_path, tmp_path, RACES, languages_dir=folder, **_files(tmp_path)
+    )
+    session.load_settings()
+    return session, folder
+
+
+def test_a_chosen_language_without_a_file_is_reported(tmp_path):
+    session, folder = _saved_italian(tmp_path)
+    assert session.texts.code == "en"
+    assert session.language_problem == f"{folder.as_posix()}/it.json: file not found"
+
+
+def test_picking_english_clears_the_missing_language_problem(tmp_path):
+    session, _ = _saved_italian(tmp_path)
+    session.press(_click(LAYOUT.options_button))
+    assert session.press(_language(0)) == SaveSettings()
+    assert session.language_problem == ""
+
+
+def test_the_file_coming_back_clears_the_missing_language_problem(tmp_path):
+    session, folder = _saved_italian(tmp_path)
+    (folder / "it.json").write_text(json.dumps(IT), encoding="utf-8")
+    session.load_languages()
+    assert session.language_problem == "" and session.texts.code == "it"
+
+
+def test_rescan_alone_does_not_read_the_language_files(tmp_path):
+    folder = _languages(tmp_path)
+    (folder / "it.json").unlink()
+    session = _session(
+        LAYOUT, tmp_path, tmp_path, RACES, languages_dir=folder, **_files(tmp_path)
+    )
+    (folder / "it.json").write_text(json.dumps(IT), encoding="utf-8")
+    session.rescan()
+    assert session.options_view().languages == ("English",)
+    session.load_languages()
+    assert session.options_view().languages == ("English", "Italiano")
 
 
 def test_a_click_past_the_languages_does_nothing(tmp_path):

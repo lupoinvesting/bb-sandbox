@@ -6,6 +6,7 @@ import pygame
 import pytest
 
 from bb_sandbox import app
+from bb_sandbox import session as session_module
 from bb_sandbox.annotations import Arrow
 from bb_sandbox.app import _draw, handle_event, run
 from bb_sandbox.layout import MenuList, build_layout
@@ -620,6 +621,41 @@ def test_run_draws_the_first_frame_in_the_saved_language(in_tmp, monkeypatch):
     assert run(max_frames=1) == 1
     texts, message = drawn[0]
     assert texts.code == "it" and message == ""
+
+
+def test_a_focus_event_lists_a_language_file_added_after_start(in_tmp):
+    (in_tmp / "languages").mkdir()
+    english = (LANGUAGES_DIR / "en.json").read_text(encoding="utf-8")
+    (in_tmp / "languages" / "en.json").write_text(english, encoding="utf-8")
+    layout = build_layout()
+    session = Session(
+        layout,
+        in_tmp,
+        in_tmp,
+        RACES,
+        languages_dir=in_tmp / "languages",
+        **_files(in_tmp),
+    )
+    session.load_languages()
+    (in_tmp / "languages" / "it.json").write_text(
+        '{"version": 1, "name": "Italiano"}', encoding="utf-8"
+    )
+    assert handle_event(session, pygame.event.Event(pygame.WINDOWFOCUSGAINED))
+    handle_event(session, _click(layout.options_button))
+    assert session.options_view().languages == ("English", "Italiano")
+
+
+def test_run_reads_the_language_folder_once_at_startup(in_tmp, monkeypatch):
+    calls = []
+    real = session_module.read_languages
+
+    def counting(folder):
+        calls.append(folder)
+        return real(folder)
+
+    monkeypatch.setattr(session_module, "read_languages", counting)
+    assert run(max_frames=1) == 1
+    assert len(calls) == 1
 
 
 def test_run_without_a_languages_folder_opens_in_english_and_says_why(

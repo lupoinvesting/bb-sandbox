@@ -143,6 +143,8 @@ def handle_event(session: Session, event: pygame.event.Event) -> bool:
     elif event.type == pygame.WINDOWFOCUSGAINED:
         # Reason: picks up roster, setup, pitch image and language files
         # added or renamed in Explorer while the app was in the background.
+        # Languages are read here only, not on every rescan after a save.
+        session.load_languages()
         session.rescan()
     return True
 
@@ -326,7 +328,8 @@ def run(max_frames: int | None = None) -> int:
         languages_dir=LANGUAGES_DIR,
     )
     # Reason: language files are user files too, so a broken one is skipped
-    # and reported. They are read first so the saved language can be found.
+    # and reported. They are read first so the saved language can be found,
+    # and only here: rescan() doesn't read them again.
     session.load_languages()
     # Reason: settings.json is a user file, so a broken one becomes the
     # session message instead of stopping the app.

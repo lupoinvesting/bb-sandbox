@@ -10,9 +10,9 @@ import string
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, Literal, NamedTuple
+from typing import Annotated, Final, Literal, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
 
 from bb_sandbox._files import first_error
 
@@ -149,7 +149,8 @@ def raw(text: str) -> Message:
         text (str): The text.
 
     Returns:
-        Message: Text.RAW with the text; raw("") means "no message".
+        Message: Text.RAW with the text; raw("") means "no message". Raw text
+            is never looked up in a language file.
     """
     return Message(Text.RAW, {"text": text})
 
@@ -159,17 +160,40 @@ class LanguageError(Exception):
     with the file name."""
 
 
+def _no_null(text: str) -> str:
+    """
+    Reject a string that Pygame can't draw.
+
+    Args:
+        text (str): A value from a language file.
+
+    Returns:
+        str: The text, unchanged.
+
+    Raises:
+        ValueError: If it contains a null character.
+    """
+    # Reason: font.render raises on "\x00"; catch it while reading, not drawing.
+    if "\x00" in text:
+        raise ValueError("contains a null character")
+    return text
+
+
+# A string from a language file that is drawn on screen.
+_Drawable = Annotated[str, AfterValidator(_no_null)]
+
+
 class _LanguageFile(BaseModel):
     """What a language file holds; unknown sections are ignored."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     version: Literal[1]
-    name: str = Field(min_length=1)
-    texts: dict[str, str] = {}
-    races: dict[str, str] = {}
-    positions: dict[str, str] = {}
-    skills: dict[str, str] = {}
+    name: _Drawable = Field(min_length=1)
+    texts: dict[str, _Drawable] = {}
+    races: dict[str, _Drawable] = {}
+    positions: dict[str, _Drawable] = {}
+    skills: dict[str, _Drawable] = {}
 
 
 def _placeholders(template: str) -> set[str] | None:
@@ -278,15 +302,16 @@ class Texts:
 
         Returns:
             str: The filled-in text; English if this language's text doesn't
-                format, else the key itself. Raw text always shows, even
-                without en.json.
+                format, else the key itself. Raw text is returned exactly as
+                given, in every language.
         """
         values = {name: self._value(value) for name, value in message.values.items()}
+        # Reason: raw text is a file error or "no message" (raw("")); a
+        # language file must not be able to hide or reword it.
+        if message.key is Text.RAW:
+            return values.get("text", "")
         key = message.key.value
-        # Reason: raw text is usually a file error; it must stay readable when
-        # en.json itself is the broken file.
-        last = "{text}" if message.key is Text.RAW else key
-        for template in (self._texts.get(key), self._english.get(key), last):
+        for template in (self._texts.get(key), self._english.get(key)):
             if template is None:
                 continue
             # Reason: a caller may leave out a value; that must not stop a draw.
@@ -374,11 +399,22 @@ def _read_file(path: Path) -> _LanguageFile:
         raise LanguageError(f"{path.name}: {first_error(error)}") from error
 
 
+def _translatable() -> frozenset[str]:
+    """
+    List the keys a language file may translate.
+
+    Returns:
+        frozenset[str]: Every Text value except Text.RAW.
+    """
+    return frozenset(key.value for key in Text if key is not Text.RAW)
+
+
 def _check_texts(
     texts: Mapping[str, str], english: Mapping[str, str]
 ) -> tuple[dict[str, str], str]:
     """
-    Keep the texts with a known key whose placeholders fit the English text.
+    Keep the texts with a translatable key that use exactly the English
+    text's placeholders.
 
     Args:
         texts (Mapping[str, str]): A file's texts by key.
@@ -389,23 +425,38 @@ def _check_texts(
         tuple[dict[str, str], str]: The texts kept, and the key of the first
             one dropped ('' if none was).
     """
-    known = {key.value for key in Text}
+    known = _translatable()
     kept: dict[str, str] = {}
     dropped = ""
     for key, template in texts.items():
         # Reason: unknown keys come from an older or newer file; ignore them.
+        # common.raw is ignored too, so raw text always shows as given.
         if key not in known:
             continue
         allowed = _placeholders(english.get(key, template)) or set()
-        names = _placeholders(template)
-        if names is not None and names <= allowed and _formats(template, allowed):
+        # Reason: a left-out placeholder would silently drop a team, file name
+        # or error from the sentence.
+        if _placeholders(template) == allowed and _formats(template, allowed):
             kept[key] = template
         elif not dropped:
             dropped = key
     return kept, dropped
 
 
-def _load_english(folder: Path) -> tuple[Texts, str]:
+def _names(data: _LanguageFile) -> dict[str, dict[str, str]]:
+    """
+    Collect a file's race, position and skill names.
+
+    Args:
+        data (_LanguageFile): The file's contents.
+
+    Returns:
+        dict[str, dict[str, str]]: The "races", "positions" and "skills" maps.
+    """
+    return {"races": data.races, "positions": data.positions, "skills": data.skills}
+
+
+def _load_english(folder: Path) -> tuple[Texts, dict[str, str], str]:
     """
     Read en.json, the English texts and the fallback for every other file.
 
@@ -413,20 +464,21 @@ def _load_english(folder: Path) -> tuple[Texts, str]:
         folder (Path): The languages folder.
 
     Returns:
-        tuple[Texts, str]: English, and the problem found ('' for none). A
-            missing or broken file gives English whose lookups return the key.
+        tuple[Texts, dict[str, str], str]: English, its checked texts by key,
+            and the problem found ('' for none). A missing or broken file
+            gives English whose lookups return the key.
     """
     path = folder / f"{ENGLISH}.json"
     if not path.is_file():
-        return Texts(ENGLISH, "English", {}), f"{path.as_posix()}: file not found"
+        problem = f"{path.as_posix()}: file not found"
+        return Texts(ENGLISH, "English", {}), {}, problem
     try:
         data = _read_file(path)
     except LanguageError as error:
-        return Texts(ENGLISH, "English", {}), f"{folder.as_posix()}/{error}"
+        return Texts(ENGLISH, "English", {}), {}, f"{folder.as_posix()}/{error}"
     english, dropped = _check_texts(data.texts, data.texts)
-    names = {"races": data.races, "positions": data.positions, "skills": data.skills}
     problem = f"{path.as_posix()}: {dropped} doesn't format" if dropped else ""
-    return Texts(ENGLISH, data.name, english, None, names), problem
+    return Texts(ENGLISH, data.name, english, None, _names(data)), english, problem
 
 
 def load_languages(folder: Path) -> Languages:
@@ -435,7 +487,7 @@ def load_languages(folder: Path) -> Languages:
 
     Reads en.json first, then every other *.json in name order, at most
     MAX_LANGUAGES files in all. A broken file is skipped; a text whose
-    placeholders don't fit the English one is dropped, so English shows.
+    placeholders aren't exactly the English ones is dropped, so English shows.
 
     Args:
         folder (Path): The languages folder.
@@ -444,8 +496,7 @@ def load_languages(folder: Path) -> Languages:
         Languages: English first, then the others by display name, and the
             first problem found.
     """
-    english, problem = _load_english(folder)
-    english_texts = english._english
+    english, english_texts, problem = _load_english(folder)
     paths = sorted(folder.glob("*.json")) if folder.is_dir() else []
     others = [path for path in paths if path.stem.lower() != ENGLISH]
     if len(others) > MAX_LANGUAGES - 1:
@@ -460,11 +511,6 @@ def load_languages(folder: Path) -> Languages:
         texts, dropped = _check_texts(data.texts, english_texts)
         if dropped:
             problem = problem or f"{path.as_posix()}: {dropped} doesn't fit English"
-        names = {
-            "races": data.races,
-            "positions": data.positions,
-            "skills": data.skills,
-        }
-        found.append(Texts(path.stem, data.name, english_texts, texts, names))
+        found.append(Texts(path.stem, data.name, english_texts, texts, _names(data)))
     found.sort(key=lambda texts: texts.name.casefold())
     return Languages((english, *found), problem)

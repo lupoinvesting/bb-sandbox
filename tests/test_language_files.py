@@ -10,8 +10,8 @@ LANGUAGES_DIR = Path(__file__).parent.parent / "languages"
 EN = json.loads((LANGUAGES_DIR / "en.json").read_text(encoding="utf-8"))
 
 
-def test_en_json_holds_exactly_the_text_keys():
-    assert set(EN["texts"]) == {key.value for key in Text}
+def test_en_json_holds_exactly_the_translatable_text_keys():
+    assert set(EN["texts"]) == {key.value for key in Text if key is not Text.RAW}
     assert load_languages(LANGUAGES_DIR).problem == ""
 
 

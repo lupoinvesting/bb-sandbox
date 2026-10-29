@@ -4,7 +4,7 @@
 
 English is the default and the fallback: a text that a language file leaves out is shown in English.
 
-Status: built (Phase 14 in [task.md](task.md)); the requirements are §3.13 of the [PRD](prd.md).
+Status: built (Phase 14 in [task.md](task.md)), tightened by [language-fixes.md](language-fixes.md) (Phase 15); the requirements are §3.13 of the [PRD](prd.md).
 
 ## Decisions
 
@@ -22,9 +22,9 @@ Status: built (Phase 14 in [task.md](task.md)); the requirements are §3.13 of t
 - **`en.json` is the only source of the English text.** No copy lives in code, so the two can't drift. If `en.json` is missing or broken, the app still runs: it shows each text's key (e.g. `menu.start`) and reports the problem on the message line.
 - **Language code = file stem:** `it.json` is `it`, `pt-br.json` is `pt-br`. The code is what `settings.json` stores. English is always `en`.
 - **List order:** English first, then the others by display name, ignoring case.
-- **Unknown keys are ignored**, so an older or newer file still loads. A text whose `{placeholders}` don't fit the English one is dropped (English is shown) and reported, so formatting never fails while drawing.
+- **Unknown keys are ignored**, so an older or newer file still loads. `common.raw` is one of them: raw text (file and OS errors, "no message") is always shown exactly as given. A text whose `{placeholders}` aren't exactly the English ones is dropped (English is shown) and reported, so formatting never fails while drawing and no value silently vanishes.
 - **Skills with a value** such as `Loner (4+)` or `Hatred (Troll)`: the exact name is looked up first, then the name before ` (`. The bracketed part is kept as written. Roster skills that aren't in the file show as written.
-- **Reload on focus:** like the roster and setup lists, the languages are read again when the window regains focus. A translator can edit a file, switch back to the app and see the change.
+- **Reload on focus:** like the roster and setup lists, the languages are read again when the window regains focus. A translator can edit a file, switch back to the app and see the change. They are read at startup and on focus only, not on the rescan after a save, rename or delete.
 - **Fonts:** the default Pygame font draws Latin-script languages (Italian, French, German, Spanish, Portuguese…). Other scripts need a font with those glyphs, which is out of scope. A missing glyph shows as a box; nothing fails.
 - **Long translations are not cut.** Buttons and columns are sized for English, so a much longer text can overflow its box. The README asks translators to keep texts about as long as the English ones.
 - **Caps (NASA rule 2):** at most `MAX_LANGUAGES = 64` files are read. The Options column shows as many as fit, plus "+N more", as the pitch list does.
@@ -45,10 +45,10 @@ Status: built (Phase 14 in [task.md](task.md)); the requirements are §3.13 of t
 }
 ```
 
-- `version` must be `1`. `name` must be non-empty. Every section is optional, and every value must be a string.
+- `version` must be `1`. `name` must be non-empty. Every section is optional, and every value must be a string without a null character (`\u0000`).
 - **`texts`** uses flat dotted keys (`screen.item`), so two files can be compared line by line. The full key list is the `Text` enum below; `en.json` holds every key.
 - **`races`, `positions` and `skills`** are keyed by the English name from `races.csv`. A position shared by several races, such as `Lineman`, has one entry. Skills are keyed by their base name, without ` (…)`. `en.json` lists all of them, mapped to themselves, so a translator sees every name to translate.
-- Values may use the same `{placeholders}` as the English text, in any order, or leave some out. `{{` and `}}` give literal braces.
+- Values must use exactly the same `{placeholders}` as the English text, in any order, each as often as they like. `{{` and `}}` give literal braces.
 - The file is read as UTF-8; a byte-order mark is accepted.
 
 ## Primitives
@@ -104,7 +104,7 @@ class Message(NamedTuple):
                                      # e.g. {"side": Text.HOME}
 
 def raw(text: str) -> Message        # Message(Text.RAW, {"text": text}): English
-                                     # error text shown as is; raw("") is "no message"
+                                     # error text shown as is, never looked up in a file; raw("") is "no message"
 
 class LanguageError(Exception): ...  # a language file can't be read or fails validation;
                                      # the message starts with the file name
@@ -186,7 +186,7 @@ draw_dice(surface, layout, font, texts, die_font, roll, sprites)
 
 | Group | Keys → English | Today in |
 |---|---|---|
-| common | `common.back` Back · `common.more` +{count} more · `common.raw` {text} · `common.both` {first}; {second} (two problems, e.g. a failed rename roll-back) | render, session |
+| common | `common.back` Back · `common.more` +{count} more · `common.both` {first}; {second} (two problems, e.g. a failed rename roll-back) | render, session |
 | side | `side.home` home · `side.away` away (inside sentences) | `Side.value` |
 | menu | `menu.home_roster` Home roster · `menu.away_roster` Away roster · `menu.saved_setups` Saved setups · `menu.hint` · `menu.new_roster` New roster · `menu.start` Start · `menu.options` Options · `menu.no_rosters` No CSV files in rosters/ · `menu.no_setups` No JSON files in setups/ · `menu.invalid_race` invalid · `menu.preview` {race} - {count} players | render |
 | races | `races.pick` Pick a race | render |
@@ -231,8 +231,10 @@ On a language click the next frame is already in the new language: the session's
 
 - `Languages.all[0]` is always English with code `en`; `Session.texts` is never None.
 - Every `Texts` lookup returns a string and never raises: this language, else English, else the key itself.
-- A `Texts` never holds a text whose placeholders aren't among the English text's placeholders, and every text it holds formats. `load_languages` checks both and drops what fails.
-- A saved code with no file (deleted, renamed, broken) selects English and does not rewrite `settings.json` until the user picks a language.
+- A `Texts` never holds a text whose placeholders aren't exactly the English text's placeholders, and every text it holds formats. `load_languages` checks both and drops what fails.
+- `Texts.say(raw(x)) == x` in every language, so `session.message == ''` exactly when no message is set.
+- No string a language file provides contains `\x00`; a file with one is skipped and reported.
+- A saved code with no file (deleted, renamed, broken) selects English, is reported by `language_problem` (`languages/<code>.json: file not found`), and does not rewrite `settings.json` until the user picks a language.
 - Language files are only read, never written.
 - `load_languages` never raises. Its problems reach the message line through `Session.language_problem`, like `PlayerSprites.problem`.
 - Contract violations raise `ValueError`: `language_row` with an index out of range, as `option_row` does.

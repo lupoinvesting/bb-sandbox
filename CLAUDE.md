@@ -41,6 +41,7 @@ Use Serena to search through the codebase. If you get any errors using Serena, r
 - [Team setups](docs/team_setups.md)
 - [Pitch annotations](docs/annotations.md)
 - [Languages](docs/languages.md)
+- [Language fixes](docs/language-fixes.md)
 
 ## 🧪 Testing & Reliability
 - **Always create Pytest unit tests for new features** (functions, classes, routes, etc).

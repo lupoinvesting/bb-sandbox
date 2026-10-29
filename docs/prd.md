@@ -141,6 +141,7 @@ Design: [annotations.md](annotations.md).
 * **Picker:** The Options screen lists the languages by their display name, next to the pitch list. A click switches language at once and is saved in `settings.json`.
 * **Files Stay English:** Translation is display-only. Rosters, setups and settings keep the English names, so switching language never changes a saved file.
 * **Robustness:** A broken language file is skipped and reported on the message line; it never stops the app.
+* **Strict Texts:** A translated text must keep every `{placeholder}` of the English one, and file error details always show exactly as written; a file can't change either. A text that breaks this rule shows in English and is reported. A saved language whose file is gone shows English and is reported. Language files are read at startup and when the window regains focus.
 
 Design: [languages.md](languages.md).
 
@@ -225,3 +226,9 @@ Design: [languages.md](languages.md).
 * Build the language module and `languages/en.json` with every English text and the race, position and skill names.
 * Route every displayed text through the chosen language, with the English fallback.
 * Add the Language column to the Options screen and save the choice in `settings.json`.
+
+**Phase 15: Language Fixes**
+
+* Lock raw error text, require every English placeholder in a translation, and reject NUL characters in language files.
+* Read language files only at startup and on focus; report a chosen language whose file is gone.
+* Share the Options row geometry between both columns, and keep `Texts` a black box.
