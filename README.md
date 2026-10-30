@@ -122,6 +122,18 @@ Any size works: each image is scaled to the 64px die at startup, so square image
 No images ship yet; a face without its file shows its name instead.
 An image that exists but can't be decoded stops the app at startup with an error naming the file.
 
+## Scatter template
+
+The Random Direction ("scatter") template sits at the centre of the pitch, on the kick-off square: a 3 × 3 block of pale yellow numbers for a D8, clockwise from the top left, with a `*` on the centre square. There is no fill and no outline.
+```
+1 2 3
+8 * 4
+7 6 5
+```
+It lies under the players, so tokens and the ball stand and move on it as on any other square.
+The **Scatter** button at the right of the Dice caption row (blue while on) draws it above the players; pitch marks stay on top.
+Start, loading a setup and Main menu turn it off; a trip to Team setups keeps it. It is never saved.
+
 ## Player sprites
 
 Players are drawn as coloured tokens unless they have an image. Put images in `sprites/home/` for the home team (player 1)

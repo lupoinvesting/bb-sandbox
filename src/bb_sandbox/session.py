@@ -419,6 +419,7 @@ class Session:
         self._clock = clock if clock is not None else datetime.now
         self._name_box: _NameBox | None = None
         self._last_roll: Roll | None = None
+        self._scatter_on_top = False
         self._rosters: tuple[Path, ...] = ()
         self._roster_entries: tuple[RosterEntry, ...] = ()
         self._setups: tuple[Path, ...] = ()
@@ -498,6 +499,13 @@ class Session:
         """Roll | None: The last dice roll; None before a roll, and off the
         sandbox and Team setups screens."""
         return self._last_roll
+
+    @property
+    def scatter_on_top(self) -> bool:
+        """bool: Whether the Scatter button draws the template above the
+        players; False until it is clicked, and off the sandbox and Team
+        setups screens."""
+        return self._scatter_on_top
 
     @property
     def pitch_format(self) -> PitchFormat:
@@ -831,8 +839,8 @@ class Session:
 
     def _press_sandbox(self, pos: tuple[int, int]) -> FileRequest | None:
         """
-        Handle a sandbox click: Save setup, Team setups, Main menu, a dice
-        button, or pointer input.
+        Handle a sandbox click: Save setup, Team setups, Main menu, Scatter,
+        a dice button, or pointer input.
 
         Args:
             pos (tuple[int, int]): Screen (x, y).
@@ -856,6 +864,11 @@ class Session:
         if self._layout.team_setups_button.contains(pos):
             self._interaction.commit()
             return OpenTeamSetups()
+        # Reason: like a dice click, the toggle doesn't reach Interaction, so
+        # it starts no drag and leaves an open comment edit alone.
+        if self._layout.scatter_button.contains(pos):
+            self._scatter_on_top = not self._scatter_on_top
+            return None
         index = self._layout.dice_button_at(pos)
         if self._layout.menu_button.contains(pos):
             self._interaction.commit()
@@ -863,6 +876,7 @@ class Session:
             self._message = NO_MESSAGE
             self._interaction = None
             self._last_roll = None
+            self._scatter_on_top = False
         elif index is not None:
             # Reason: the number goes up with every roll, so a roll that repeats
             # the last faces still changes the screen. A roll doesn't reach
@@ -1148,7 +1162,8 @@ class Session:
 
     def _open_sandbox(self, board: Board, message: Message) -> None:
         """
-        Switch to the sandbox showing a board, with no dice rolled yet.
+        Switch to the sandbox showing a board, with no dice rolled yet and the
+        scatter template under the players.
 
         Args:
             board (Board): The board to play with.
@@ -1159,6 +1174,7 @@ class Session:
         self._screen = Screen.SANDBOX
         self._message = message
         self._last_roll = None
+        self._scatter_on_top = False
 
     def release(self, pos: tuple[int, int]) -> None:
         """

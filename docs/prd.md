@@ -157,6 +157,16 @@ Design: [languages.md](languages.md).
 
 Design: [sevens.md](sevens.md); fixes: [sevens-fixes.md](sevens-fixes.md); zones: [sevens-zones.md](sevens-zones.md).
 
+### 3.15. Scatter Template
+
+* **Random Direction Template:** The sandbox pitch shows the Random Direction ("scatter") template: a 3 × 3 block whose 8 outer squares are numbered 1–8 for a D8, clockwise from the top left (1 2 3 / 8 * 4 / 7 6 5), with a `*` on the centre. Only the numbers and the `*` are drawn: no fill, no outline.
+* **Position:** It is fixed at the centre of the pitch, on the kick-off square: (13, 7) on Standard, (10, 5) on Sevens, and clipped to the pitch.
+* **Under the Players:** It is drawn under the tokens. Players and the ball stand and move on it, and it never catches a click, drag or mark.
+* **Highlight Toggle:** A **Scatter** button in the Dice caption row draws it above the players while on. Start, loading a setup and Main menu turn it off; Team setups and back keep it. It is never saved.
+* **Out of Scope:** The throw-in template, moving the template, and any link with the 1d8 roll.
+
+Design: [scatter-template.md](scatter-template.md).
+
 ## 4. Implementation Phases
 
 **Phase 1: Environment & Engine Setup**
@@ -260,3 +270,8 @@ Design: [sevens.md](sevens.md); fixes: [sevens-fixes.md](sevens-fixes.md); zones
 **Phase 18: Sevens Zones**
 
 * Replace the Sevens halfway line with two lines of scrimmage that split the pitch between the endzones into 3 zones of 6 columns.
+
+**Phase 19: Scatter Template**
+
+* Draw the Random Direction template, numbers only, at the centre of the Standard and Sevens pitches, under the players.
+* Add a Scatter toggle in the dice caption row that draws it above the players.

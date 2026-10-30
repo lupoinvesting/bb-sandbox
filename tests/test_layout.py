@@ -578,6 +578,29 @@ def test_dice_button_at_misses_caption_gaps_and_outside():
         assert layout.dice_button_at(pos) is None
 
 
+def test_scatter_button_is_right_of_the_dice_caption_at_square_size_32():
+    layout = build_layout(32)
+    assert layout.scatter_button == Box(988, 304, 108, 32)
+    panel, button = layout.panel, layout.scatter_button
+    assert button.x + button.width == panel.x + panel.width - 8
+    assert _inside(layout.dice_area, button) and _inside(panel, button)
+
+
+@pytest.mark.parametrize("square_size", [24, 32, 40])
+def test_scatter_button_leaves_the_caption_half_and_the_dice_buttons(square_size):
+    layout = build_layout(square_size)
+    button, area = layout.scatter_button, layout.dice_area
+    assert button.y == area.y
+    assert button.x >= area.x + area.width // 2
+    assert not any(_overlap(button, other) for other in layout.dice_buttons)
+
+
+def test_scatter_button_is_not_a_dice_button():
+    layout = build_layout(32)
+    button = layout.scatter_button
+    assert layout.dice_button_at((button.x + 5, button.y + 5)) is None
+
+
 def test_dice_leave_the_player_info_its_caption_and_eight_rows():
     layout = build_layout(32)
     assert layout.dice_area.y >= layout.panel.y + 9 * 32

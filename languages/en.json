@@ -49,6 +49,7 @@
     "sandbox.team_setups": "Team setups",
     "sandbox.main_menu": "Main menu",
     "sandbox.dice": "Dice",
+    "sandbox.scatter": "Scatter",
     "sandbox.team": "{team} ({side})",
     "sandbox.skills": "Skills:",
     "sandbox.no_skills": "none",

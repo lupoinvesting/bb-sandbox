@@ -49,6 +49,7 @@
     "sandbox.team_setups": "Schieramenti",
     "sandbox.main_menu": "Menu principale",
     "sandbox.dice": "Dadi",
+    "sandbox.scatter": "Deviazione",
     "sandbox.team": "{team} ({side})",
     "sandbox.skills": "Abilità:",
     "sandbox.no_skills": "nessuna",

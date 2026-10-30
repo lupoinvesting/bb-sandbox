@@ -1382,3 +1382,87 @@ def test_a_sevens_pitch_has_no_halfway_line(font):
     surface, layout, mid_y = _draw_sevens_scene(font)
     halfway = (layout.pitch.x + 320, mid_y)
     assert surface.get_at(halfway)[:3] == render.GRID_LINE
+
+
+def _near(colour, expected):
+    return all(abs(c - e) <= 2 for c, e in zip(colour[:3], expected))
+
+
+def _scatter_frame(font, board, layout, on_top):
+    surface = pygame.Surface(layout.window_size)
+    render.draw_sandbox(
+        surface, layout, font, EN, font, board, EMPTY_VIEW, NO_SPRITES, None, "", on_top
+    )
+    return surface
+
+
+def test_scatter_template_is_under_a_player_when_off(font):
+    layout = build_layout(32)
+    board = Board(_team(1), _team(1))
+    board.place(PlayerKey(Side.HOME, 0), Square(12, 7))
+    surface = _scatter_frame(font, board, layout, False)
+    empty = layout.square(13, 6)
+    assert surface.get_at((empty.x + 4, empty.y + 4))[:3] == render.PITCH_GREEN
+    assert _has_number(surface, empty)
+    assert not _has_number(surface, layout.square(12, 7))
+
+
+def test_scatter_template_is_over_a_player_when_on(font):
+    layout = build_layout(32)
+    board = Board(_team(1), _team(1))
+    board.place(PlayerKey(Side.HOME, 0), Square(12, 7))
+    surface = _scatter_frame(font, board, layout, True)
+    assert _has_number(surface, layout.square(12, 7))
+
+
+def _has_number(surface, square):
+    centre = _center_of(square)
+    return any(
+        _near(surface.get_at((x, centre[1] + dy)), render.SCATTER_TEXT)
+        for x in range(square.x + 8, square.x + 24)
+        for dy in range(-6, 7)
+    )
+
+
+def test_sevens_scatter_template_is_around_the_middle(font):
+    layout = build_layout(32).for_pitch(PitchFormat.SEVENS)
+    board = Board(_team(1), _team(1), PitchFormat.SEVENS)
+    surface = _scatter_frame(font, board, layout, False)
+    # Reason: the ball starts on the centre square and covers the "*".
+    for column, row in ((9, 4), (11, 6)):
+        assert _has_number(surface, layout.square(column, row))
+    assert not _has_number(surface, layout.square(12, 5))
+
+
+@pytest.mark.parametrize("on_top", [False, True])
+def test_scatter_template_changes_no_pixel_outside_its_squares(font, on_top):
+    layout = build_layout(32)
+    board = Board(_team(1), _team(1))
+    surface = _scatter_frame(font, board, layout, on_top)
+    plain = pygame.Surface(layout.window_size)
+    render.draw_scene(plain, layout, font, EN)
+    corner = layout.square(12, 6)
+    template = pygame.Rect(corner.x, corner.y, 3 * 32, 3 * 32)
+    pitch = _rect_of(layout.pitch)
+    for frame in (surface, plain):
+        frame.fill((0, 0, 0), template)
+    assert pygame.image.tobytes(surface.subsurface(pitch), "RGB") == (
+        pygame.image.tobytes(plain.subsurface(pitch), "RGB")
+    )
+
+
+def _rect_of(box):
+    return pygame.Rect(box.x, box.y, box.width, box.height)
+
+
+@pytest.mark.parametrize("on_top", [False, True])
+def test_scatter_button_is_highlighted_while_on(font, on_top):
+    layout = build_layout(32)
+    surface = pygame.Surface(layout.window_size)
+    render.draw_scene(surface, layout, font, EN)
+    die_font = pygame.font.Font(None, 40)
+    render.draw_dice(surface, layout, font, EN, die_font, None, {}, on_top)
+    button = layout.scatter_button
+    expected = render.HIGHLIGHT if on_top else render.BUTTON_FILL
+    assert surface.get_at((button.x + 3, button.y + 3))[:3] == expected
+    assert surface.get_at((button.x, button.y + 10))[:3] == render.BORDER

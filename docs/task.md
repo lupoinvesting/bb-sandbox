@@ -159,6 +159,17 @@ Design: [sevens-zones.md](sevens-zones.md). Requirements: PRD §3.14 (Sevens Geo
 - [x] team_setups: mirror docstring says "across the pitch's centre"
 - [x] Docs: README Pitch size (three 6-square zones, two lines); sevens.md Geometry default and "line of scrimmage" mentions; status line in sevens-zones.md
 
+## Phase 19: Scatter Template
+Design: [scatter-template.md](scatter-template.md). Requirements: PRD §3.15.
+- [x] `scatter.py`: `RANDOM_DIRECTIONS`, `TemplateSquare`, `random_direction_template(pitch)` around `pitch.ball_start` + test_scatter (fits both sizes)
+- [x] layout: `Layout.scatter_button` at the right of the dice caption row (`_dice_region`) + test_layout
+- [x] language: `Text.SCATTER` (`sandbox.scatter`), "Scatter" in `en.json`, "Deviazione" in `it.json` + test_language_files
+- [x] session: `scatter_on_top` property; toggle in `_press_sandbox`; off on Start, load and Main menu, kept across Team setups + test_session
+- [x] render: `SCATTER_*` colours, `_draw_scatter_template` (pitch-sized overlay), `_draw_button(selected)`, `draw_sandbox(scatter_on_top)` draw order + test_render; headless screenshots of both sizes, off and on
+- [x] app: pass `session.scatter_on_top` to `draw_sandbox` + test_app
+- [x] Docs: README "Scatter template"; status line in scatter-template.md; ruff and black
+- [x] Simplified look: numbers only in `SCATTER_TEXT` (pale yellow), `*` on the centre, no fill or lines; clockwise numbering 1 2 3 / 8 * 4 / 7 6 5
+
 ## Discovered During Work
 - [x] `draw_sandbox` has no `message` parameter yet (no Phase 3 feature sets one); add it with the Phase 4 save/load messages.
 - [ ] PyPI downloads on this machine fail TLS verification with uv's bundled certificates; `uv add`/`uv sync` currently need `--system-certs` (or `UV_SYSTEM_CERTS=1` / `system-certs = true` in uv config).

@@ -294,6 +294,19 @@ def test_draw_shows_the_dice_on_the_sandbox_only(in_tmp, frame):
     assert draw(session).get_at(corner)[:3] != BUTTON_FILL
 
 
+def test_a_scatter_click_draws_the_template_over_the_players(in_tmp, frame):
+    layout, draw = frame
+    _, session = _sandbox(in_tmp)
+    session.board.place(PlayerKey(Side.HOME, 0), Square(12, 7))
+    square, button = layout.square(12, 7), layout.scatter_button
+    token = pygame.Rect(square.x, square.y, square.width, square.height)
+    under = pygame.image.tobytes(draw(session).subsurface(token), "RGB")
+    assert handle_event(session, _click(button))
+    surface = draw(session)
+    assert pygame.image.tobytes(surface.subsurface(token), "RGB") != under
+    assert surface.get_at((button.x + 3, button.y + 3))[:3] == HIGHLIGHT
+
+
 def test_run_stops_on_a_corrupt_dice_image(in_tmp, monkeypatch):
     (in_tmp / "pow.png").write_bytes(b"not a png")
     monkeypatch.setattr(app, "DICE_SPRITES_DIR", in_tmp)

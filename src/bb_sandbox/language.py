@@ -72,6 +72,7 @@ class Text(StrEnum):
     TEAM_SETUPS = "sandbox.team_setups"
     MAIN_MENU = "sandbox.main_menu"
     DICE = "sandbox.dice"
+    SCATTER = "sandbox.scatter"
     TEAM_SIDE = "sandbox.team"
     PLAYER_SKILLS = "sandbox.skills"
     NO_SKILLS = "sandbox.no_skills"

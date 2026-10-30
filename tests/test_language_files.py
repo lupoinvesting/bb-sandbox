@@ -54,3 +54,9 @@ def test_the_sevens_fixes_texts_are_in_english_and_italian():
     assert italian.say(folder) == "Nessuna immagine in sprites/pitch-sevens/"
     clash = Message(Text.NAME_EXISTS_OTHER_PITCH, {"name": "kickoff"})
     assert italian.say(clash) == "kickoff esiste già per l'altra dimensione del campo"
+
+
+def test_the_scatter_text_is_in_english_and_italian():
+    assert EN["texts"]["sandbox.scatter"] == "Scatter"
+    italian = next(t for t in load_languages(LANGUAGES_DIR).all if t.code == "it")
+    assert italian[Text.SCATTER] == "Deviazione"

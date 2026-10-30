@@ -24,6 +24,7 @@ from bb_sandbox.layout import Box, Layout, MenuList
 from bb_sandbox.pitch import Dugout, PitchFormat, PlayerKey, Side, Square, Status
 from bb_sandbox.races import Positional, Race
 from bb_sandbox.roster import MAX_TEAM_SIZE, Team, format_target
+from bb_sandbox.scatter import random_direction_template
 from bb_sandbox.session import (
     SIDE_TEXTS,
     MenuView,
@@ -66,6 +67,10 @@ MENU_FILL = (60, 60, 70)
 OVER_LIMIT = (230, 150, 40)
 # Reason: translucent orange, as on chess.com's analysis board.
 MARK_COLOUR = (255, 170, 0, 160)
+# Reason: the scatter template is only its numbers and a centre mark, in a
+# pale yellow that reads on the green pitch.
+SCATTER_TEXT = (240, 230, 140)
+SCATTER_CENTRE = "*"
 # Reason: x offsets of the builder table's text columns from a row's left edge,
 # sized for the widest values in races.csv at the app's font size (20). "#"
 # is a symbol, not a word, so it isn't translated.
@@ -358,6 +363,7 @@ def _draw_button(
     box: Box,
     label: str,
     enabled: bool = True,
+    selected: bool = False,
 ) -> None:
     """
     Draw a labelled button, dimmed when disabled.
@@ -368,8 +374,11 @@ def _draw_button(
         box (Box): Button rectangle.
         label (str): Button text.
         enabled (bool): False draws the dimmed variant.
+        selected (bool): True fills it with HIGHLIGHT, for a toggle that is on.
     """
     fill, text = (BUTTON_FILL, TEXT) if enabled else (BUTTON_DISABLED, TEXT_DIM)
+    if selected:
+        fill = HIGHLIGHT
     pygame.draw.rect(surface, fill, _rect(box))
     pygame.draw.rect(surface, BORDER, _rect(box), 1)
     _draw_centred(surface, font, label, box, text)
@@ -1304,6 +1313,24 @@ def _draw_marks(surface: pygame.Surface, layout: Layout, marks: Marks) -> None:
     surface.blit(overlay, (layout.pitch.x, layout.pitch.y))
 
 
+def _draw_scatter_template(
+    surface: pygame.Surface, layout: Layout, font: pygame.font.Font
+) -> None:
+    """
+    Draw the Random Direction template at the pitch's centre: the numbers 1-8
+    and SCATTER_CENTRE, with no fill or lines.
+
+    Args:
+        surface (pygame.Surface): Target surface.
+        layout (Layout): Screen geometry; its pitch_format places the template.
+        font (pygame.font.Font): Font for the numbers.
+    """
+    for square, number in random_direction_template(layout.pitch_format):
+        label = SCATTER_CENTRE if number is None else str(number)
+        box = layout.square(square.column, square.row)
+        _draw_centred(surface, font, label, box, SCATTER_TEXT)
+
+
 def draw_sandbox(
     surface: pygame.Surface,
     layout: Layout,
@@ -1315,10 +1342,11 @@ def draw_sandbox(
     player_sprites: PlayerSprites,
     pitch_image: pygame.Surface | None,
     message: str,
+    scatter_on_top: bool = False,
 ) -> None:
     """
-    Draw the sandbox: scene, tokens, ball, dragged item, pitch marks, info
-    panel and context menu.
+    Draw the sandbox: scene, scatter template, tokens, ball, dragged item,
+    pitch marks, info panel and context menu.
 
     Args:
         surface (pygame.Surface): Target surface, sized to layout.window_size.
@@ -1335,9 +1363,15 @@ def draw_sandbox(
             load_pitch_sprite; None draws the pitch in code.
         message (str): Status message (save/load feedback), '' for none; a
             comment edit shows COMMENT_HINT instead.
+        scatter_on_top (bool): True draws the scatter template above the
+            players, under the marks; False draws it under the players.
     """
     draw_scene(surface, layout, font, texts, pitch_image)
+    if not scatter_on_top:
+        _draw_scatter_template(surface, layout, font)
     _draw_pieces(surface, layout, font, comment_font, board, view, player_sprites)
+    if scatter_on_top:
+        _draw_scatter_template(surface, layout, font)
     _draw_marks(surface, layout, view.marks)
     _draw_panel(surface, layout, font, texts, board, view.hovered)
     if view.editing is not None:
@@ -1614,9 +1648,11 @@ def draw_dice(
     die_font: pygame.font.Font,
     roll: Roll | None,
     sprites: dict[BlockFace, pygame.Surface],
+    scatter_on_top: bool = False,
 ) -> None:
     """
-    Draw the sandbox dice section: caption, buttons, result line and dice.
+    Draw the sandbox dice section: caption, Scatter button, dice buttons,
+    result line and dice.
 
     Call it after draw_sandbox, over the bottom of the panel.
 
@@ -1630,11 +1666,16 @@ def draw_dice(
         roll (Roll | None): The last roll; None draws no result and no dice.
         sprites (dict[BlockFace, pygame.Surface]): Block faces with an image,
             from load_block_sprites.
+        scatter_on_top (bool): True draws the Scatter button in HIGHLIGHT.
     """
     area = layout.dice_area
     right = area.x + area.width - 1
     pygame.draw.line(surface, BORDER, (area.x, area.y), (right, area.y), 2)
     _draw_label(surface, font, texts[Text.DICE], area)
+    # Reason: drawn after the section's top line, which runs along the
+    # caption row's top edge, so the line doesn't cut into the button.
+    scatter = texts[Text.SCATTER]
+    _draw_button(surface, font, layout.scatter_button, scatter, selected=scatter_on_top)
     for dice, button in zip(DICE, layout.dice_buttons):
         _draw_button(surface, font, button, _dice_label(dice, texts))
     if roll is None:

@@ -667,6 +667,50 @@ def test_dice_positions_do_nothing_on_the_main_menu(session):
     assert session.screen is Screen.MENU and session.last_roll is None
 
 
+def test_scatter_clicks_toggle_the_template_on_top(session):
+    _sandbox(session)
+    assert session.scatter_on_top is False
+    assert session.press(_click(LAYOUT.scatter_button)) is None
+    assert session.scatter_on_top is True
+    assert session.press(_click(LAYOUT.scatter_button)) is None
+    assert session.scatter_on_top is False
+    assert session.screen is Screen.SANDBOX
+
+
+def test_scatter_starts_no_drag_and_keeps_an_open_comment_edit(session):
+    _start_comment(session, "MB2")
+    session.press(_click(LAYOUT.scatter_button))
+    session.move(_click(LAYOUT.square(8, 8)))
+    view = session.interaction.view()
+    assert view.dragged is None and view.editing is not None
+    assert session.scatter_on_top is True
+
+
+def test_team_setups_and_back_keep_scatter(session):
+    _sandbox(session)
+    session.press(_click(LAYOUT.scatter_button))
+    session.press(_click(LAYOUT.team_setups_button))
+    session.open_team_setups()
+    session.press(_click(LAYOUT.back_button))
+    assert session.screen is Screen.SANDBOX and session.scatter_on_top is True
+
+
+def test_main_menu_start_and_load_turn_scatter_off(session, tmp_path):
+    _sandbox(session)
+    session.press(_click(LAYOUT.scatter_button))
+    session.press(_click(LAYOUT.menu_button))
+    assert session.scatter_on_top is False
+    # A click at the button's place on the main menu does nothing.
+    session.press(_click(LAYOUT.scatter_button))
+    assert session.screen is Screen.MENU and session.scatter_on_top is False
+    session.press(_click(LAYOUT.start_button))
+    assert session.screen is Screen.SANDBOX and session.scatter_on_top is False
+    _save_setup(session)
+    session.press(_click(LAYOUT.scatter_button))
+    session.load_setup(tmp_path / "setups" / "orcs-vs-orcs-20260101-000000.json")
+    assert session.scatter_on_top is False
+
+
 def _options(tmp_path, *names):
     folder = tmp_path / "pitch"
     folder.mkdir(parents=True, exist_ok=True)
@@ -1228,13 +1272,14 @@ def test_ctrl_right_click_opens_the_player_menu(session):
     assert len(session.interaction.view().menu) == 7
 
 
-@pytest.mark.parametrize("where", ["pitch", "dice", "save"])
+@pytest.mark.parametrize("where", ["pitch", "dice", "scatter", "save"])
 def test_a_left_press_clears_the_marks(session, where):
     _sandbox(session)
     _arrow(session, (2, 2), (5, 3))
     target = {
         "pitch": _click(LAYOUT.square(10, 10)),
         "dice": _dice(0),
+        "scatter": _click(LAYOUT.scatter_button),
         "save": _click(LAYOUT.save_button),
     }[where]
     session.press(target)

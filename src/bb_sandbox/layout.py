@@ -120,6 +120,8 @@ class Layout:
             save_button's row.
         dice_area (Box): Sandbox dice section: the panel's full width, from its
             "Dice" caption row down to sandbox_message_line.
+        scatter_button (Box): Sandbox "Scatter" toggle, the right half of
+            the dice caption row.
         dice_buttons (tuple[Box, ...]): One button per DICE entry, row by row
             in DICE_BUTTON_ROWS.
         dice_result_line (Box): The last roll's text, above die_boxes.
@@ -173,6 +175,7 @@ class Layout:
     team_setups_button: Box
     sandbox_message_line: Box
     dice_area: Box
+    scatter_button: Box
     dice_buttons: tuple[Box, ...]
     dice_result_line: Box
     die_boxes: tuple[Box, ...]
@@ -852,13 +855,14 @@ def _panel_buttons(panel: Box, square_size: int) -> tuple[Box, Box, Box, Box]:
 
 def _dice_region(
     panel: Box, message_line: Box, square_size: int
-) -> tuple[Box, tuple[Box, ...], Box, tuple[Box, ...]]:
+) -> tuple[Box, Box, tuple[Box, ...], Box, tuple[Box, ...]]:
     """
     Stack the dice section upwards from the sandbox message line.
 
     From the bottom: the die boxes, the result line, the button rows and the
     caption row, BUTTON_INSET apart except the result line, which sits
-    directly on the die boxes.
+    directly on the die boxes. The Scatter button takes the right half of
+    the caption row.
 
     Args:
         panel (Box): The right-side panel.
@@ -866,8 +870,9 @@ def _dice_region(
         square_size (int): Side of one grid square in pixels.
 
     Returns:
-        tuple[Box, tuple[Box, ...], Box, tuple[Box, ...]]: The dice area, the
-            buttons in DICE_BUTTON_ROWS order, the result line and the die boxes.
+        tuple[Box, Box, tuple[Box, ...], Box, tuple[Box, ...]]: The dice area,
+            the Scatter button, the buttons in DICE_BUTTON_ROWS order, the
+            result line and the die boxes.
     """
     left = panel.x + BUTTON_INSET
     inner = panel.width - 2 * BUTTON_INSET
@@ -893,7 +898,11 @@ def _dice_region(
         )
     caption_y = top - square_size
     area = Box(panel.x, caption_y, panel.width, message_line.y - caption_y)
-    return area, tuple(buttons), result_line, die_boxes
+    # Reason: half the row, as Team setups is, leaves the left half to the
+    # "Dice" caption; the button ends BUTTON_INSET from the panel's right edge.
+    half = (inner - BUTTON_INSET) // 2
+    scatter_button = Box(left + inner - half, caption_y, half, square_size)
+    return area, scatter_button, tuple(buttons), result_line, die_boxes
 
 
 def _name_box(window_size: tuple[int, int], square_size: int) -> tuple[Box, Box]:
@@ -1024,7 +1033,7 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
     menu_button, save_button, team_setups_button, sandbox_message_line = _panel_buttons(
         panel, square_size
     )
-    dice_area, dice_buttons, dice_result_line, die_boxes = _dice_region(
+    dice_area, scatter_button, dice_buttons, dice_result_line, die_boxes = _dice_region(
         panel, sandbox_message_line, square_size
     )
 
@@ -1081,6 +1090,7 @@ def build_layout(square_size: int = DEFAULT_SQUARE_SIZE) -> Layout:
         team_setups_button=team_setups_button,
         sandbox_message_line=sandbox_message_line,
         dice_area=dice_area,
+        scatter_button=scatter_button,
         dice_buttons=dice_buttons,
         dice_result_line=dice_result_line,
         die_boxes=die_boxes,

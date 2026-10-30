@@ -201,8 +201,10 @@ def _draw(
             player_sprites,
             pitch,
             message,
+            session.scatter_on_top,
         )
-        draw_dice(surface, layout, font, texts, die_font, session.last_roll, sprites)
+        roll, on_top = session.last_roll, session.scatter_on_top
+        draw_dice(surface, layout, font, texts, die_font, roll, sprites, on_top)
     elif session.screen is Screen.TEAM_SETUPS:
         view = session.team_setups_view()
         draw_team_setups(surface, layout, font, texts, view, message)

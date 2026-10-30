@@ -45,6 +45,7 @@ Use Serena to search through the codebase. If you get any errors using Serena, r
 - [Sevens pitch](docs/sevens.md)
 - [Sevens fixes](docs/sevens-fixes.md)
 - [Sevens zones](docs/sevens-zones.md)
+- [Scatter template](docs/scatter-template.md)
 
 ## 🧪 Testing & Reliability
 - **Always create Pytest unit tests for new features** (functions, classes, routes, etc).
